@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WAIvePulse</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f0f13;
+    color: #e2e2e8;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    padding: 20px 32px;
+    border-bottom: 1px solid #1e1e2a;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  header h1 { font-size: 1.4rem; font-weight: 700; color: #fff; }
+  header span { font-size: 0.85rem; color: #666; }
+  .main { display: flex; flex: 1; gap: 0; }
+
+  /* Left panel - create */
+  .panel-create {
+    width: 420px;
+    min-width: 380px;
+    border-right: 1px solid #1e1e2a;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+    transition: width 0.25s ease, min-width 0.25s ease;
+  }
+  .panel-create.collapsed { width: 36px; min-width: 36px; }
+  .panel-create-inner {
+    padding: 28px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    overflow-y: auto;
+    height: 100%;
+    transition: opacity 0.15s;
+  }
+  .panel-create.collapsed .panel-create-inner { opacity: 0; pointer-events: none; }
+  .sidebar-toggle {
+    position: absolute; top: 10px; right: 10px; z-index: 20;
+    background: #1a1a24; border: 1px solid #2a2a38; border-radius: 6px;
+    color: #555; width: 22px; height: 22px; font-size: 0.6rem;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; padding: 0;
+  }
+  .sidebar-toggle:hover { border-color: #7c5cbf; color: #c4aaff; }
+  .panel-create.collapsed .sidebar-toggle { right: 7px; transform: scaleX(-1); }
+  label { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #888; display: block; margin-bottom: 6px; }
+  input[type=text], textarea, select {
+    width: 100%;
+    background: #1a1a24;
+    border: 1px solid #2a2a38;
+    border-radius: 8px;
+    color: #e2e2e8;
+    padding: 10px 12px;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.15s;
+    font-family: inherit;
+    resize: vertical;
+  }
+  input[type=text]:focus, textarea:focus { border-color: #7c5cbf; }
+  textarea { min-height: 220px; font-size: 0.85rem; line-height: 1.6; }
+
+  .tags-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 2px;
+  }
+  .tag-btn {
+    background: #1a1a24;
+    border: 1px solid #2a2a38;
+    border-radius: 20px;
+    color: #aaa;
+    padding: 5px 13px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .tag-btn:hover { border-color: #555; color: #ddd; }
+  .tag-btn.active { background: #3b2a72; border-color: #7c5cbf; color: #c4aaff; }
+
+  .custom-tags { margin-top: 8px; }
+
+  .advanced-toggle {
+    color: #666;
+    font-size: 0.8rem;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .advanced-toggle:hover { color: #aaa; }
+  .advanced-section { display: none; gap: 14px; flex-direction: column; }
+  .advanced-section.open { display: flex; }
+  .slider-row { display: flex; align-items: center; gap: 10px; }
+  input[type=range] { flex: 1; accent-color: #7c5cbf; }
+  .slider-val { font-size: 0.82rem; color: #888; min-width: 32px; text-align: right; }
+
+  .btn-generate {
+    background: linear-gradient(135deg, #7c5cbf, #5a3ea0);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 13px 20px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+    width: 100%;
+    margin-top: 4px;
+  }
+  .btn-generate:hover { opacity: 0.9; }
+  .btn-generate:active { transform: scale(0.98); }
+  .btn-generate:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  /* Right panel - history */
+  .panel-history {
+    flex: 1;
+    padding: 28px 28px;
+    overflow-y: auto;
+  }
+  .panel-history-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .panel-history h2 { font-size: 1rem; font-weight: 600; color: #ccc; }
+  .btn-load-mp3 {
+    background: #1a1a24;
+    border: 1px solid #2a2a38;
+    border-radius: 8px;
+    color: #888;
+    font-size: 0.78rem;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-load-mp3:hover { border-color: #7c5cbf; color: #c4aaff; }
+
+  .job-card {
+    background: #14141e;
+    border: 1px solid #1e1e2a;
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 14px;
+    transition: border-color 0.2s;
+  }
+  .job-card:hover { border-color: #2e2e44; }
+  .job-card.active-job { border-color: #4a3a80; background: #16152a; }
+
+  /* Card accordion */
+  .job-row {
+    display: flex; align-items: center; gap: 10px;
+    cursor: pointer; user-select: none; padding: 2px 0;
+  }
+  .job-row-text { flex: 1; min-width: 0; overflow: hidden; }
+  .job-title { font-weight: 600; font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .job-tags { font-size: 0.72rem; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; margin-top: 1px; }
+  .job-time { font-size: 0.7rem; color: #555; white-space: nowrap; flex-shrink: 0; }
+  .expand-icon { font-size: 0.6rem; color: #444; flex-shrink: 0; transition: transform 0.2s; line-height: 1; }
+  .job-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+  .job-body.open { max-height: 800px; }
+  .job-body-inner { padding-top: 12px; }
+
+  .job-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.82rem;
+  }
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot-queued { background: #555; }
+  .dot-generating { background: #f5a623; animation: pulse 1s infinite; }
+  .dot-done { background: #4caf7d; }
+  .dot-error { background: #e05555; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .progress-bar {
+    height: 3px;
+    background: #1e1e2a;
+    border-radius: 2px;
+    margin: 10px 0;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #7c5cbf, #a07cef);
+    border-radius: 2px;
+    transition: width 0.5s;
+  }
+
+  audio {
+    width: 100%;
+    margin-top: 10px;
+    accent-color: #7c5cbf;
+  }
+  audio::-webkit-media-controls-panel { background: #1a1a28; }
+
+  .viz-wrap { position: relative; margin-top: 8px; }
+  .viz-canvas { width: 100%; height: auto; border-radius: 8px; background: #080810; display: block; }
+  .viz-toggle {
+    position: absolute;
+    top: 8px; right: 8px;
+    background: rgba(14,14,22,0.85);
+    border: 1px solid #2a2a38;
+    border-radius: 14px;
+    color: #888;
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+    backdrop-filter: blur(4px);
+    letter-spacing: 0.04em;
+  }
+  .viz-toggle:hover { border-color: #7c5cbf; color: #c4aaff; }
+
+  .btn-delete {
+    background: none;
+    border: none;
+    color: #444;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 2px 4px;
+    transition: color 0.15s;
+    flex-shrink: 0;
+  }
+  .btn-delete:hover { color: #e05555; }
+
+  .empty-state {
+    color: #444;
+    font-size: 0.9rem;
+    text-align: center;
+    margin-top: 60px;
+  }
+
+  .tmpl-link {
+    cursor: pointer;
+    color: #7c5cbf;
+    font-size: 0.78rem;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 500;
+  }
+  .tmpl-link:hover { text-decoration: underline; }
+
+  .notice {
+    background: #1a1a24;
+    border: 1px solid #2a2a38;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.8rem;
+    color: #888;
+    margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+    <circle cx="14" cy="14" r="13" fill="#3b2a72"/>
+    <path d="M9 18V10l10 4-10 4z" fill="#c4aaff"/>
+  </svg>
+  <h1>WAIvePulse</h1>
+  <span>HeartMuLa 3B</span>
+  <span id="modelBadge" style="margin-left:auto;font-size:0.78rem;padding:4px 10px;border-radius:12px;background:#1a1a24;border:1px solid #2a2a38;color:#666">checking models...</span>
+</header>
+
+<div class="main">
+  <!-- CREATE PANEL -->
+  <div class="panel-create" id="panelCreate">
+  <button class="sidebar-toggle" onclick="toggleSidebar()" title="Collapse sidebar">◀</button>
+  <div class="panel-create-inner">
+    <div>
+      <label>Song Title</label>
+      <input type="text" id="title" placeholder="My awesome track" value="Untitled">
+    </div>
+
+    <div>
+      <label>Lyrics <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0">—
+        <span class="tmpl-link" onclick="loadTemplate('pop')">pop</span> ·
+        <span class="tmpl-link" onclick="loadTemplate('rock')">rock</span> ·
+        <span class="tmpl-link" onclick="loadTemplate('ballad')">ballad</span> ·
+        <span class="tmpl-link" onclick="loadTemplate('hiphop')">hip-hop</span>
+      </span></label>
+      <textarea id="lyrics" placeholder="[Verse]
+The sun creeps in across the floor
+I hear the traffic outside the door
+
+[Chorus]
+Every day the light returns
+Every day the fire burns"></textarea>
+      <div class="notice">Use [Verse], [Chorus], [Bridge], [Outro] section markers for best results.</div>
+    </div>
+
+    <div>
+      <label>Genre &amp; Style Tags</label>
+      <div class="tags-grid" id="tagGrid"></div>
+      <div class="custom-tags">
+        <input type="text" id="customTags" placeholder="or type custom tags: jazz,trumpet,upbeat">
+      </div>
+    </div>
+
+    <div>
+      <div class="advanced-toggle" onclick="toggleAdvanced()">
+        <span id="advToggleArrow">▶</span> Advanced settings
+      </div>
+      <div class="advanced-section" id="advancedSection">
+        <div>
+          <label>Max duration: <span id="durLabel">5:00</span></label>
+          <div class="slider-row">
+            <input type="range" id="maxDur" min="30" max="300" step="10" value="300" oninput="updateDurLabel()">
+          </div>
+        </div>
+        <div>
+          <label>Temperature <span style="color:#555">(creativity)</span></label>
+          <div class="slider-row">
+            <input type="range" id="temperature" min="0.5" max="2.0" step="0.05" value="1.0" oninput="document.getElementById('tempVal').textContent=this.value">
+            <span class="slider-val" id="tempVal">1.0</span>
+          </div>
+        </div>
+        <div>
+          <label>CFG Scale <span style="color:#555">(prompt adherence)</span></label>
+          <div class="slider-row">
+            <input type="range" id="cfgScale" min="1.0" max="5.0" step="0.1" value="1.5" oninput="document.getElementById('cfgVal').textContent=this.value">
+            <span class="slider-val" id="cfgVal">1.5</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn-generate" id="btnGenerate" onclick="generate()">Generate Song</button>
+  </div><!-- end panel-create-inner -->
+  </div><!-- end panel-create -->
+
+  <!-- HISTORY PANEL -->
+  <div class="panel-history">
+    <div class="panel-history-header">
+      <h2>Generated Songs</h2>
+      <button class="btn-load-mp3" onclick="document.getElementById('mp3FileInput').click()">▶ Load MP3</button>
+      <input type="file" id="mp3FileInput" accept="audio/*" style="display:none" multiple onchange="loadLocalMP3(this)">
+    </div>
+    <div id="historyList"><div class="empty-state">No songs yet — generate your first one!</div></div>
+  </div>
+</div>
+
+<script>
+const PRESET_TAGS = [
+  "pop","rock","jazz","blues","hip-hop","electronic","classical","country","r&b",
+  "metal","folk","reggae","soul","funk","ambient","lofi","indie","punk","synthwave",
+  "happy","sad","energetic","calm","romantic","dark","upbeat","melancholic",
+  "piano","guitar","drums","bass","violin","synthesizer","vocals"
+];
+
+let selectedTags = new Set();
+let activeJobs   = new Set();
+const openCards  = new Set();
+
+function buildTagGrid() {
+  const grid = document.getElementById("tagGrid");
+  PRESET_TAGS.forEach(tag => {
+    const btn = document.createElement("div");
+    btn.className = "tag-btn";
+    btn.textContent = tag;
+    btn.onclick = () => {
+      if (selectedTags.has(tag)) { selectedTags.delete(tag); btn.classList.remove("active"); }
+      else { selectedTags.add(tag); btn.classList.add("active"); }
+    };
+    grid.appendChild(btn);
+  });
+}
+
+function getTagsString() {
+  const custom = document.getElementById("customTags").value.trim();
+  const all = [...selectedTags];
+  if (custom) all.push(...custom.split(",").map(t => t.trim()).filter(Boolean));
+  return all.join(",");
+}
+
+function toggleAdvanced() {
+  const sec = document.getElementById("advancedSection");
+  const arrow = document.getElementById("advToggleArrow");
+  if (sec.classList.contains("open")) { sec.classList.remove("open"); arrow.textContent = "▶"; }
+  else { sec.classList.add("open"); arrow.textContent = "▼"; }
+}
+
+function toggleCard(jobId) {
+  const body  = document.getElementById(`body-${jobId}`);
+  const arrow = document.getElementById(`arrow-${jobId}`);
+  if (!body) return;
+  if (openCards.has(jobId)) {
+    openCards.delete(jobId);
+    body.classList.remove('open');
+    if (arrow) arrow.textContent = '▶';
+  } else {
+    openCards.add(jobId);
+    body.classList.add('open');
+    if (arrow) arrow.textContent = '▼';
+  }
+}
+
+function toggleSidebar() {
+  document.getElementById('panelCreate').classList.toggle('collapsed');
+}
+
+function updateDurLabel() {
+  const v = parseInt(document.getElementById("maxDur").value);
+  const m = Math.floor(v / 60), s = v % 60;
+  document.getElementById("durLabel").textContent = `${m}:${s.toString().padStart(2,"0")}`;
+}
+
+async function generate() {
+  const lyrics = document.getElementById("lyrics").value.trim();
+  const tags = getTagsString();
+  const title = document.getElementById("title").value.trim() || "Untitled";
+
+  if (!lyrics) { alert("Please enter some lyrics first."); return; }
+  if (!tags) { alert("Please select at least one genre tag."); return; }
+
+  const btn = document.getElementById("btnGenerate");
+  btn.disabled = true;
+  btn.textContent = "Sending...";
+
+  try {
+    const res = await fetch("/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lyrics, tags, title,
+        max_duration_sec: parseInt(document.getElementById("maxDur").value),
+        temperature: parseFloat(document.getElementById("temperature").value),
+        cfg_scale: parseFloat(document.getElementById("cfgScale").value),
+        topk: 50
+      })
+    });
+    const data = await res.json();
+    if (data.job_id) {
+      activeJobs.add(data.job_id);
+      addJobCard(data.job_id, title, tags, new Date().toISOString());
+      pollJob(data.job_id);
+    }
+  } catch(e) {
+    alert("Error: " + e.message);
+  }
+
+  btn.disabled = false;
+  btn.textContent = "Generate Song";
+}
+
+function addJobCard(jobId, title, tags, createdAt) {
+  openCards.add(jobId);
+  const list = document.getElementById("historyList");
+  const empty = list.querySelector(".empty-state");
+  if (empty) empty.remove();
+
+  const card = document.createElement("div");
+  card.className = "job-card active-job";
+  card.id = `job-${jobId}`;
+  card.innerHTML = jobCardHTML(jobId, title, tags, "queued", "Queued...", null, createdAt);
+  list.insertBefore(card, list.firstChild);
+}
+
+function jobCardHTML(jobId, title, tags, status, message, file, createdAt) {
+  const timeStr = createdAt ? new Date(createdAt).toLocaleTimeString() : "";
+  const isOpen  = openCards.has(jobId);
+  const vizStyle = vizStyles[jobId] || 'ring';
+  const vizLabel = VIZ_LABELS[vizStyle] || '◉ Ring';
+
+  const progressHTML = (status === "queued" || status === "generating") ? `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div class="dot dot-${status}"></div>
+      <span style="font-size:0.82rem;color:#888">${status === "generating" ? "Generating… (this may take several minutes)" : "Queued"}</span>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" style="width:${status==="generating"?60:10}%"></div></div>` : "";
+
+  const audioHTML = (status === "done" && file) ? `
+    <audio controls preload="metadata"><source src="${file}" type="audio/mpeg"></audio>
+    <div class="viz-wrap">
+      <canvas id="viz-${jobId}" class="viz-canvas" width="400" height="260"></canvas>
+      <button class="viz-toggle" id="viz-btn-${jobId}" onclick="cycleVizStyle('${jobId}')">${vizLabel}</button>
+    </div>` : "";
+
+  const errorHTML = status === "error" ? `
+    <div style="font-size:0.82rem;color:#e05555;padding:8px 0">${escHtml(message)}</div>` : "";
+
+  return `
+    <div class="job-row" onclick="toggleCard('${jobId}')">
+      <div class="dot dot-${status}"></div>
+      <div class="job-row-text">
+        <span class="job-title">${escHtml(title)}</span>
+        <span class="job-tags">${escHtml(tags)}</span>
+      </div>
+      <span class="job-time">${timeStr}</span>
+      <span class="expand-icon" id="arrow-${jobId}">${isOpen ? "▼" : "▶"}</span>
+      <button class="btn-delete" onclick="event.stopPropagation();deleteJob('${jobId}')" title="Delete">✕</button>
+    </div>
+    <div class="job-body${isOpen ? " open" : ""}" id="body-${jobId}">
+      <div class="job-body-inner">
+        ${progressHTML}${audioHTML}${errorHTML}
+      </div>
+    </div>`;
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+async function pollJob(jobId) {
+  while (true) {
+    await new Promise(r => setTimeout(r, 3000));
+    try {
+      const res = await fetch(`/status/${jobId}`);
+      if (!res.ok) break;
+      const data = await res.json();
+      updateJobCard(jobId, data);
+      if (data.status === "done" || data.status === "error") {
+        activeJobs.delete(jobId);
+        break;
+      }
+    } catch(e) { break; }
+  }
+}
+
+function updateJobCard(jobId, data) {
+  const card = document.getElementById(`job-${jobId}`);
+  if (!card) return;
+  if (data.status === "done" || data.status === "error") {
+    card.className = "job-card";
+    openCards.add(jobId); // auto-expand when finished
+  } else {
+    card.className = "job-card active-job";
+  }
+  card.innerHTML = jobCardHTML(jobId, data.title || "Untitled", data.tags || "", data.status, data.message, data.file, data.created_at);
+  if (data.status === "done") setTimeout(() => attachVizListeners(jobId), 0);
+}
+
+async function deleteJob(jobId) {
+  stopViz(jobId);
+  openCards.delete(jobId);
+  try {
+    await fetch(`/history/${jobId}`, { method: "DELETE" });
+  } catch(e) {}
+  const card = document.getElementById(`job-${jobId}`);
+  if (card) card.remove();
+  if (!document.querySelector(".job-card")) {
+    document.getElementById("historyList").innerHTML = '<div class="empty-state">No songs yet — generate your first one!</div>';
+  }
+}
+
+function loadLocalMP3(input) {
+  const files = [...input.files];
+  input.value = "";
+  if (!files.length) return;
+
+  const list = document.getElementById("historyList");
+  const empty = list.querySelector(".empty-state");
+  if (empty) empty.remove();
+
+  files.forEach(file => {
+    const blobUrl  = URL.createObjectURL(file);
+    const jobId    = "local_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6);
+    const title    = file.name.replace(/\.[^.]+$/, "");
+    const tags     = "local file";
+    const createdAt = new Date().toISOString();
+
+    openCards.add(jobId);
+    const card = document.createElement("div");
+    card.className = "job-card";
+    card.id = `job-${jobId}`;
+    card.innerHTML = jobCardHTML(jobId, title, tags, "done", "Local file", blobUrl, createdAt);
+    list.insertBefore(card, list.firstChild);
+    setTimeout(() => attachVizListeners(jobId), 0);
+  });
+}
+
+async function loadHistory() {
+  try {
+    const res = await fetch("/history");
+    const jobs = await res.json();
+    if (!jobs.length) return;
+    const list = document.getElementById("historyList");
+    list.innerHTML = "";
+    jobs.forEach(j => {
+      const card = document.createElement("div");
+      card.className = (j.status === "done" || j.status === "error") ? "job-card" : "job-card active-job";
+      card.id = `job-${j.job_id}`;
+      card.innerHTML = jobCardHTML(j.job_id, j.title || "Untitled", j.tags || "", j.status, j.message, j.file, j.created_at);
+      list.appendChild(card);
+      if (j.status === "queued" || j.status === "generating") pollJob(j.job_id);
+      if (j.status === "done") setTimeout(() => attachVizListeners(j.job_id), 0);
+    });
+  } catch(e) {}
+}
+
+const TEMPLATES = {
+  pop: `[Verse]\nChasing dreams in the city lights\nEverything is moving fast tonight\nI can feel the rhythm in my bones\nNever gonna make it on my own\n\n[Prechorus]\nBut when the music plays\nI forget my fears\n\n[Chorus]\nTurn it up, let it go\nFeel the beat from down below\nWe are alive, we are free\nThis is where we want to be\n\n[Verse]\nStrangers turn to friends by dawn\nThe night is short but we carry on\nEvery second counts tonight\nDancing till the morning light\n\n[Chorus]\nTurn it up, let it go\nFeel the beat from down below\nWe are alive, we are free\nThis is where we want to be\n\n[Outro]\nThis is where we want to be`,
+
+  rock: `[Intro]\n\n[Verse]\nBroken glass on the floor again\nRunning hard through the pouring rain\nFed up with the way things are\nGonna drive this town in my old car\n\n[Prechorus]\nI won't back down, I won't give in\nThis is where my life begins\n\n[Chorus]\nWe are fire, we are stone\nWe will fight until we're home\nShout it out, make some noise\nThis is us, this is our voice\n\n[Bridge]\nThey tried to hold us down\nBut we rose up from the ground\nNothing gonna stop us now\n\n[Chorus]\nWe are fire, we are stone\nWe will fight until we're home\nShout it out, make some noise\nThis is us, this is our voice\n\n[Outro]\nThis is our voice`,
+
+  ballad: `[Verse]\nYou left before the morning came\nA shadow where you used to lay\nI reach across the empty side\nAnd try to sleep but I just cry\n\n[Prechorus]\nI keep your memory near\nIn everything I do\n\n[Chorus]\nIf I could go back in time\nI'd hold you a little longer\nIf I could say one last goodbye\nMaybe I would be stronger\nBut all I have is yesterday\nAnd all these tears I cry\n\n[Verse]\nYour laughter echoes down the hall\nYour photo hanging on the wall\nI pour the coffee, set two cups\nThen remember, and give up\n\n[Chorus]\nIf I could go back in time\nI'd hold you a little longer\nIf I could say one last goodbye\nMaybe I would be stronger\n\n[Outro]\nMaybe I would be stronger`,
+
+  hiphop: `[Intro]\nYeah, let me tell you something real\n\n[Verse]\nStarted with nothing, built this from the ground\nEvery single setback just made me more sound\nThey said I'd never make it, I proved them all wrong\nNow I'm writing chapters, I'm writing this song\nSix in the morning, I'm up on the grind\nDreams in my pocket, ambition in my mind\nNo shortcuts taken, this path is my own\nEvery brick I've laid, I built this throne\n\n[Chorus]\nRise up, never fall\nGot everything I need and nothing at all\nThis is my story, my name on the wall\nRise up, rise up, never fall\n\n[Verse]\nHandshakes and heartbreaks taught me the way\nTrust in the process, not just the pay\nLoyalty matters more than the crown\nI built my empire without burning the town\n\n[Chorus]\nRise up, never fall\nGot everything I need and nothing at all\nThis is my story, my name on the wall\nRise up, rise up, never fall\n\n[Outro]\nRise up`
+};
+
+function loadTemplate(name) {
+  document.getElementById("lyrics").value = TEMPLATES[name] || "";
+}
+
+buildTagGrid();
+loadHistory();
+
+// ─── VISUALIZER ──────────────────────────────────────────────────────────────
+const VIZ_CYCLE = ['ring', 'bars', 'wave'];
+const VIZ_LABELS = { ring: '◉ Ring', bars: '▐ Bars', wave: '∿ Wave' };
+const vizStyles = {};      // jobId → current style
+const vizFrames = {};      // jobId → animationFrameId
+const audioNodes = new WeakMap(); // audioEl → { source, analyser }
+let _actx = null;
+
+function getACtx() {
+  if (!_actx) _actx = new (window.AudioContext || window.webkitAudioContext)();
+  if (_actx.state === 'suspended') _actx.resume();
+  return _actx;
+}
+
+function getAnalyser(audioEl) {
+  if (audioNodes.has(audioEl)) return audioNodes.get(audioEl).analyser;
+  const ctx = getACtx();
+  const source = ctx.createMediaElementSource(audioEl);
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 512;
+  source.connect(analyser);
+  analyser.connect(ctx.destination);
+  audioNodes.set(audioEl, { source, analyser });
+  return analyser;
+}
+
+function cycleVizStyle(jobId) {
+  const cur = vizStyles[jobId] || 'ring';
+  const next = VIZ_CYCLE[(VIZ_CYCLE.indexOf(cur) + 1) % VIZ_CYCLE.length];
+  vizStyles[jobId] = next;
+  const btn = document.getElementById(`viz-btn-${jobId}`);
+  if (btn) btn.textContent = VIZ_LABELS[next];
+}
+
+function startViz(jobId, audioEl) {
+  const canvas = document.getElementById(`viz-${jobId}`);
+  if (!canvas) return;
+  stopViz(jobId);
+  const ctx2d = canvas.getContext('2d');
+  const analyser = getAnalyser(audioEl);
+  const bufLen = analyser.frequencyBinCount;
+  const freqData = new Uint8Array(bufLen);
+  const timeData = new Uint8Array(bufLen);
+
+  function frame() {
+    vizFrames[jobId] = requestAnimationFrame(frame);
+    const W = canvas.width, H = canvas.height;
+    const style = vizStyles[jobId] || 'ring';
+    ctx2d.clearRect(0, 0, W, H);
+    if (style === 'wave') {
+      analyser.getByteTimeDomainData(timeData);
+      drawWave(ctx2d, W, H, timeData, bufLen);
+    } else {
+      analyser.getByteFrequencyData(freqData);
+      style === 'ring' ? drawRing(ctx2d, W, H, freqData, bufLen)
+                       : drawBars(ctx2d, W, H, freqData, bufLen);
+    }
+  }
+  frame();
+}
+
+function stopViz(jobId) {
+  if (vizFrames[jobId]) { cancelAnimationFrame(vizFrames[jobId]); delete vizFrames[jobId]; }
+}
+
+function attachVizListeners(jobId) {
+  const audioEl = document.querySelector(`#job-${jobId} audio`);
+  if (!audioEl || audioEl._vizAttached) return;
+  audioEl._vizAttached = true;
+  if (!vizStyles[jobId]) vizStyles[jobId] = 'ring';
+  audioEl.addEventListener('play',  () => startViz(jobId, audioEl));
+  audioEl.addEventListener('pause', () => stopViz(jobId));
+  audioEl.addEventListener('ended', () => stopViz(jobId));
+}
+
+// ── Drawing functions ─────────────────────────────────────────────────────────
+
+function drawRing(ctx, W, H, data, bufLen) {
+  const cx = W / 2, cy = H / 2;
+  const r = Math.min(W, H) * 0.25;
+  const N = 128;
+
+  // Average amplitude for inner glow pulse
+  let avg = 0;
+  for (let i = 0; i < 64; i++) avg += data[i];
+  avg /= (64 * 255);
+
+  // Inner radial gradient pulse
+  const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * (0.9 + avg * 0.6));
+  grd.addColorStop(0, `rgba(100, 60, 180, ${avg * 0.35})`);
+  grd.addColorStop(0.6, `rgba(80, 40, 150, ${avg * 0.15})`);
+  grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * (0.9 + avg * 0.6), 0, Math.PI * 2);
+  ctx.fill();
+
+  // Radial bars
+  ctx.lineCap = 'round';
+  for (let i = 0; i < N; i++) {
+    const v = data[Math.floor(i * bufLen / N)] / 255;
+    const barH = v * r * 0.9 + 1.5;
+    const angle = (i / N) * Math.PI * 2 - Math.PI / 2;
+    const hue = 255 + v * 75;
+    const light = 48 + v * 32;
+    ctx.strokeStyle = `hsla(${hue}, 85%, ${light}%, ${0.35 + v * 0.65})`;
+    ctx.shadowColor  = `hsla(${hue}, 90%, 72%, ${v * 0.7})`;
+    ctx.shadowBlur   = v * 10;
+    ctx.lineWidth    = Math.max(1.5, (Math.PI * 2 * r / N) * 0.55);
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(angle) * r,          cy + Math.sin(angle) * r);
+    ctx.lineTo(cx + Math.cos(angle) * (r + barH), cy + Math.sin(angle) * (r + barH));
+    ctx.stroke();
+  }
+
+  // Base circle
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = `rgba(124, 92, 191, ${0.18 + avg * 0.35})`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawBars(ctx, W, H, data, bufLen) {
+  const count = 80;
+  const gap = 2;
+  const barW = (W - gap * (count - 1)) / count;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < count; i++) {
+    const v = data[Math.floor(i * bufLen / count)] / 255;
+    const bH = Math.max(2, v * (H - 8));
+    const x = i * (barW + gap);
+    const hue = 230 + v * 90;
+    const light = 44 + v * 28;
+    ctx.fillStyle   = `hsla(${hue}, 82%, ${light}%, ${0.5 + v * 0.5})`;
+    ctx.shadowColor = `hsla(${hue}, 85%, 68%, ${v * 0.55})`;
+    ctx.shadowBlur  = v * 8;
+    const rad = barW * 0.4;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(x, H - bH, barW, bH, [rad, rad, 0, 0]);
+    } else {
+      ctx.rect(x, H - bH, barW, bH);
+    }
+    ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+}
+
+function drawWave(ctx, W, H, data, bufLen) {
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.shadowColor = '#8b60d8';
+  ctx.shadowBlur  = 8;
+
+  // Mirror fill
+  ctx.beginPath();
+  for (let i = 0; i < bufLen; i++) {
+    const x = (i / (bufLen - 1)) * W;
+    const y = (data[i] / 128.0) * (H / 2);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  for (let i = bufLen - 1; i >= 0; i--) {
+    const x = (i / (bufLen - 1)) * W;
+    const y = H - (data[i] / 128.0) * (H / 2);
+    ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  const fillGrd = ctx.createLinearGradient(0, 0, 0, H);
+  fillGrd.addColorStop(0, 'rgba(124, 92, 191, 0.15)');
+  fillGrd.addColorStop(0.5, 'rgba(160, 120, 240, 0.08)');
+  fillGrd.addColorStop(1, 'rgba(124, 92, 191, 0.15)');
+  ctx.fillStyle = fillGrd;
+  ctx.fill();
+
+  // Top line
+  ctx.strokeStyle = '#a07cef';
+  ctx.beginPath();
+  for (let i = 0; i < bufLen; i++) {
+    const x = (i / (bufLen - 1)) * W;
+    const y = (data[i] / 128.0) * (H / 2);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Bottom mirror line
+  ctx.strokeStyle = '#7c5cbf';
+  ctx.beginPath();
+  for (let i = 0; i < bufLen; i++) {
+    const x = (i / (bufLen - 1)) * W;
+    const y = H - (data[i] / 128.0) * (H / 2);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+async function checkModelStatus() {
+  try {
+    const res = await fetch("/model-status");
+    const data = await res.json();
+    const badge = document.getElementById("modelBadge");
+    const btn = document.getElementById("btnGenerate");
+    if (data.ready) {
+      badge.textContent = "Models ready";
+      badge.style.color = "#4caf7d";
+      badge.style.borderColor = "#2a4a3a";
+      badge.style.background = "#0e2a1e";
+    } else if (data.incomplete_files > 0) {
+      badge.textContent = `Downloading models (${data.incomplete_files} files pending)`;
+      badge.style.color = "#f5a623";
+      badge.style.borderColor = "#3a3020";
+      badge.style.background = "#1e1a0e";
+      btn.disabled = true;
+      btn.textContent = "Waiting for models...";
+      setTimeout(checkModelStatus, 10000);
+    } else {
+      badge.textContent = "Models missing — run download_models.py";
+      badge.style.color = "#e05555";
+      badge.style.borderColor = "#3a2020";
+      badge.style.background = "#1e0e0e";
+      btn.disabled = true;
+    }
+  } catch(e) {}
+}
+checkModelStatus();
+</script>
+</body>
+</html>
