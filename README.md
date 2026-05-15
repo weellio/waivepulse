@@ -73,7 +73,10 @@ Then open **http://localhost:7860** in any browser.
 ### 1. Song Title
 Optional label — used as the filename and display name in the history panel.
 
-### 2. Lyrics
+### 2. Artist
+Optional. Embedded directly into the MP3 as the ID3 Artist tag. If left blank, defaults to "WAIvePulse".
+
+### 3. Lyrics
 Write your lyrics using section markers. HeartMuLa is trained on this format and produces much better results with proper structure.
 
 **Supported markers:**
@@ -99,7 +102,7 @@ Dancing through the crowded street
 
 Use the template links (**pop · rock · ballad · hip-hop**) above the lyrics box to load a full example you can edit.
 
-### 3. Genre & Style Tags
+### 4. Genre & Style Tags
 Click the preset tag buttons to select genres, moods, and instruments. You can also type custom tags in the text field below — comma-separated, no spaces needed.
 
 **Genre examples:** pop, rock, jazz, blues, hip-hop, electronic, classical, country, r&b, metal, folk, reggae, soul, funk, ambient, lofi, indie, punk, synthwave
@@ -110,11 +113,11 @@ Click the preset tag buttons to select genres, moods, and instruments. You can a
 
 Mix freely. `pop,piano,happy,upbeat` works great. The more specific, the better the match.
 
-### 4. Tag Presets
+### 5. Tag Presets
 
 Click **+ Save current** next to "Tag Presets" to save your active tag selection under a name. Saved presets appear as chips — click a chip to apply it, × to delete it. Presets are stored in browser localStorage and persist across sessions.
 
-### 5. Advanced Settings (click to expand)
+### 6. Advanced Settings (click to expand)
 
 | Setting | Default | Range | Description |
 |---|---|---|---|
@@ -122,7 +125,7 @@ Click **+ Save current** next to "Tag Presets" to save your active tag selection
 | Temperature | 1.0 | 0.5 – 2.0 | Higher = more creative/unpredictable. Lower = more conservative/structured. |
 | CFG Scale | 1.5 | 1.0 – 5.0 | How strictly the output follows your tags. Higher = stronger style adherence. |
 
-### 6. Generate
+### 7. Generate
 Hit **Generate Song**. The button re-enables immediately so you can queue another request. Only one job runs at a time — others wait in the queue.
 
 While generating, each job card shows:
@@ -133,20 +136,33 @@ While generating, each job card shows:
 
 **Amber pulsing dot** = generating. **Green dot** = done, audio player appears.
 
-### 7. Completed cards
+### 8. Completed cards
 
 Each finished card has:
 
 - **Audio player** with ring / bars / wave visualizer (toggle button)
 - **⬇ Download** — saves the MP3 directly to disk
-- **↺ Use Settings** — loads this song's lyrics and tags back into the form so you can regenerate or tweak
+- **↺ Use Settings** — loads this song's lyrics, tags, and artist back into the form so you can regenerate or tweak
 - **Duration and file size** shown in the card
+- **ID3 metadata** embedded in the file (readable by any media player or DAW)
 
-### 8. Cancel
+| Tag | Value |
+| --- | --- |
+| Title | Song title |
+| Artist | Your input, or "WAIvePulse" if blank |
+| Album Artist | WAIvePulse |
+| Composer | HeartMuLa 3B |
+| Genre | Full tags string |
+| Year | Current year |
+| Encoded by | WAIvePulse / HeartMuLa 3B |
+| Comment | `Tags: ... \| Temperature: ... \| CFG Scale: ...` |
+
+### 9. Cancel
 
 Active jobs (queued or generating) have a **Cancel** button in the card header. Queued jobs cancel immediately. In-progress jobs finish the current generation, then discard the output.
 
-### 9. Load MP3
+### 10. Load MP3
+
 Use the **▶ Load MP3** button to load one or more local audio files into the history panel for visualization. Also supports **drag and drop** — drag MP3 files anywhere onto the right-hand panel.
 
 ---
