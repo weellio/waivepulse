@@ -1,6 +1,7 @@
 outputs/
 lyrics/
 history.json
+.claude/
 __pycache__/
 *.pyc
 *.pyo
