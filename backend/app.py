@@ -1,6 +1,7 @@
 import sys
 import os
 import re
+import io
 import uuid
 import json
 import queue
@@ -8,6 +9,7 @@ import shutil
 import tempfile
 import threading
 import subprocess
+import zipfile
 import importlib.util
 from pathlib import Path
 from typing import Optional
@@ -592,6 +594,41 @@ def serve_stem(sep_id: str, filename: str):
     return FileResponse(
         str(candidates[0]),
         media_type="audio/mpeg" if candidates[0].suffix == ".mp3" else "audio/wav",
+    )
+
+
+@app.get("/stems/{sep_id}/zip")
+def download_stems_zip(sep_id: str):
+    if sep_id not in sep_jobs:
+        raise HTTPException(status_code=404, detail="Separation not found")
+    sep = sep_jobs[sep_id]
+    if sep.get("status") != "done":
+        raise HTTPException(status_code=400, detail="Separation not complete")
+    stems = sep.get("stems", {})
+    if not stems:
+        raise HTTPException(status_code=404, detail="No stems found")
+
+    ext     = "mp3" if _FFMPEG else "wav"
+    out_dir = OUTPUTS_DIR / f"sep_{sep_id}"
+    buf     = io.BytesIO()
+
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for stem_name in stems:
+            candidates = list(out_dir.rglob(f"{stem_name}.{ext}"))
+            if not candidates:
+                candidates = list(out_dir.rglob(f"{stem_name}.wav"))
+            if candidates:
+                zf.write(candidates[0], arcname=candidates[0].name)
+
+    buf.seek(0)
+    slug = re.sub(r"[^\w\s-]", "", sep.get("title", "stems")).strip()
+    slug = re.sub(r"[\s_]+", "_", slug)[:48].strip("_") or "stems"
+    filename = f"{slug}_stems.zip"
+
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

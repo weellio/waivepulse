@@ -24,9 +24,10 @@ body{background:#0d0d0d;color:#e0e0e0;font-family:'Segoe UI',system-ui,sans-seri
 #time-display{font-family:'Courier New',monospace;font-size:14px;color:#a78bfa;min-width:60px}
 #duration-display{font-size:12px;color:#555;min-width:48px}
 .t-divider{width:1px;height:24px;background:#222;margin:0 2px}
-#export-btn{margin-left:auto;background:#1e1a2e;border:1px solid #4c1d95;color:#a78bfa;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:background .15s}
-#export-btn:hover{background:#2d1f5e}
-#export-btn:disabled{opacity:.4;cursor:not-allowed}
+#export-btn,#zip-btn{margin-left:auto;background:#1e1a2e;border:1px solid #4c1d95;color:#a78bfa;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:background .15s}
+#zip-btn{margin-left:6px}
+#export-btn:hover,#zip-btn:hover{background:#2d1f5e}
+#export-btn:disabled,#zip-btn:disabled{opacity:.4;cursor:not-allowed}
 
 /* ── Main layout ── */
 #main{display:flex;flex:1;overflow:hidden}
@@ -92,6 +93,7 @@ canvas.waveform{position:absolute;top:4px;left:0;right:0;bottom:4px;width:100%;h
   <span id="duration-display">/ 0:00</span>
   <div class="t-divider"></div>
   <button id="export-btn" disabled onclick="exportMix()">⬇ Export Mix</button>
+  <button id="zip-btn"    disabled onclick="downloadZip()">⬇ Download Stems</button>
 </div>
 
 <!-- Main layout -->
@@ -308,6 +310,7 @@ function buildUI() {
   document.getElementById('song-title').textContent = _title;
   document.getElementById('duration-display').textContent = '/ ' + fmtTime(_dur);
   document.getElementById('export-btn').disabled = false;
+  document.getElementById('zip-btn').disabled    = false;
 
   const labelsEl = document.getElementById('track-labels');
   const tracksEl = document.getElementById('tracks-area');
@@ -618,6 +621,30 @@ async function exportMix() {
   } finally {
     btn.disabled = false;
     btn.textContent = '⬇ Export Mix';
+  }
+}
+
+// ── Download stems zip ────────────────────────────────────────────────────
+async function downloadZip() {
+  if (!_sepId) return;
+  const btn = document.getElementById('zip-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Zipping…';
+  try {
+    const res = await fetch(`/stems/${_sepId}/zip`);
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = (_title || 'stems').replace(/[^\w\s-]/g,'').trim().replace(/\s+/g,'_') + '_stems.zip';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) {
+    alert('Zip download failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⬇ Download Stems';
   }
 }
 
