@@ -16,6 +16,9 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 
 ---
 
+<img width="1103" height="881" alt="image" src="https://github.com/user-attachments/assets/01819fb0-771f-4d88-a06d-d259415ed424" />
+
+
 ## Requirements
 
 | Component | Requirement |
