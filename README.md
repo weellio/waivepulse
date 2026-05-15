@@ -1,5 +1,7 @@
 # WAIvePulse
 
+![WAIvePulse](assets/wave%20small.png)
+
 A local, fully offline AI music generation tool powered by **HeartMuLa 3B**. Give it lyrics and genre tags, get back a complete song with vocals as an MP3.
 
 Runs on your own machine. No cloud, no subscription, no usage limits.
@@ -19,7 +21,7 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 
 ---
 
-<img width="1160" height="904" alt="image" src="https://github.com/user-attachments/assets/3c6c3f05-6e90-4698-a816-6d98991f8dea" />
+![WAIvePulse](assets/wavepulse.jpg)
 
 
 ---
@@ -200,7 +202,7 @@ Use the **▶ Load MP3** button to load one or more local audio files into the h
 
 ## Studio (Stem Separation)
 
-![WAIvePulse Studio](https://github.com/user-attachments/assets/3d9668b3-0d97-489e-be5c-40ce6a868c06)
+![WAIvePulse Studio](assets/studio.jpg)
 
 Click **🎛 Studio** on any completed song card to open the Studio page for that song.
 

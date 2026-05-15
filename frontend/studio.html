@@ -4,116 +4,195 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WAIvePulse Studio</title>
+<link rel="icon" type="image/png" href="/assets/wave small.png">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0d0d0d;color:#e0e0e0;font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
 
 /* ── Top bar ── */
-#topbar{display:flex;align-items:center;gap:12px;padding:8px 16px;background:#161616;border-bottom:1px solid #2a2a2a;flex-shrink:0}
-#topbar h1{font-size:15px;font-weight:600;color:#a78bfa;letter-spacing:.5px}
-#topbar .sep{color:#333;margin:0 4px}
-#song-title{font-size:13px;color:#aaa;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#back-btn{margin-left:auto;background:none;border:1px solid #333;color:#aaa;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:12px;transition:border-color .15s,color .15s}
-#back-btn:hover{border-color:#a78bfa;color:#a78bfa}
+#topbar{display:flex;align-items:center;gap:10px;padding:7px 16px;background:#161616;border-bottom:1px solid #2a2a2a;flex-shrink:0}
+#topbar h1{font-size:15px;font-weight:600;color:#8cffff;letter-spacing:.5px;white-space:nowrap}
+#topbar .sep{color:#333}
+#song-title{font-size:13px;color:#aaa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+#audio-info{font-size:10px;color:#444;white-space:nowrap;font-family:'Courier New',monospace}
+#back-btn{background:none;border:1px solid #333;color:#aaa;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:12px;transition:border-color .15s,color .15s;white-space:nowrap}
+#back-btn:hover{border-color:#8cffff;color:#8cffff}
 
 /* ── Transport ── */
-#transport{display:flex;align-items:center;gap:14px;padding:8px 16px;background:#131313;border-bottom:1px solid #222;flex-shrink:0}
-.t-btn{background:#222;border:1px solid #333;color:#ddd;width:34px;height:34px;border-radius:6px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;transition:background .15s,border-color .15s}
+#transport{display:flex;align-items:center;gap:8px;padding:7px 16px;background:#131313;border-bottom:1px solid #222;flex-shrink:0}
+.t-btn{background:#222;border:1px solid #333;color:#ddd;width:32px;height:32px;border-radius:6px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:background .15s,border-color .15s;flex-shrink:0}
 .t-btn:hover{background:#2a2a2a;border-color:#555}
-.t-btn.active{background:#2d1f5e;border-color:#7c3aed;color:#a78bfa}
-#time-display{font-family:'Courier New',monospace;font-size:14px;color:#a78bfa;min-width:60px}
-#duration-display{font-size:12px;color:#555;min-width:48px}
-.t-divider{width:1px;height:24px;background:#222;margin:0 2px}
-#export-btn,#zip-btn{margin-left:auto;background:#1e1a2e;border:1px solid #4c1d95;color:#a78bfa;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:background .15s}
-#zip-btn{margin-left:6px}
-#export-btn:hover,#zip-btn:hover{background:#2d1f5e}
+.t-btn.active{background:#062828;border-color:#1ab8b8;color:#8cffff}
+#time-display{font-family:'Courier New',monospace;font-size:14px;color:#8cffff;min-width:56px}
+#duration-display{font-size:12px;color:#555;min-width:44px}
+.t-divider{width:1px;height:22px;background:#222;margin:0 2px;flex-shrink:0}
+#zoom-display{font-size:11px;color:#666;min-width:28px;text-align:center;font-family:'Courier New',monospace}
+#export-btn,#zip-btn{background:#0a1e1e;border:1px solid #0d6b6b;color:#8cffff;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:background .15s;white-space:nowrap}
+#export-btn:hover,#zip-btn:hover{background:#062828}
 #export-btn:disabled,#zip-btn:disabled{opacity:.4;cursor:not-allowed}
+#comp-btn{font-size:10px;width:auto;padding:0 8px;letter-spacing:.3px}
 
-/* ── Main layout ── */
+/* ── Main layout: sidebar + scroll content side by side ── */
 #main{display:flex;flex:1;overflow:hidden}
 
-/* ── Track labels sidebar ── */
-#track-labels{width:160px;flex-shrink:0;background:#111;border-right:1px solid #1e1e1e;display:flex;flex-direction:column;padding-top:32px}
-.track-label{height:80px;display:flex;flex-direction:column;justify-content:center;padding:8px 10px;border-bottom:1px solid #1a1a1a;gap:4px}
-.track-name{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.8px}
-.track-controls{display:flex;gap:5px;align-items:center;margin-top:2px}
-.tb{background:#1e1e1e;border:1px solid #2a2a2a;color:#888;width:24px;height:22px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;transition:background .1s,color .1s,border-color .1s}
+/* ── Left sidebar: fixed controls ── */
+#sidebar{
+  width:280px;flex-shrink:0;
+  display:flex;flex-direction:column;
+  background:#111;border-right:1px solid #1e1e1e;
+}
+#sidebar-ruler-spacer{
+  height:28px;flex-shrink:0;
+  border-bottom:1px solid #1e1e1e;background:#131313;
+}
+#sidebar-tracks{
+  flex:1;overflow:hidden; /* scrollTop synced via JS */
+}
+
+/* ── Per-track control strip (2 rows, 80px total) ── */
+.ctrl-strip{
+  height:80px;border-bottom:1px solid #1a1a1a;
+  display:flex;flex-direction:column;
+  padding:5px 7px 3px;gap:2px;
+}
+.ctrl-row1{display:flex;align-items:center;gap:4px;flex-shrink:0;height:26px}
+.ctrl-row2{display:flex;align-items:flex-end;gap:2px;flex:1}
+.track-name{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;flex:1;white-space:nowrap}
+.tb{background:#1e1e1e;border:1px solid #2a2a2a;color:#888;width:22px;height:20px;border-radius:4px;cursor:pointer;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;transition:all .1s;flex-shrink:0}
 .tb:hover{background:#2a2a2a;color:#ddd}
 .tb.mute-on{background:#3a1f1f;border-color:#7f1d1d;color:#f87171}
 .tb.solo-on{background:#1f2f1f;border-color:#166534;color:#4ade80}
-.vol-slider{width:64px;height:3px;-webkit-appearance:none;appearance:none;background:#2a2a2a;border-radius:2px;cursor:pointer;accent-color:#a78bfa}
-.vol-val{font-size:9px;color:#555;min-width:24px;text-align:right}
+.tb-norm{font-size:8px;width:auto;padding:0 5px;letter-spacing:.2px}
 
-/* ── Timeline + waveforms ── */
-#timeline-area{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
-#timeline-ruler{height:24px;background:#131313;border-bottom:1px solid #1e1e1e;position:relative;flex-shrink:0;cursor:pointer;user-select:none}
-#tracks-area{flex:1;overflow-y:auto;overflow-x:hidden;position:relative}
-.track-row{height:80px;border-bottom:1px solid #1a1a1a;position:relative;background:#0f0f0f;cursor:pointer}
+/* ── Knob component ── */
+.knob-group{display:flex;flex-direction:column;align-items:center;flex:1;min-width:0}
+.knob-label{font-size:7px;color:#555;text-align:center;line-height:1.2;letter-spacing:.3px;user-select:none;margin-top:1px}
+.knob-tip{position:fixed;background:#0a1e1e;border:1px solid #0d6b6b;color:#8cffff;font-size:11px;padding:2px 6px;border-radius:4px;pointer-events:none;z-index:1000;opacity:0;transition:opacity .1s;white-space:nowrap;font-family:'Courier New',monospace}
+
+/* ── Right: scrollable waveform area ── */
+#content-area{flex:1;overflow:hidden;display:flex;flex-direction:column;position:relative}
+
+#scroll-content{
+  flex:1;
+  overflow-x:auto;
+  overflow-y:auto;
+  position:relative;
+}
+
+/* Sticky ruler — sticks to top of scroll-content */
+#ruler-inner{
+  position:sticky;top:0;z-index:10;
+  height:28px;background:#131313;
+  border-bottom:1px solid #1e1e1e;
+  cursor:pointer;user-select:none;
+  overflow:visible;
+}
+
+/* Track waveform rows */
+.track-row{
+  height:80px;border-bottom:1px solid #1a1a1a;
+  background:#0f0f0f;cursor:pointer;
+  position:relative;
+  /* width set dynamically for zoom */
+}
 .track-row:hover{background:#111}
-canvas.waveform{position:absolute;top:4px;left:0;right:0;bottom:4px;width:100%;height:calc(100% - 8px);pointer-events:none}
-#playhead{position:absolute;top:0;bottom:0;width:2px;background:#a78bfa;pointer-events:none;z-index:10;box-shadow:0 0 6px #7c3aed}
-#playhead::before{content:'';position:absolute;top:-24px;left:-5px;border:6px solid transparent;border-bottom-color:#a78bfa}
+canvas.waveform{
+  position:absolute;top:4px;left:0;right:0;bottom:4px;
+  width:100%;height:calc(100% - 8px);
+  pointer-events:none;
+}
 
-/* ── Loading / status overlay ── */
-#overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0d0d0d;z-index:100;gap:16px}
-#overlay.hidden{display:none}
-#overlay-title{font-size:16px;font-weight:600;color:#a78bfa}
-#overlay-msg{font-size:13px;color:#888;max-width:360px;text-align:center}
-#overlay-progress{width:280px;height:4px;background:#222;border-radius:2px;overflow:hidden}
-#overlay-bar{height:100%;width:0%;background:linear-gradient(90deg,#7c3aed,#a78bfa);transition:width .3s}
-#overlay-log{width:360px;max-height:120px;overflow-y:auto;background:#111;border:1px solid #222;border-radius:6px;padding:8px;font-family:'Courier New',monospace;font-size:11px;color:#666;white-space:pre-wrap}
-#overlay-err{color:#f87171;font-size:13px;max-width:360px;text-align:center}
-.spinner{width:32px;height:32px;border:3px solid #222;border-top-color:#7c3aed;border-radius:50%;animation:spin .8s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.pulse-dot{width:10px;height:10px;border-radius:50%;background:#a78bfa;animation:pulse 1.2s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.1)}}
+/* Playhead — absolute within scroll-content */
+#playhead{
+  position:absolute;top:0;bottom:0;
+  width:2px;background:#8cffff;
+  pointer-events:none;z-index:8;
+  box-shadow:0 0 6px #1ab8b8;
+  left:0;
+}
+#playhead::before{
+  content:'';position:absolute;
+  top:28px;left:-5px;
+  border:6px solid transparent;
+  border-top-color:#8cffff;
+}
 
 /* ── Scrollbar ── */
-#tracks-area::-webkit-scrollbar{width:6px}
-#tracks-area::-webkit-scrollbar-track{background:#111}
-#tracks-area::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:3px}
+#scroll-content::-webkit-scrollbar{width:6px;height:6px}
+#scroll-content::-webkit-scrollbar-track{background:#111}
+#scroll-content::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:3px}
+#scroll-content::-webkit-scrollbar-corner{background:#111}
+
+/* ── Loading overlay ── */
+#overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(13,13,13,.97);z-index:200;gap:16px}
+#overlay.hidden{display:none}
+#overlay-title{font-size:16px;font-weight:600;color:#8cffff}
+#overlay-msg{font-size:13px;color:#888;max-width:360px;text-align:center;white-space:pre-line}
+#overlay-progress{width:280px;height:4px;background:#222;border-radius:2px;overflow:hidden}
+#overlay-bar{height:100%;width:0%;background:linear-gradient(90deg,#1ab8b8,#8cffff);transition:width .3s}
+#overlay-log{width:360px;max-height:120px;overflow-y:auto;background:#0a1e1e;border:1px solid #0d6b6b;border-radius:6px;padding:8px;font-family:'Courier New',monospace;font-size:11px;color:#555;white-space:pre-wrap}
+#overlay-err{color:#f87171;font-size:13px;max-width:360px;text-align:center;white-space:pre-line}
+.spinner{width:32px;height:32px;border:3px solid #222;border-top-color:#1ab8b8;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
 
-<!-- Top bar -->
 <div id="topbar">
+  <img src="/assets/wave small.png" alt="WAIvePulse" style="height:28px;width:auto;display:block">
   <h1>WAIvePulse Studio</h1>
   <span class="sep">|</span>
   <span id="song-title">Loading…</span>
+  <span id="audio-info"></span>
   <button id="back-btn" onclick="window.location.href='/'">← Back</button>
 </div>
 
-<!-- Transport -->
 <div id="transport">
-  <button class="t-btn" id="play-btn"  title="Play"  onclick="togglePlay()">▶</button>
-  <button class="t-btn" id="stop-btn"  title="Stop"  onclick="stopPlayback()">■</button>
+  <button class="t-btn" id="play-btn"  title="Play / Pause (Space)" onclick="togglePlay()">▶</button>
+  <button class="t-btn" id="stop-btn"  title="Stop (Home)"          onclick="stopPlayback()">■</button>
+  <button class="t-btn" id="loop-btn"  title="Loop"                 onclick="toggleLoop()">⟳</button>
   <div class="t-divider"></div>
   <span id="time-display">0:00</span>
   <span id="duration-display">/ 0:00</span>
   <div class="t-divider"></div>
+  <span style="font-size:10px;color:#555">ZOOM</span>
+  <button class="t-btn" title="Zoom in"  onclick="zoomIn()">+</button>
+  <span id="zoom-display">1×</span>
+  <button class="t-btn" title="Zoom out" onclick="zoomOut()">−</button>
+  <button class="t-btn" style="font-size:10px;width:auto;padding:0 7px" title="Fit" onclick="zoomFit()">FIT</button>
+  <div class="t-divider"></div>
+  <button class="t-btn" id="comp-btn" style="font-size:10px;width:auto;padding:0 8px" title="Master limiter" onclick="toggleCompressor()">LMT OFF</button>
+  <div class="t-divider"></div>
   <button id="export-btn" disabled onclick="exportMix()">⬇ Export Mix</button>
-  <button id="zip-btn"    disabled onclick="downloadZip()">⬇ Download Stems</button>
+  <button id="zip-btn"    disabled onclick="downloadZip()">⬇ Stems</button>
 </div>
 
-<!-- Main layout -->
 <div id="main">
-  <div id="track-labels"></div>
-  <div id="timeline-area">
-    <div id="timeline-ruler"></div>
-    <div id="tracks-area">
-      <div id="playhead" style="left:0px"></div>
-    </div>
-    <!-- overlay -->
-    <div id="overlay">
-      <div class="spinner"></div>
-      <div id="overlay-title">Loading Studio</div>
-      <div id="overlay-msg">Checking separation status…</div>
-      <div id="overlay-progress" style="display:none"><div id="overlay-bar"></div></div>
-      <div id="overlay-log" style="display:none"></div>
-      <div id="overlay-err" style="display:none"></div>
+  <!-- Left: fixed control strips, scroll-synced via JS -->
+  <div id="sidebar">
+    <div id="sidebar-ruler-spacer"></div>
+    <div id="sidebar-tracks"></div>
+  </div>
+
+  <!-- Right: scrolls both X (zoom) and Y (tracks) -->
+  <div id="content-area">
+    <div id="scroll-content">
+      <div id="ruler-inner"></div>
+      <!-- track rows inserted here by JS -->
+      <div id="playhead"></div>
     </div>
   </div>
+</div>
+
+<div class="knob-tip" id="knob-tip"></div>
+
+<div id="overlay">
+  <div class="spinner"></div>
+  <div id="overlay-title">Loading Studio</div>
+  <div id="overlay-msg">Checking separation status…</div>
+  <div id="overlay-progress" style="display:none"><div id="overlay-bar"></div></div>
+  <div id="overlay-log" style="display:none"></div>
+  <div id="overlay-err" style="display:none"></div>
 </div>
 
 <script>
@@ -122,601 +201,670 @@ canvas.waveform{position:absolute;top:4px;left:0;right:0;bottom:4px;width:100%;h
 // ── Constants ──────────────────────────────────────────────────────────────
 const STEM_ORDER  = ['vocals','drums','bass','guitar','piano','other'];
 const STEM_COLORS = {
-  vocals: '#9d6be8', drums:  '#e87c4a', bass:  '#4a9ee8',
-  guitar: '#5cbe6a', piano:  '#e8cc4a', other: '#888888',
+  vocals:'#4ae8d4', drums:'#e87c4a', bass:'#4a9ee8',
+  guitar:'#5cbe6a', piano:'#e8cc4a', other:'#888888',
 };
+const PEAK_BINS = 2400;
 
 // ── State ──────────────────────────────────────────────────────────────────
-let _jobId  = null;
-let _sepId  = null;
-let _title  = '';
-let _dur    = 0;
+let _jobId=null,_sepId=null,_title='',_dur=0;
+let _actx=null,_playing=false,_looping=false;
+let _startTime=0,_startOff=0,_rafId=null,_sseConn=null;
+let _zoom=1;
+let _compEnabled=false;
 
-const tracks = {};
-// tracks[stem] = { buffer, source, gainNode, muted, solo, volume, peaks, canvas }
+// Global FX
+let _masterBus,_masterComp,_compDryGain,_compWetGain;
+let _reverbNode,_reverbReturn,_reverbIRData=null;
+let _delayInput,_delayNode,_delayFeedback,_delayReturn;
 
-let _actx       = null;
-let _playing    = false;
-let _startTime  = 0;   // audioCtx time when playback started
-let _startOff   = 0;   // offset into audio at last play
-let _rafId      = null;
-let _sseConn    = null;
+const tracks={};
 
 // ── URL params ──────────────────────────────────────────────────────────────
-function getParam(k) {
-  return new URLSearchParams(window.location.search).get(k);
-}
+function getParam(k){return new URLSearchParams(window.location.search).get(k);}
 
 // ── Boot ──────────────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', async () => {
-  _jobId = getParam('job');
-  _sepId = getParam('sep');
-  if (!_jobId && !_sepId) {
-    showError('No job ID provided. Open this page from a completed song card.');
-    return;
-  }
-  if (_jobId && _jobId.startsWith('local_')) {
+window.addEventListener('DOMContentLoaded',async()=>{
+  _jobId=getParam('job'); _sepId=getParam('sep');
+  if(!_jobId&&!_sepId){showError('No job ID provided. Open this page from a completed song card.');return;}
+  if(_jobId&&_jobId.startsWith('local_')){
     showError('Studio only works with songs generated by WAIvePulse.\n\nLocally-loaded MP3 files cannot be separated because the audio file is not on the server.');
     return;
   }
-  await boot();
+  _sepId?await checkSepStatus():await fetchJobAndSeparate();
 });
 
-async function boot() {
-  if (_sepId) {
+async function fetchJobAndSeparate(){
+  try{
+    setOverlay('Checking song…','');
+    const res=await fetch(`/status/${_jobId}`);
+    if(!res.ok) throw new Error(`Job not found (${res.status})`);
+    const job=await res.json();
+    _title=job.title||'Untitled';
+    document.getElementById('song-title').textContent=_title;
+
+    const dres=await fetch('/demucs-status');
+    const dstat=await dres.json();
+    if(!dstat.available){showError('Demucs is not installed.\n\nRun: pip install demucs\n\nThen restart the server.');return;}
+
+    setOverlay('Starting stem separation…','This runs Demucs on your GPU and takes a few minutes.',true);
+    const sres=await fetch(`/separate/${_jobId}`,{method:'POST'});
+    if(!sres.ok){const e=await sres.json();throw new Error(e.detail||'Separation failed to start');}
+    const sdata=await sres.json();
+    _sepId=sdata.sep_id;
+    window.history.replaceState({},'',`?job=${_jobId}&sep=${_sepId}`);
     await checkSepStatus();
-  } else {
-    await fetchJobAndSeparate();
-  }
+  }catch(e){showError(e.message);}
 }
 
-// ── Step 1: get job info, kick off or attach to separation ─────────────────
-async function fetchJobAndSeparate() {
-  try {
-    setOverlay('Checking song…', '');
-    const res  = await fetch(`/status/${_jobId}`);
-    if (!res.ok) throw new Error(`Job not found (${res.status})`);
-    const job  = await res.json();
-    _title = job.title || 'Untitled';
-    document.getElementById('song-title').textContent = _title;
-
-    // Check demucs availability
-    const dres  = await fetch('/demucs-status');
-    const dstat = await dres.json();
-    if (!dstat.available) {
-      showError('Demucs is not installed in your Python environment.\n\nRun: pip install demucs\n\nThen restart the server.');
-      return;
-    }
-
-    // Kick off separation
-    setOverlay('Starting stem separation…', 'This runs Demucs on your GPU and takes a few minutes.', true);
-    const sres = await fetch(`/separate/${_jobId}`, { method: 'POST' });
-    if (!sres.ok) {
-      const err = await sres.json();
-      throw new Error(err.detail || 'Separation failed to start');
-    }
-    const sdata = await sres.json();
-    _sepId = sdata.sep_id;
-    window.history.replaceState({}, '', `?job=${_jobId}&sep=${_sepId}`);
-    await checkSepStatus();
-  } catch (e) {
-    showError(e.message);
-  }
-}
-
-// ── Step 2: poll/stream separation progress ────────────────────────────────
-async function checkSepStatus() {
-  try {
-    const res  = await fetch(`/separate/status/${_sepId}`);
-    if (!res.ok) throw new Error(`Separation not found (${res.status})`);
-    const sep  = await res.json();
-
-    _title = sep.title || _title;
-    document.getElementById('song-title').textContent = _title;
-
-    if (sep.status === 'done') {
-      await loadStems(sep.stems);
-      return;
-    }
-    if (sep.status === 'error') {
-      showError(sep.message || 'Separation failed');
-      return;
-    }
-
-    // queued or separating — stream progress
-    setOverlay('Separating stems…', 'Demucs is running. This may take several minutes.', true);
+async function checkSepStatus(){
+  try{
+    const res=await fetch(`/separate/status/${_sepId}`);
+    if(!res.ok) throw new Error(`Separation not found (${res.status})`);
+    const sep=await res.json();
+    _title=sep.title||_title;
+    document.getElementById('song-title').textContent=_title;
+    if(sep.status==='done'){await loadStems(sep.stems);return;}
+    if(sep.status==='error'){showError(sep.message||'Separation failed');return;}
+    setOverlay('Separating stems…','Demucs is running. This may take several minutes.',true);
     streamSepProgress();
-  } catch (e) {
-    showError(e.message);
-  }
+  }catch(e){showError(e.message);}
 }
 
-function streamSepProgress() {
-  if (_sseConn) _sseConn.close();
-  const logEl = document.getElementById('overlay-log');
-  logEl.style.display = 'block';
-
-  _sseConn = new EventSource(`/separate/progress/${_sepId}`);
-  _sseConn.onmessage = e => {
-    if (e.data === '__done__') {
-      _sseConn.close();
-      checkSepStatus();
-      return;
-    }
-    try {
-      const line = JSON.parse(e.data);
-      logEl.textContent += line + '\n';
-      logEl.scrollTop = logEl.scrollHeight;
-      // parse progress percentage if present
-      const m = line.match(/(\d+)%/);
-      if (m) {
-        document.getElementById('overlay-bar').style.width = m[1] + '%';
-      }
-    } catch {}
+function streamSepProgress(){
+  if(_sseConn)_sseConn.close();
+  const logEl=document.getElementById('overlay-log');
+  logEl.style.display='block';
+  _sseConn=new EventSource(`/separate/progress/${_sepId}`);
+  _sseConn.onmessage=e=>{
+    if(e.data==='__done__'){_sseConn.close();checkSepStatus();return;}
+    try{
+      const line=JSON.parse(e.data);
+      logEl.textContent+=line+'\n';logEl.scrollTop=logEl.scrollHeight;
+      const m=line.match(/(\d+)%/);
+      if(m)document.getElementById('overlay-bar').style.width=m[1]+'%';
+    }catch{}
   };
-  _sseConn.onerror = () => {
-    _sseConn.close();
-    setTimeout(checkSepStatus, 1500);
-  };
+  _sseConn.onerror=()=>{_sseConn.close();setTimeout(checkSepStatus,1500);};
 }
 
-// ── Step 3: load AudioBuffers from stem URLs ───────────────────────────────
-async function loadStems(stems) {
-  setOverlay('Loading audio…', 'Decoding stems into memory.', true);
-  _actx = new AudioContext();
+async function loadStems(stems){
+  setOverlay('Loading audio…','Decoding stems into memory.',true);
+  _actx=new AudioContext();
+  setupGlobalFX();
 
-  const stemNames = STEM_ORDER.filter(s => stems[s]);
-  let loaded = 0;
-
-  for (const stem of stemNames) {
-    const url = stems[stem].replace('/stems/', `/stems/`);
-    try {
-      const res  = await fetch(url);
-      const buf  = await res.arrayBuffer();
-      const abuf = await _actx.decodeAudioData(buf);
-      if (abuf.duration > _dur) _dur = abuf.duration;
-
-      const gainNode = _actx.createGain();
-      gainNode.connect(_actx.destination);
-
-      tracks[stem] = {
-        buffer:   abuf,
-        source:   null,
-        gainNode,
-        muted:    false,
-        solo:     false,
-        volume:   1.0,
-        peaks:    null,
-        canvas:   null,
+  const stemNames=STEM_ORDER.filter(s=>stems[s]);
+  let loaded=0;
+  for(const stem of stemNames){
+    try{
+      const res=await fetch(stems[stem]);
+      const buf=await res.arrayBuffer();
+      const abuf=await _actx.decodeAudioData(buf);
+      if(abuf.duration>_dur)_dur=abuf.duration;
+      const gainNode=_actx.createGain();
+      tracks[stem]={
+        buffer:abuf,source:null,gainNode,
+        muted:false,solo:false,
+        volume:1,pan:0,eqB:0,eqM:0,eqT:0,revAmt:0,dlyAmt:0,
+        peaks:null,canvas:null,knobs:{},
       };
-    } catch (err) {
-      console.warn(`Could not load stem ${stem}:`, err);
-    }
+      wireTrack(stem);
+    }catch(err){console.warn(`Could not load stem ${stem}:`,err);}
     loaded++;
-    document.getElementById('overlay-bar').style.width = Math.round(loaded / stemNames.length * 100) + '%';
+    document.getElementById('overlay-bar').style.width=Math.round(loaded/stemNames.length*100)+'%';
   }
 
-  if (Object.keys(tracks).length === 0) {
-    showError('No stems could be loaded.');
-    return;
-  }
+  if(!Object.keys(tracks).length){showError('No stems could be loaded.');return;}
+
+  const first=Object.values(tracks)[0].buffer;
+  const lat=Math.round((_actx.baseLatency||0)*1000);
+  document.getElementById('audio-info').textContent=
+    `${(first.sampleRate/1000).toFixed(1)} kHz · ${first.numberOfChannels===2?'stereo':'mono'}`+
+    (lat?` · latency ${lat} ms`:'');
 
   buildUI();
   hideOverlay();
 }
 
-// ── Build track UI ─────────────────────────────────────────────────────────
-function buildUI() {
-  document.getElementById('song-title').textContent = _title;
-  document.getElementById('duration-display').textContent = '/ ' + fmtTime(_dur);
-  document.getElementById('export-btn').disabled = false;
-  document.getElementById('zip-btn').disabled    = false;
+// ── Global FX ─────────────────────────────────────────────────────────────
+function setupGlobalFX(){
+  _masterBus=_actx.createGain();
+  _compDryGain=_actx.createGain(); _compDryGain.gain.value=1;
+  _compWetGain=_actx.createGain(); _compWetGain.gain.value=0;
+  _masterComp=_actx.createDynamicsCompressor();
+  _masterComp.threshold.value=-18; _masterComp.knee.value=12;
+  _masterComp.ratio.value=4; _masterComp.attack.value=0.005; _masterComp.release.value=0.15;
+  _masterBus.connect(_compDryGain); _compDryGain.connect(_actx.destination);
+  _masterBus.connect(_masterComp); _masterComp.connect(_compWetGain); _compWetGain.connect(_actx.destination);
 
-  const labelsEl = document.getElementById('track-labels');
-  const tracksEl = document.getElementById('tracks-area');
-  labelsEl.innerHTML = '';
-  // Remove existing track rows (keep playhead)
-  tracksEl.querySelectorAll('.track-row').forEach(el => el.remove());
+  _reverbNode=_actx.createConvolver(); _reverbNode.buffer=makeIR(_actx);
+  _reverbReturn=_actx.createGain(); _reverbReturn.gain.value=0.85;
+  _reverbNode.connect(_reverbReturn); _reverbReturn.connect(_masterBus);
 
-  for (const stem of STEM_ORDER) {
-    if (!tracks[stem]) continue;
-    const t = tracks[stem];
-    const color = STEM_COLORS[stem];
+  _delayInput=_actx.createGain();
+  _delayNode=_actx.createDelay(2.0); _delayNode.delayTime.value=0.35;
+  _delayFeedback=_actx.createGain(); _delayFeedback.gain.value=0.38;
+  _delayReturn=_actx.createGain(); _delayReturn.gain.value=0.8;
+  _delayInput.connect(_delayNode);
+  _delayNode.connect(_delayFeedback); _delayFeedback.connect(_delayNode);
+  _delayNode.connect(_delayReturn); _delayReturn.connect(_masterBus);
+}
 
-    // Label
-    const label = document.createElement('div');
-    label.className = 'track-label';
-    label.innerHTML = `
-      <span class="track-name" style="color:${color}">${stem}</span>
-      <div class="track-controls">
-        <button class="tb" id="m-${stem}" title="Mute" onclick="toggleMute('${stem}')">M</button>
-        <button class="tb" id="s-${stem}" title="Solo" onclick="toggleSolo('${stem}')">S</button>
-        <input class="vol-slider" type="range" min="0" max="1" step="0.01"
-          value="1" id="v-${stem}" oninput="setVolume('${stem}',+this.value)">
-        <span class="vol-val" id="vv-${stem}">100</span>
-      </div>
-    `;
-    labelsEl.appendChild(label);
+function makeIR(ctx,dur=2.5,decay=2.0){
+  const len=Math.floor(ctx.sampleRate*dur);
+  const buf=ctx.createBuffer(2,len,ctx.sampleRate);
+  if(!_reverbIRData){
+    _reverbIRData=[new Float32Array(len),new Float32Array(len)];
+    for(let c=0;c<2;c++)
+      for(let i=0;i<len;i++)
+        _reverbIRData[c][i]=(Math.random()*2-1)*Math.pow(1-i/len,decay);
+  }
+  for(let c=0;c<2;c++)buf.copyToChannel(_reverbIRData[c],c);
+  return buf;
+}
 
-    // Track row
-    const row = document.createElement('div');
-    row.className = 'track-row';
-    row.dataset.stem = stem;
-    row.addEventListener('click', onTrackClick);
+function wireTrack(stem){
+  const t=tracks[stem],x=_actx;
+  t.panNode=x.createStereoPanner();
+  t.eqBass=x.createBiquadFilter(); t.eqBass.type='lowshelf';  t.eqBass.frequency.value=200;
+  t.eqMid=x.createBiquadFilter();  t.eqMid.type='peaking';    t.eqMid.frequency.value=1000; t.eqMid.Q.value=1.4;
+  t.eqTreble=x.createBiquadFilter();t.eqTreble.type='highshelf';t.eqTreble.frequency.value=4000;
+  t.reverbSend=x.createGain(); t.reverbSend.gain.value=0;
+  t.delaySend=x.createGain();  t.delaySend.gain.value=0;
+  t.gainNode.connect(t.panNode);
+  t.panNode.connect(t.eqBass); t.eqBass.connect(t.eqMid); t.eqMid.connect(t.eqTreble);
+  t.eqTreble.connect(_masterBus);
+  t.eqTreble.connect(t.reverbSend); t.reverbSend.connect(_reverbNode);
+  t.eqTreble.connect(t.delaySend);  t.delaySend.connect(_delayInput);
+}
 
-    const canvas = document.createElement('canvas');
-    canvas.className = 'waveform';
+// ── Build UI ───────────────────────────────────────────────────────────────
+function buildUI(){
+  document.getElementById('song-title').textContent=_title;
+  document.getElementById('duration-display').textContent='/ '+fmtTime(_dur);
+  document.getElementById('export-btn').disabled=false;
+  document.getElementById('zip-btn').disabled=false;
+
+  const sidebarTracks=document.getElementById('sidebar-tracks');
+  const scrollContent=document.getElementById('scroll-content');
+  sidebarTracks.innerHTML='';
+  scrollContent.querySelectorAll('.track-row').forEach(e=>e.remove());
+
+  for(const stem of STEM_ORDER){
+    if(!tracks[stem])continue;
+    const t=tracks[stem];
+    const color=STEM_COLORS[stem];
+
+    // ── Control strip (sidebar) ──
+    const strip=document.createElement('div');
+    strip.className='ctrl-strip';
+
+    // Row 1: name + M + S + NRM
+    const r1=document.createElement('div'); r1.className='ctrl-row1';
+    const nameEl=document.createElement('span');
+    nameEl.className='track-name'; nameEl.textContent=stem; nameEl.style.color=color;
+    const mBtn=document.createElement('button');
+    mBtn.className='tb'; mBtn.textContent='M'; mBtn.title='Mute';
+    mBtn.id='m-'+stem; mBtn.onclick=()=>toggleMute(stem);
+    const sBtn=document.createElement('button');
+    sBtn.className='tb'; sBtn.textContent='S'; sBtn.title='Solo';
+    sBtn.id='s-'+stem; sBtn.onclick=()=>toggleSolo(stem);
+    const nBtn=document.createElement('button');
+    nBtn.className='tb tb-norm'; nBtn.textContent='NRM'; nBtn.title='Normalize — set volume to peak level';
+    nBtn.onclick=()=>normalizeTrack(stem);
+    const rBtn=document.createElement('button');
+    rBtn.className='tb tb-norm'; rBtn.textContent='RST'; rBtn.title='Reset all knobs to default';
+    rBtn.style.color='#666';
+    rBtn.onclick=()=>resetTrack(stem);
+    r1.append(nameEl,mBtn,sBtn,nBtn,rBtn);
+
+    // Row 2: 7 knobs — VOL, PAN, BASS, MID, TREB, REV, DLY
+    const r2=document.createElement('div'); r2.className='ctrl-row2';
+
+    t.knobs.vol =new Knob(r2,{label:'VOL', min:0,   max:1.5, value:1,  def:1,  color, bipolar:false,
+      onChange:v=>{t.volume=v;applyGains();}});
+    t.knobs.pan =new Knob(r2,{label:'PAN', min:-1,  max:1,   value:0,  def:0,  color, bipolar:true,
+      onChange:v=>{t.pan=v;t.panNode.pan.setTargetAtTime(v,_actx.currentTime,0.01);}});
+    t.knobs.bass=new Knob(r2,{label:'BASS',min:-12, max:12,  value:0,  def:0,  color, bipolar:true,
+      onChange:v=>{t.eqB=v;t.eqBass.gain.setTargetAtTime(v,_actx.currentTime,0.01);}});
+    t.knobs.mid =new Knob(r2,{label:'MID', min:-12, max:12,  value:0,  def:0,  color, bipolar:true,
+      onChange:v=>{t.eqM=v;t.eqMid.gain.setTargetAtTime(v,_actx.currentTime,0.01);}});
+    t.knobs.treb=new Knob(r2,{label:'TREB',min:-12, max:12,  value:0,  def:0,  color, bipolar:true,
+      onChange:v=>{t.eqT=v;t.eqTreble.gain.setTargetAtTime(v,_actx.currentTime,0.01);}});
+    t.knobs.rev =new Knob(r2,{label:'REV', min:0,   max:1,   value:0,  def:0,  color, bipolar:false,
+      onChange:v=>{t.revAmt=v;t.reverbSend.gain.setTargetAtTime(v,_actx.currentTime,0.01);}});
+    t.knobs.dly =new Knob(r2,{label:'DLY', min:0,   max:1,   value:0,  def:0,  color, bipolar:false,
+      onChange:v=>{t.dlyAmt=v;t.delaySend.gain.setTargetAtTime(v,_actx.currentTime,0.01);}});
+
+    strip.append(r1,r2);
+    sidebarTracks.appendChild(strip);
+
+    // ── Waveform row ──
+    const row=document.createElement('div');
+    row.className='track-row'; row.dataset.stem=stem;
+    row.addEventListener('click',onWaveClick);
+    const canvas=document.createElement('canvas');
+    canvas.className='waveform';
     row.appendChild(canvas);
-    tracksEl.insertBefore(row, document.getElementById('playhead'));
-    t.canvas = canvas;
+    // insert before playhead
+    scrollContent.insertBefore(row,document.getElementById('playhead'));
+    t.canvas=canvas;
 
-    // Compute and draw peaks
-    requestAnimationFrame(() => {
-      t.peaks = computePeaks(t.buffer, canvas.clientWidth || 1200);
-      drawWaveform(canvas, t.peaks, color, false);
+    requestAnimationFrame(()=>{
+      t.peaks=computePeaks(t.buffer);
+      drawWaveform(canvas,t.peaks,color,false);
     });
   }
 
+  // Scroll sync: waveform area Y → sidebar
+  const sc=document.getElementById('scroll-content');
+  const st=document.getElementById('sidebar-tracks');
+  sc.addEventListener('scroll',()=>{ st.scrollTop=sc.scrollTop; });
+
+  // Ruler click
+  document.getElementById('ruler-inner').addEventListener('click',e=>{
+    seekTo((e.offsetX/getCanvasWidth())*_dur);
+  });
+
+  applyZoom();
   buildRuler();
   startRAF();
 }
 
-// ── Waveform helpers ───────────────────────────────────────────────────────
-function computePeaks(audioBuffer, numBins) {
-  const data  = audioBuffer.getChannelData(0);
-  const step  = Math.ceil(data.length / numBins);
-  const peaks = new Float32Array(numBins);
-  for (let i = 0; i < numBins; i++) {
-    let max = 0;
-    const start = i * step;
-    for (let j = 0; j < step && start + j < data.length; j++) {
-      const v = Math.abs(data[start + j]);
-      if (v > max) max = v;
-    }
-    peaks[i] = max;
+// ── SVG Knob ───────────────────────────────────────────────────────────────
+class Knob{
+  constructor(container,opts){
+    this.min=opts.min??0; this.max=opts.max??1; this.val=opts.value??0; this.def=opts.def??this.val;
+    this.color=opts.color??'#8cffff'; this.lbl=opts.label??''; this.bipolar=opts.bipolar??false;
+    this.size=32; this.onChange=opts.onChange??(() =>{});
+    this._drag=null; this._build(container);
+  }
+  _angle(v){return -135+((v-this.min)/(this.max-this.min))*270;}
+  _pt(deg,r){const rad=(deg-90)*Math.PI/180;return[r*Math.cos(rad),r*Math.sin(rad)];}
+  _arc(a1,a2,r){
+    if(Math.abs(a2-a1)<0.5)return'';
+    const[x1,y1]=this._pt(a1,r),[x2,y2]=this._pt(a2,r);
+    const large=Math.abs(a2-a1)>180?1:0,sweep=a2>a1?1:0;
+    return`M${x1.toFixed(2)} ${y1.toFixed(2)} A${r} ${r} 0 ${large} ${sweep} ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+  }
+  _build(container){
+    const s=this.size,h=s/2,r=s*.36,ri=s*.27;
+    const NS='http://www.w3.org/2000/svg';
+    const wrap=document.createElement('div'); wrap.className='knob-group';
+    const svg=document.createElementNS(NS,'svg');
+    svg.setAttribute('width',s);svg.setAttribute('height',s);
+    svg.setAttribute('viewBox',`${-h} ${-h} ${s} ${s}`);
+    svg.style.cursor='ns-resize';svg.style.display='block';svg.style.flexShrink='0';
+    const track=document.createElementNS(NS,'path');
+    track.setAttribute('d',this._arc(-135,135,r));track.setAttribute('stroke','#2a2a3a');
+    track.setAttribute('stroke-width','3');track.setAttribute('fill','none');track.setAttribute('stroke-linecap','round');
+    this._arcEl=document.createElementNS(NS,'path');
+    this._arcEl.setAttribute('stroke',this.color);this._arcEl.setAttribute('stroke-width','3');
+    this._arcEl.setAttribute('fill','none');this._arcEl.setAttribute('stroke-linecap','round');
+    const body=document.createElementNS(NS,'circle');
+    body.setAttribute('r',s*.22);body.setAttribute('fill','#081515');
+    body.setAttribute('stroke','#2a3a3a');body.setAttribute('stroke-width','1.5');
+    this._dot=document.createElementNS(NS,'circle');
+    this._dot.setAttribute('r','2');this._dot.setAttribute('fill',this.color);
+    svg.append(track,this._arcEl,body,this._dot);
+    const lbl=document.createElement('div');
+    lbl.className='knob-label';lbl.textContent=this.lbl;
+    wrap.append(svg,lbl); container.appendChild(wrap);
+    this._redraw();
+
+    svg.addEventListener('mousedown',e=>{
+      e.preventDefault();
+      this._drag={y:e.clientY,v0:this.val};
+      const tip=document.getElementById('knob-tip');
+      const onMove=e2=>{
+        const dy=this._drag.y-e2.clientY;
+        this.set(this._drag.v0+(dy/120)*(this.max-this.min));
+        const rc=svg.getBoundingClientRect();
+        tip.style.left=(rc.right+6)+'px'; tip.style.top=(rc.top+rc.height/2-10)+'px';
+        tip.style.opacity='1'; tip.textContent=this._disp();
+      };
+      const onUp=()=>{
+        document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);
+        this._drag=null;tip.style.opacity='0';
+      };
+      document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+    });
+    svg.addEventListener('dblclick',e=>{e.preventDefault();this.set(this.def);});
+    svg.addEventListener('wheel',e=>{e.preventDefault();this.set(this.val+(e.deltaY<0?1:-1)*(this.max-this.min)/100);},{passive:false});
+  }
+  _disp(){
+    if(this.lbl==='PAN'){if(Math.abs(this.val)<.01)return'C';return(this.val<0?'L':'R')+Math.abs(this.val*100).toFixed(0);}
+    if(this.lbl==='VOL')return(this.val*100).toFixed(0)+'%';
+    if(['BASS','MID','TREB'].includes(this.lbl))return(this.val>=0?'+':'')+this.val.toFixed(1)+'dB';
+    return(this.val*100).toFixed(0)+'%';
+  }
+  set(v){this.val=Math.max(this.min,Math.min(this.max,v));this._redraw();this.onChange(this.val);}
+  _redraw(){
+    const s=this.size,r=s*.36,ri=s*.27;
+    const angle=this._angle(this.val);
+    const arcStart=this.bipolar?this._angle(0):-135;
+    const a1=Math.min(arcStart,angle),a2=Math.max(arcStart,angle);
+    this._arcEl.setAttribute('d',Math.abs(a2-a1)>.5?this._arc(a1,a2,r):'');
+    const[ix,iy]=this._pt(angle,ri);
+    this._dot.setAttribute('cx',ix.toFixed(2));this._dot.setAttribute('cy',iy.toFixed(2));
+  }
+}
+
+// ── Waveform ───────────────────────────────────────────────────────────────
+function computePeaks(buf){
+  const data=buf.getChannelData(0),step=Math.ceil(data.length/PEAK_BINS);
+  const peaks=new Float32Array(PEAK_BINS);
+  for(let i=0;i<PEAK_BINS;i++){
+    let max=0;const s=i*step;
+    for(let j=0;j<step&&s+j<data.length;j++){const v=Math.abs(data[s+j]);if(v>max)max=v;}
+    peaks[i]=max;
   }
   return peaks;
 }
 
-function drawWaveform(canvas, peaks, color, dimmed) {
-  const dpr = window.devicePixelRatio || 1;
-  const w = canvas.clientWidth  || 800;
-  const h = canvas.clientHeight || 72;
-  canvas.width  = w * dpr;
-  canvas.height = h * dpr;
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
+function drawWaveform(canvas,peaks,color,dimmed){
+  const dpr=window.devicePixelRatio||1;
+  const w=canvas.clientWidth||800,h=canvas.clientHeight||72;
+  canvas.width=w*dpr; canvas.height=h*dpr;
+  const ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr); ctx.clearRect(0,0,w,h);
+  const mid=h/2;
+  const grad=ctx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0,  dimmed?'#2a2a2a':color+'cc');
+  grad.addColorStop(.5, dimmed?'#1a1a1a':color+'55');
+  grad.addColorStop(1,  dimmed?'#2a2a2a':color+'cc');
+  ctx.fillStyle=grad;
+  const bw=Math.max(1,w/peaks.length);
+  for(let i=0;i<peaks.length;i++){const amp=peaks[i]*mid*.9;ctx.fillRect(i*bw,mid-amp,bw*.75,amp*2);}
+}
 
-  ctx.clearRect(0, 0, w, h);
-  const mid = h / 2;
-
-  const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0,   dimmed ? '#333' : color + 'cc');
-  grad.addColorStop(0.5, dimmed ? '#222' : color + '66');
-  grad.addColorStop(1,   dimmed ? '#333' : color + 'cc');
-
-  ctx.fillStyle = grad;
-  const barW = Math.max(1, w / peaks.length);
-  for (let i = 0; i < peaks.length; i++) {
-    const amp = peaks[i] * mid * 0.9;
-    ctx.fillRect(i * barW, mid - amp, barW * 0.8, amp * 2);
+function redrawAll(){
+  const sc=soloCount();
+  for(const[stem,t]of Object.entries(tracks)){
+    if(t.canvas&&t.peaks)
+      drawWaveform(t.canvas,t.peaks,STEM_COLORS[stem],t.muted||(sc>0&&!t.solo));
   }
 }
 
-function redrawAll() {
-  for (const [stem, t] of Object.entries(tracks)) {
-    if (t.canvas && t.peaks) {
-      const dimmed = t.muted || (soloCount() > 0 && !t.solo);
-      drawWaveform(t.canvas, t.peaks, STEM_COLORS[stem], dimmed);
-    }
-  }
+// ── Zoom ───────────────────────────────────────────────────────────────────
+function getCanvasWidth(){
+  return document.getElementById('content-area').clientWidth*_zoom;
 }
 
-// ── Ruler ─────────────────────────────────────────────────────────────────
-function buildRuler() {
-  const ruler = document.getElementById('timeline-ruler');
-  ruler.innerHTML = '';
-  const w   = ruler.clientWidth || 800;
-  const stp = niceStep(_dur, w);
-  for (let t = 0; t <= _dur; t += stp) {
-    const x   = (t / _dur) * w;
-    const tick = document.createElement('div');
-    tick.style.cssText = `position:absolute;left:${x}px;top:4px;font-size:10px;color:#555;transform:translateX(-50%)`;
-    tick.textContent   = fmtTime(t);
+function applyZoom(){
+  document.getElementById('zoom-display').textContent=_zoom+'×';
+  const cw=getCanvasWidth();
+  // Set width of all track rows so overflow-x kicks in at zoom > 1
+  document.querySelectorAll('#scroll-content .track-row').forEach(r=>{
+    r.style.width=cw+'px';r.style.minWidth=cw+'px';
+  });
+  document.getElementById('ruler-inner').style.width=cw+'px';
+  redrawAll();
+  buildRuler();
+}
+
+function zoomIn(){_zoom=Math.min(16,_zoom*2);applyZoom();}
+function zoomOut(){_zoom=Math.max(1,_zoom/2);applyZoom();}
+function zoomFit(){_zoom=1;applyZoom();}
+
+// ── Ruler ──────────────────────────────────────────────────────────────────
+function buildRuler(){
+  const ruler=document.getElementById('ruler-inner');
+  ruler.innerHTML='';
+  const w=getCanvasWidth();
+  const stp=niceStep(_dur,w);
+  for(let t=0;t<=_dur;t+=stp){
+    const x=(t/_dur)*w;
+    const tick=document.createElement('div');
+    tick.style.cssText=`position:absolute;left:${x}px;top:5px;font-size:10px;color:#555;transform:translateX(-50%);pointer-events:none;white-space:nowrap`;
+    tick.textContent=fmtTime(t);
     ruler.appendChild(tick);
   }
-  ruler.addEventListener('click', e => {
-    const frac = e.offsetX / ruler.clientWidth;
-    seekTo(frac * _dur);
-  });
 }
 
-function niceStep(dur, pxWidth) {
-  const steps = [1,2,5,10,15,30,60,120,300];
-  for (const s of steps) {
-    if ((dur / s) * (pxWidth / dur) < pxWidth / 8) continue;
-    if (pxWidth / (dur / s) > 40) return s;
-  }
-  return steps[steps.length - 1];
+function niceStep(dur,px){
+  for(const s of[1,2,5,10,15,30,60,120,300]){if(px/(dur/s)>55)return s;}
+  return 300;
 }
 
-// ── Track click to seek ────────────────────────────────────────────────────
-function onTrackClick(e) {
-  const row = e.currentTarget;
-  const frac = e.offsetX / row.clientWidth;
-  seekTo(frac * _dur);
+function onWaveClick(e){
+  seekTo((e.offsetX/getCanvasWidth())*_dur);
 }
 
 // ── Playback ───────────────────────────────────────────────────────────────
-function togglePlay() {
-  if (_playing) pausePlayback();
-  else startPlayback();
-}
+function togglePlay(){_playing?pausePlayback():startPlayback();}
 
-function startPlayback() {
-  if (!_actx) return;
-  if (_actx.state === 'suspended') _actx.resume();
-
-  _startTime = _actx.currentTime;
-  const offset = _startOff;
-
-  for (const [stem, t] of Object.entries(tracks)) {
-    const src = _actx.createBufferSource();
-    src.buffer = t.buffer;
-    src.connect(t.gainNode);
-    src.start(_actx.currentTime + 0.05, offset);
-    src.onended = () => { if (t.source === src) t.source = null; };
-    t.source = src;
+function startPlayback(){
+  if(!_actx)return;
+  if(_actx.state==='suspended')_actx.resume();
+  _startTime=_actx.currentTime;
+  const offset=Math.max(0,Math.min(_dur,_startOff));
+  for(const[,t]of Object.entries(tracks)){
+    const src=_actx.createBufferSource();
+    src.buffer=t.buffer; src.connect(t.gainNode);
+    src.start(_actx.currentTime+0.05,offset);
+    src.onended=()=>{if(t.source===src)t.source=null;};
+    t.source=src;
   }
-
-  _playing = true;
-  document.getElementById('play-btn').classList.add('active');
-  document.getElementById('play-btn').textContent = '⏸';
+  _playing=true;
+  const btn=document.getElementById('play-btn');
+  btn.classList.add('active');btn.textContent='⏸';
 }
 
-function pausePlayback() {
-  _startOff = currentPosition();
-  stopSources();
-  _playing = false;
-  document.getElementById('play-btn').classList.remove('active');
-  document.getElementById('play-btn').textContent = '▶';
+function pausePlayback(){
+  _startOff=currentPosition();stopSources();_playing=false;
+  const btn=document.getElementById('play-btn');
+  btn.classList.remove('active');btn.textContent='▶';
 }
 
-function stopPlayback() {
-  _startOff = 0;
-  stopSources();
-  _playing = false;
-  document.getElementById('play-btn').classList.remove('active');
-  document.getElementById('play-btn').textContent = '▶';
-  updatePlayhead(0);
-  document.getElementById('time-display').textContent = '0:00';
+function stopPlayback(){
+  _startOff=0;stopSources();_playing=false;
+  const btn=document.getElementById('play-btn');
+  btn.classList.remove('active');btn.textContent='▶';
+  updatePlayhead(0);document.getElementById('time-display').textContent='0:00';
 }
 
-function stopSources() {
-  for (const t of Object.values(tracks)) {
-    if (t.source) {
-      try { t.source.stop(); } catch {}
-      t.source = null;
-    }
-  }
+function stopSources(){
+  for(const t of Object.values(tracks)){if(t.source){try{t.source.stop();}catch{}t.source=null;}}
 }
 
-function seekTo(pos) {
-  const wasPlaying = _playing;
-  if (wasPlaying) stopSources();
-  _startOff = Math.max(0, Math.min(_dur, pos));
-  _startTime = _actx ? _actx.currentTime : 0;
-  if (wasPlaying) startPlayback();
-  else {
-    updatePlayhead(_startOff / _dur);
-    document.getElementById('time-display').textContent = fmtTime(_startOff);
-  }
+function seekTo(pos){
+  const was=_playing;
+  if(was)stopSources();
+  _startOff=Math.max(0,Math.min(_dur,pos));
+  _startTime=_actx?_actx.currentTime:0;
+  if(was)startPlayback();
+  else{updatePlayhead(_startOff);document.getElementById('time-display').textContent=fmtTime(_startOff);}
 }
 
-function currentPosition() {
-  if (!_actx || !_playing) return _startOff;
-  return _startOff + (_actx.currentTime - _startTime);
+function currentPosition(){
+  if(!_actx||!_playing)return _startOff;
+  return _startOff+(_actx.currentTime-_startTime);
 }
 
 // ── RAF loop ───────────────────────────────────────────────────────────────
-function startRAF() {
-  function tick() {
-    _rafId = requestAnimationFrame(tick);
-    if (!_playing) return;
-    const pos  = currentPosition();
-    if (pos >= _dur) {
-      stopPlayback();
-      return;
-    }
-    const frac = pos / _dur;
-    updatePlayhead(frac);
-    document.getElementById('time-display').textContent = fmtTime(pos);
+function startRAF(){
+  function tick(){
+    _rafId=requestAnimationFrame(tick);
+    if(!_playing)return;
+    const pos=currentPosition();
+    if(pos>=_dur){_looping?(seekTo(0),startPlayback()):stopPlayback();return;}
+    updatePlayhead(pos);
+    document.getElementById('time-display').textContent=fmtTime(pos);
+    autoScrollToPlayhead(pos);
   }
-  _rafId = requestAnimationFrame(tick);
+  _rafId=requestAnimationFrame(tick);
 }
 
-function updatePlayhead(frac) {
-  const area = document.getElementById('tracks-area');
-  const w    = area.clientWidth;
-  document.getElementById('playhead').style.left = (frac * w) + 'px';
+function updatePlayhead(pos){
+  const cw=getCanvasWidth();
+  document.getElementById('playhead').style.left=((pos/_dur)*cw)+'px';
 }
 
-// ── Mute / Solo / Volume ───────────────────────────────────────────────────
-function soloCount() {
-  return Object.values(tracks).filter(t => t.solo).length;
+function autoScrollToPlayhead(pos){
+  if(_zoom<=1)return;
+  const sc=document.getElementById('scroll-content');
+  const x=(pos/_dur)*getCanvasWidth();
+  const vw=sc.clientWidth;
+  if(x<sc.scrollLeft+vw*.05||x>sc.scrollLeft+vw*.85){
+    sc.scrollLeft=Math.max(0,x-vw*.2);
+  }
 }
 
-function applyGains() {
-  const sc = soloCount();
-  for (const [stem, t] of Object.entries(tracks)) {
-    let g = t.volume;
-    if (t.muted)               g = 0;
-    else if (sc > 0 && !t.solo) g = 0;
-    t.gainNode.gain.setTargetAtTime(g, _actx ? _actx.currentTime : 0, 0.01);
+// ── Mix controls ───────────────────────────────────────────────────────────
+function soloCount(){return Object.values(tracks).filter(t=>t.solo).length;}
+
+function applyGains(){
+  const sc=soloCount();
+  for(const[,t]of Object.entries(tracks)){
+    let g=t.volume;
+    if(t.muted||(sc>0&&!t.solo))g=0;
+    t.gainNode.gain.setTargetAtTime(g,_actx?_actx.currentTime:0,0.015);
   }
   redrawAll();
 }
 
-function toggleMute(stem) {
-  const t = tracks[stem];
-  t.muted = !t.muted;
-  const btn = document.getElementById(`m-${stem}`);
-  btn.classList.toggle('mute-on', t.muted);
-  applyGains();
+function toggleMute(stem){
+  const t=tracks[stem];t.muted=!t.muted;
+  document.getElementById('m-'+stem).classList.toggle('mute-on',t.muted);applyGains();
+}
+function toggleSolo(stem){
+  const t=tracks[stem];t.solo=!t.solo;
+  document.getElementById('s-'+stem).classList.toggle('solo-on',t.solo);applyGains();
+}
+function toggleLoop(){
+  _looping=!_looping;
+  document.getElementById('loop-btn').classList.toggle('active',_looping);
+}
+function toggleCompressor(){
+  _compEnabled=!_compEnabled;
+  const now=_actx?_actx.currentTime:0;
+  _compDryGain.gain.setTargetAtTime(_compEnabled?0:1,now,0.02);
+  _compWetGain.gain.setTargetAtTime(_compEnabled?1:0,now,0.02);
+  document.getElementById('comp-btn').textContent=_compEnabled?'LMT ON':'LMT OFF';
+  document.getElementById('comp-btn').classList.toggle('active',_compEnabled);
 }
 
-function toggleSolo(stem) {
-  const t = tracks[stem];
-  t.solo = !t.solo;
-  const btn = document.getElementById(`s-${stem}`);
-  btn.classList.toggle('solo-on', t.solo);
-  applyGains();
+function normalizeTrack(stem){
+  const t=tracks[stem];
+  const data=t.buffer.getChannelData(0);
+  let peak=0;for(let i=0;i<data.length;i++){const v=Math.abs(data[i]);if(v>peak)peak=v;}
+  if(peak<.001)return;
+  t.knobs.vol.set(Math.min(1.5,.95/peak));
 }
 
-function setVolume(stem, val) {
-  tracks[stem].volume = val;
-  document.getElementById(`vv-${stem}`).textContent = Math.round(val * 100);
-  applyGains();
+function resetTrack(stem){
+  const t=tracks[stem];
+  Object.values(t.knobs).forEach(k=>k.set(k.def));
 }
 
 // ── Export Mix ────────────────────────────────────────────────────────────
-async function exportMix() {
-  const btn = document.getElementById('export-btn');
-  btn.disabled = true;
-  btn.textContent = '⏳ Rendering…';
-
-  try {
-    const sc     = soloCount();
-    const sampleRate = Object.values(tracks)[0].buffer.sampleRate;
-    const length     = Math.ceil(_dur * sampleRate);
-    const offline    = new OfflineAudioContext(2, length, sampleRate);
-
-    for (const [stem, t] of Object.entries(tracks)) {
-      let g = t.volume;
-      if (t.muted)                g = 0;
-      else if (sc > 0 && !t.solo) g = 0;
-      if (g === 0) continue;
-
-      const gain = offline.createGain();
-      gain.gain.value = g;
-      gain.connect(offline.destination);
-
-      const src = offline.createBufferSource();
-      src.buffer = t.buffer;
-      src.connect(gain);
+async function exportMix(){
+  const btn=document.getElementById('export-btn');
+  btn.disabled=true;btn.textContent='⏳ Rendering…';
+  try{
+    const sc=soloCount();
+    const first=Object.values(tracks)[0].buffer;
+    const sr=first.sampleRate,len=Math.ceil(_dur*sr);
+    const off=new OfflineAudioContext(2,len,sr);
+    const offBus=off.createGain();
+    const offRev=off.createConvolver();offRev.buffer=makeIR(off);
+    const offRevRtn=off.createGain();offRevRtn.gain.value=0.85;
+    offRev.connect(offRevRtn);offRevRtn.connect(offBus);
+    const offDlyIn=off.createGain();
+    const offDly=off.createDelay(2.0);offDly.delayTime.value=_delayNode.delayTime.value;
+    const offDlyFB=off.createGain();offDlyFB.gain.value=_delayFeedback.gain.value;
+    const offDlyRtn=off.createGain();offDlyRtn.gain.value=0.8;
+    offDlyIn.connect(offDly);offDly.connect(offDlyFB);offDlyFB.connect(offDly);
+    offDly.connect(offDlyRtn);offDlyRtn.connect(offBus);
+    offBus.connect(off.destination);
+    for(const[stem,t]of Object.entries(tracks)){
+      let g=t.volume;if(t.muted||(sc>0&&!t.solo))g=0;if(g===0)continue;
+      const gain=off.createGain();gain.gain.value=g;
+      const pan=off.createStereoPanner();pan.pan.value=t.pan;
+      const eqB=off.createBiquadFilter();eqB.type='lowshelf';eqB.frequency.value=200;eqB.gain.value=t.eqB;
+      const eqM=off.createBiquadFilter();eqM.type='peaking';eqM.frequency.value=1000;eqM.Q.value=1.4;eqM.gain.value=t.eqM;
+      const eqT=off.createBiquadFilter();eqT.type='highshelf';eqT.frequency.value=4000;eqT.gain.value=t.eqT;
+      const revS=off.createGain();revS.gain.value=t.revAmt;
+      const dlyS=off.createGain();dlyS.gain.value=t.dlyAmt;
+      const src=off.createBufferSource();src.buffer=t.buffer;
+      src.connect(gain);gain.connect(pan);pan.connect(eqB);eqB.connect(eqM);eqM.connect(eqT);
+      eqT.connect(offBus);eqT.connect(revS);revS.connect(offRev);eqT.connect(dlyS);dlyS.connect(offDlyIn);
       src.start(0);
     }
-
-    const rendered = await offline.startRendering();
-    const wav      = audioBufferToWav(rendered);
-    const blob     = new Blob([wav], { type: 'audio/wav' });
-    const url      = URL.createObjectURL(blob);
-    const a        = document.createElement('a');
-    a.href         = url;
-    a.download     = (_title || 'mix').replace(/[^\w\s-]/g,'').trim().replace(/\s+/g,'_') + '_mix.wav';
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-  } catch (e) {
-    alert('Export failed: ' + e.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '⬇ Export Mix';
-  }
+    const rendered=await off.startRendering();
+    const wav=audioBufferToWav(rendered);
+    const blob=new Blob([wav],{type:'audio/wav'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;
+    a.download=(_title||'mix').replace(/[^\w\s-]/g,'').trim().replace(/\s+/g,'_')+'_mix.wav';
+    a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  }catch(e){alert('Export failed: '+e.message);}
+  finally{btn.disabled=false;btn.textContent='⬇ Export Mix';}
 }
 
-// ── Download stems zip ────────────────────────────────────────────────────
-async function downloadZip() {
-  if (!_sepId) return;
-  const btn = document.getElementById('zip-btn');
-  btn.disabled = true;
-  btn.textContent = '⏳ Zipping…';
-  try {
-    const res = await fetch(`/stems/${_sepId}/zip`);
-    if (!res.ok) throw new Error(`Server error ${res.status}`);
-    const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = (_title || 'stems').replace(/[^\w\s-]/g,'').trim().replace(/\s+/g,'_') + '_stems.zip';
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-  } catch (e) {
-    alert('Zip download failed: ' + e.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '⬇ Download Stems';
-  }
+async function downloadZip(){
+  if(!_sepId)return;
+  const btn=document.getElementById('zip-btn');
+  btn.disabled=true;btn.textContent='⏳ Zipping…';
+  try{
+    const res=await fetch(`/stems/${_sepId}/zip`);
+    if(!res.ok)throw new Error(`Server error ${res.status}`);
+    const blob=await res.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;
+    a.download=(_title||'stems').replace(/[^\w\s-]/g,'').trim().replace(/\s+/g,'_')+'_stems.zip';
+    a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  }catch(e){alert('Zip download failed: '+e.message);}
+  finally{btn.disabled=false;btn.textContent='⬇ Stems';}
 }
 
 // ── WAV encoder ───────────────────────────────────────────────────────────
-function audioBufferToWav(buffer) {
-  const numCh     = buffer.numberOfChannels;
-  const sampleRate= buffer.sampleRate;
-  const numSamples= buffer.length;
-  const dataLen   = numSamples * numCh * 2;
-  const view      = new DataView(new ArrayBuffer(44 + dataLen));
-
-  function writeStr(off, str) { for (let i=0;i<str.length;i++) view.setUint8(off+i, str.charCodeAt(i)); }
-  function setU16(off,v){ view.setUint16(off,v,true); }
-  function setU32(off,v){ view.setUint32(off,v,true); }
-
-  writeStr(0,'RIFF'); setU32(4,36+dataLen); writeStr(8,'WAVE');
-  writeStr(12,'fmt '); setU32(16,16); setU16(20,1); setU16(22,numCh);
-  setU32(24,sampleRate); setU32(28,sampleRate*numCh*2); setU16(32,numCh*2); setU16(34,16);
-  writeStr(36,'data'); setU32(40,dataLen);
-
-  let off = 44;
-  const channels = [];
-  for (let c=0;c<numCh;c++) channels.push(buffer.getChannelData(c));
-  for (let i=0;i<numSamples;i++) {
-    for (let c=0;c<numCh;c++) {
-      const s = Math.max(-1, Math.min(1, channels[c][i]));
-      view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-      off += 2;
-    }
+function audioBufferToWav(buffer){
+  const nc=buffer.numberOfChannels,sr=buffer.sampleRate,ns=buffer.length,dl=ns*nc*2;
+  const view=new DataView(new ArrayBuffer(44+dl));
+  const ws=(o,s)=>{for(let i=0;i<s.length;i++)view.setUint8(o+i,s.charCodeAt(i));};
+  ws(0,'RIFF');view.setUint32(4,36+dl,true);ws(8,'WAVE');
+  ws(12,'fmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,nc,true);
+  view.setUint32(24,sr,true);view.setUint32(28,sr*nc*2,true);view.setUint16(32,nc*2,true);view.setUint16(34,16,true);
+  ws(36,'data');view.setUint32(40,dl,true);
+  let o=44;const ch=[];for(let c=0;c<nc;c++)ch.push(buffer.getChannelData(c));
+  for(let i=0;i<ns;i++)for(let c=0;c<nc;c++){
+    const s=Math.max(-1,Math.min(1,ch[c][i]));
+    view.setInt16(o,s<0?s*0x8000:s*0x7fff,true);o+=2;
   }
   return view.buffer;
 }
 
 // ── Overlay helpers ────────────────────────────────────────────────────────
-function setOverlay(title, msg, showProgress) {
+function setOverlay(title,msg,prog){
   document.getElementById('overlay').classList.remove('hidden');
-  document.getElementById('overlay-title').textContent = title;
-  document.getElementById('overlay-msg').textContent   = msg;
-  document.getElementById('overlay-err').style.display = 'none';
-  const prog = document.getElementById('overlay-progress');
-  prog.style.display = showProgress ? 'block' : 'none';
-  if (showProgress) document.getElementById('overlay-bar').style.width = '0%';
+  document.getElementById('overlay-title').textContent=title;
+  document.getElementById('overlay-msg').textContent=msg;
+  document.getElementById('overlay-err').style.display='none';
+  const p=document.getElementById('overlay-progress');
+  p.style.display=prog?'block':'none';
+  if(prog)document.getElementById('overlay-bar').style.width='0%';
 }
-
-function showError(msg) {
+function showError(msg){
   document.getElementById('overlay').classList.remove('hidden');
-  document.querySelector('#overlay .spinner').style.display    = 'none';
-  document.querySelector('#overlay .pulse-dot') && (document.querySelector('#overlay .pulse-dot').style.display = 'none');
-  document.getElementById('overlay-title').textContent = 'Error';
-  document.getElementById('overlay-msg').textContent   = '';
-  document.getElementById('overlay-err').style.display = 'block';
-  document.getElementById('overlay-err').textContent   = msg;
-  document.getElementById('overlay-progress').style.display = 'none';
+  document.querySelector('#overlay .spinner').style.display='none';
+  document.getElementById('overlay-title').textContent='Error';
+  document.getElementById('overlay-msg').textContent='';
+  document.getElementById('overlay-err').style.display='block';
+  document.getElementById('overlay-err').textContent=msg;
+  document.getElementById('overlay-progress').style.display='none';
 }
+function hideOverlay(){document.getElementById('overlay').classList.add('hidden');}
+function fmtTime(s){const m=Math.floor(s/60);return`${m}:${Math.floor(s%60).toString().padStart(2,'0')}`;}
 
-function hideOverlay() {
-  document.getElementById('overlay').classList.add('hidden');
-}
-
-// ── Format time ────────────────────────────────────────────────────────────
-function fmtTime(s) {
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${sec.toString().padStart(2,'0')}`;
-}
-
-// ── Keyboard shortcuts ─────────────────────────────────────────────────────
-document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT') return;
-  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
-  if (e.code === 'Home')  { e.preventDefault(); seekTo(0); }
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT')return;
+  if(e.code==='Space'){e.preventDefault();togglePlay();}
+  if(e.code==='Home'){e.preventDefault();seekTo(0);}
 });
+
+window.addEventListener('resize',()=>{ if(Object.keys(tracks).length)applyZoom(); });
 </script>
 </body>
 </html>

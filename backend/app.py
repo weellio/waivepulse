@@ -33,14 +33,17 @@ HEARTMULA_PATH = os.environ.get("HEARTMULA_PATH", "F:/HeartMuLa/ckpt")
 PYTHON_EXE     = os.environ.get("PYTHON_EXE", sys.executable)
 OUTPUTS_DIR    = Path(__file__).parent.parent / "outputs"
 FRONTEND_DIR   = Path(__file__).parent.parent / "frontend"
+ASSETS_DIR     = Path(__file__).parent.parent / "assets"
 HISTORY_FILE   = Path(__file__).parent.parent / "history.json"
 OUTPUTS_DIR.mkdir(exist_ok=True)
+ASSETS_DIR.mkdir(exist_ok=True)
 
 _DEMUCS = importlib.util.find_spec("demucs") is not None
 _FFMPEG = bool(shutil.which("ffmpeg"))
 
 app = FastAPI(title="WAIvePulse")
 app.mount("/outputs", StaticFiles(directory=str(OUTPUTS_DIR)), name="outputs")
+app.mount("/assets",  StaticFiles(directory=str(ASSETS_DIR)),  name="assets")
 
 # ── Model ──────────────────────────────────────────────────────────────────────
 _pipeline      = None
