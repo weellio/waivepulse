@@ -280,6 +280,11 @@
     </div>
 
     <div>
+      <label>Artist <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0">— embedded in MP3 metadata</span></label>
+      <input type="text" id="artist" placeholder="Your name or project (optional)">
+    </div>
+
+    <div>
       <label>Lyrics <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0">—
         <span class="tmpl-link" onclick="loadTemplate('pop')">pop</span> ·
         <span class="tmpl-link" onclick="loadTemplate('rock')">rock</span> ·
@@ -500,8 +505,9 @@ function loadJobToForm(jobId) {
   const s = jobSettings[jobId];
   if (!s) return;
 
-  document.getElementById('lyrics').value = s.lyrics || '';
-  document.getElementById('title').value  = s.title  || '';
+  document.getElementById('lyrics').value  = s.lyrics  || '';
+  document.getElementById('title').value   = s.title   || '';
+  document.getElementById('artist').value  = s.artist  || '';
 
   selectedTags.clear();
   document.querySelectorAll('.tag-btn.active').forEach(b => b.classList.remove('active'));
@@ -537,6 +543,7 @@ async function generate() {
   const lyrics = document.getElementById("lyrics").value.trim();
   const tags   = getTagsString();
   const title  = document.getElementById("title").value.trim() || "Untitled";
+  const artist = document.getElementById("artist").value.trim();
   const maxDur = parseInt(document.getElementById("maxDur").value);
   const temp   = parseFloat(document.getElementById("temperature").value);
   const cfg    = parseFloat(document.getElementById("cfgScale").value);
@@ -551,11 +558,11 @@ async function generate() {
     const res = await fetch("/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lyrics, tags, title, max_duration_sec: maxDur, temperature: temp, cfg_scale: cfg, topk: 50 })
+      body: JSON.stringify({ lyrics, tags, title, artist, max_duration_sec: maxDur, temperature: temp, cfg_scale: cfg, topk: 50 })
     });
     const data = await res.json();
     if (data.job_id) {
-      jobSettings[data.job_id] = { lyrics, tags, title, maxDurationSec: maxDur, temperature: temp, cfgScale: cfg };
+      jobSettings[data.job_id] = { lyrics, tags, title, artist, maxDurationSec: maxDur, temperature: temp, cfgScale: cfg };
       activeJobs.add(data.job_id);
       addJobCard(data.job_id, title, tags, new Date().toISOString());
       connectSSE(data.job_id);

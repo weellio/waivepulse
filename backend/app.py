@@ -12,6 +12,13 @@ from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
+try:
+    from mutagen.id3 import (ID3, ID3NoHeaderError,
+                              TIT2, TPE1, TPE2, TCON, COMM, TDRC, TENC, TCOM)
+    _MUTAGEN = True
+except ImportError:
+    _MUTAGEN = False
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -74,6 +81,31 @@ sys.stderr   = _TeeStream(_real_stderr)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+def _write_metadata(path: str, title: str, artist: str, tags: str,
+                    temperature: float, cfg_scale: float):
+    if not _MUTAGEN:
+        return
+    try:
+        try:
+            id3 = ID3(path)
+        except ID3NoHeaderError:
+            id3 = ID3()
+        id3["TIT2"] = TIT2(encoding=3, text=title)
+        id3["TPE1"] = TPE1(encoding=3, text=artist or "WAIvePulse")
+        id3["TPE2"] = TPE2(encoding=3, text="WAIvePulse")
+        id3["TCOM"] = TCOM(encoding=3, text="HeartMuLa 3B")
+        id3["TCON"] = TCON(encoding=3, text=tags)
+        id3["TDRC"] = TDRC(encoding=3, text=str(datetime.now().year))
+        id3["TENC"] = TENC(encoding=3, text="WAIvePulse / HeartMuLa 3B")
+        id3["COMM::eng"] = COMM(
+            encoding=3, lang="eng", desc="",
+            text=f"Tags: {tags} | Temperature: {temperature} | CFG Scale: {cfg_scale}",
+        )
+        id3.save(path)
+    except Exception as e:
+        _real_stderr.write(f"[waivepulse] Metadata write failed: {e}\n")
+
+
 def _output_filename(title: str, job_id: str) -> str:
     slug = re.sub(r"[^\w\s-]", "", title).strip()
     slug = re.sub(r"[\s_]+", "_", slug)[:48].strip("_")
@@ -121,7 +153,7 @@ def get_pipeline():
 
 
 # ── Generation worker ─────────────────────────────────────────────────────────
-def _run_generation(job_id, lyrics, tags, title, max_ms, temperature, cfg_scale, topk):
+def _run_generation(job_id, lyrics, tags, title, artist, max_ms, temperature, cfg_scale, topk):
     log = []
     job_logs[job_id]      = log
     _thread_local.job_log = log
@@ -167,6 +199,7 @@ def _run_generation(job_id, lyrics, tags, title, max_ms, temperature, cfg_scale,
             jobs[job_id]["status"]  = "cancelled"
             jobs[job_id]["message"] = "Cancelled"
         else:
+            _write_metadata(out_path, title, artist, tags, temperature, cfg_scale)
             filename = _output_filename(title, job_id)
             jobs[job_id]["status"]    = "done"
             jobs[job_id]["file"]      = f"/outputs/{filename}.mp3"
@@ -201,6 +234,7 @@ class GenerateRequest(BaseModel):
     lyrics:           str
     tags:             str
     title:            Optional[str]   = "Untitled"
+    artist:           Optional[str]   = ""
     max_duration_sec: Optional[int]   = 300
     temperature:      Optional[float] = 1.0
     cfg_scale:        Optional[float] = 1.5
@@ -252,6 +286,7 @@ def generate(req: GenerateRequest):
         "file":            None,
         "file_size":       None,
         "title":           req.title,
+        "artist":          req.artist,
         "tags":            req.tags,
         "lyrics":          req.lyrics,
         "max_duration_sec":req.max_duration_sec,
@@ -264,6 +299,7 @@ def generate(req: GenerateRequest):
         "lyrics":      req.lyrics,
         "tags":        req.tags,
         "title":       req.title,
+        "artist":      req.artist,
         "max_ms":      req.max_duration_sec * 1000,
         "temperature": req.temperature,
         "cfg_scale":   req.cfg_scale,
