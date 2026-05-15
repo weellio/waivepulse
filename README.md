@@ -21,6 +21,8 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 
 <img width="1160" height="904" alt="image" src="https://github.com/user-attachments/assets/3c6c3f05-6e90-4698-a816-6d98991f8dea" />
 
+<img width="1107" height="654" alt="image" src="https://github.com/user-attachments/assets/3d9668b3-0d97-489e-be5c-40ce6a868c06" />
+
 
 ---
 
