@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WAIvePulse Studio</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d0d0d;color:#e0e0e0;font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── Top bar ── */
+#topbar{display:flex;align-items:center;gap:12px;padding:8px 16px;background:#161616;border-bottom:1px solid #2a2a2a;flex-shrink:0}
+#topbar h1{font-size:15px;font-weight:600;color:#a78bfa;letter-spacing:.5px}
+#topbar .sep{color:#333;margin:0 4px}
+#song-title{font-size:13px;color:#aaa;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#back-btn{margin-left:auto;background:none;border:1px solid #333;color:#aaa;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:12px;transition:border-color .15s,color .15s}
+#back-btn:hover{border-color:#a78bfa;color:#a78bfa}
+
+/* ── Transport ── */
+#transport{display:flex;align-items:center;gap:14px;padding:8px 16px;background:#131313;border-bottom:1px solid #222;flex-shrink:0}
+.t-btn{background:#222;border:1px solid #333;color:#ddd;width:34px;height:34px;border-radius:6px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;transition:background .15s,border-color .15s}
+.t-btn:hover{background:#2a2a2a;border-color:#555}
+.t-btn.active{background:#2d1f5e;border-color:#7c3aed;color:#a78bfa}
+#time-display{font-family:'Courier New',monospace;font-size:14px;color:#a78bfa;min-width:60px}
+#duration-display{font-size:12px;color:#555;min-width:48px}
+.t-divider{width:1px;height:24px;background:#222;margin:0 2px}
+#export-btn{margin-left:auto;background:#1e1a2e;border:1px solid #4c1d95;color:#a78bfa;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:background .15s}
+#export-btn:hover{background:#2d1f5e}
+#export-btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── Main layout ── */
+#main{display:flex;flex:1;overflow:hidden}
+
+/* ── Track labels sidebar ── */
+#track-labels{width:160px;flex-shrink:0;background:#111;border-right:1px solid #1e1e1e;display:flex;flex-direction:column;padding-top:32px}
+.track-label{height:80px;display:flex;flex-direction:column;justify-content:center;padding:8px 10px;border-bottom:1px solid #1a1a1a;gap:4px}
+.track-name{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.8px}
+.track-controls{display:flex;gap:5px;align-items:center;margin-top:2px}
+.tb{background:#1e1e1e;border:1px solid #2a2a2a;color:#888;width:24px;height:22px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;transition:background .1s,color .1s,border-color .1s}
+.tb:hover{background:#2a2a2a;color:#ddd}
+.tb.mute-on{background:#3a1f1f;border-color:#7f1d1d;color:#f87171}
+.tb.solo-on{background:#1f2f1f;border-color:#166534;color:#4ade80}
+.vol-slider{width:64px;height:3px;-webkit-appearance:none;appearance:none;background:#2a2a2a;border-radius:2px;cursor:pointer;accent-color:#a78bfa}
+.vol-val{font-size:9px;color:#555;min-width:24px;text-align:right}
+
+/* ── Timeline + waveforms ── */
+#timeline-area{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
+#timeline-ruler{height:24px;background:#131313;border-bottom:1px solid #1e1e1e;position:relative;flex-shrink:0;cursor:pointer;user-select:none}
+#tracks-area{flex:1;overflow-y:auto;overflow-x:hidden;position:relative}
+.track-row{height:80px;border-bottom:1px solid #1a1a1a;position:relative;background:#0f0f0f;cursor:pointer}
+.track-row:hover{background:#111}
+canvas.waveform{position:absolute;top:4px;left:0;right:0;bottom:4px;width:100%;height:calc(100% - 8px);pointer-events:none}
+#playhead{position:absolute;top:0;bottom:0;width:2px;background:#a78bfa;pointer-events:none;z-index:10;box-shadow:0 0 6px #7c3aed}
+#playhead::before{content:'';position:absolute;top:-24px;left:-5px;border:6px solid transparent;border-bottom-color:#a78bfa}
+
+/* ── Loading / status overlay ── */
+#overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0d0d0d;z-index:100;gap:16px}
+#overlay.hidden{display:none}
+#overlay-title{font-size:16px;font-weight:600;color:#a78bfa}
+#overlay-msg{font-size:13px;color:#888;max-width:360px;text-align:center}
+#overlay-progress{width:280px;height:4px;background:#222;border-radius:2px;overflow:hidden}
+#overlay-bar{height:100%;width:0%;background:linear-gradient(90deg,#7c3aed,#a78bfa);transition:width .3s}
+#overlay-log{width:360px;max-height:120px;overflow-y:auto;background:#111;border:1px solid #222;border-radius:6px;padding:8px;font-family:'Courier New',monospace;font-size:11px;color:#666;white-space:pre-wrap}
+#overlay-err{color:#f87171;font-size:13px;max-width:360px;text-align:center}
+.spinner{width:32px;height:32px;border:3px solid #222;border-top-color:#7c3aed;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pulse-dot{width:10px;height:10px;border-radius:50%;background:#a78bfa;animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.1)}}
+
+/* ── Scrollbar ── */
+#tracks-area::-webkit-scrollbar{width:6px}
+#tracks-area::-webkit-scrollbar-track{background:#111}
+#tracks-area::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:3px}
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div id="topbar">
+  <h1>WAIvePulse Studio</h1>
+  <span class="sep">|</span>
+  <span id="song-title">Loading…</span>
+  <button id="back-btn" onclick="window.location.href='/'">← Back</button>
+</div>
+
+<!-- Transport -->
+<div id="transport">
+  <button class="t-btn" id="play-btn"  title="Play"  onclick="togglePlay()">▶</button>
+  <button class="t-btn" id="stop-btn"  title="Stop"  onclick="stopPlayback()">■</button>
+  <div class="t-divider"></div>
+  <span id="time-display">0:00</span>
+  <span id="duration-display">/ 0:00</span>
+  <div class="t-divider"></div>
+  <button id="export-btn" disabled onclick="exportMix()">⬇ Export Mix</button>
+</div>
+
+<!-- Main layout -->
+<div id="main">
+  <div id="track-labels"></div>
+  <div id="timeline-area">
+    <div id="timeline-ruler"></div>
+    <div id="tracks-area">
+      <div id="playhead" style="left:0px"></div>
+    </div>
+    <!-- overlay -->
+    <div id="overlay">
+      <div class="spinner"></div>
+      <div id="overlay-title">Loading Studio</div>
+      <div id="overlay-msg">Checking separation status…</div>
+      <div id="overlay-progress" style="display:none"><div id="overlay-bar"></div></div>
+      <div id="overlay-log" style="display:none"></div>
+      <div id="overlay-err" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const STEM_ORDER  = ['vocals','drums','bass','guitar','piano','other'];
+const STEM_COLORS = {
+  vocals: '#9d6be8', drums:  '#e87c4a', bass:  '#4a9ee8',
+  guitar: '#5cbe6a', piano:  '#e8cc4a', other: '#888888',
+};
+
+// ── State ──────────────────────────────────────────────────────────────────
+let _jobId  = null;
+let _sepId  = null;
+let _title  = '';
+let _dur    = 0;
+
+const tracks = {};
+// tracks[stem] = { buffer, source, gainNode, muted, solo, volume, peaks, canvas }
+
+let _actx       = null;
+let _playing    = false;
+let _startTime  = 0;   // audioCtx time when playback started
+let _startOff   = 0;   // offset into audio at last play
+let _rafId      = null;
+let _sseConn    = null;
+
+// ── URL params ──────────────────────────────────────────────────────────────
+function getParam(k) {
+  return new URLSearchParams(window.location.search).get(k);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  _jobId = getParam('job');
+  _sepId = getParam('sep');
+  if (!_jobId && !_sepId) {
+    showError('No job ID provided. Open this page from a completed song card.');
+    return;
+  }
+  await boot();
+});
+
+async function boot() {
+  if (_sepId) {
+    await checkSepStatus();
+  } else {
+    await fetchJobAndSeparate();
+  }
+}
+
+// ── Step 1: get job info, kick off or attach to separation ─────────────────
+async function fetchJobAndSeparate() {
+  try {
+    setOverlay('Checking song…', '');
+    const res  = await fetch(`/status/${_jobId}`);
+    if (!res.ok) throw new Error(`Job not found (${res.status})`);
+    const job  = await res.json();
+    _title = job.title || 'Untitled';
+    document.getElementById('song-title').textContent = _title;
+
+    // Check demucs availability
+    const dres  = await fetch('/demucs-status');
+    const dstat = await dres.json();
+    if (!dstat.available) {
+      showError('Demucs is not installed in your Python environment.\n\nRun: pip install demucs\n\nThen restart the server.');
+      return;
+    }
+
+    // Kick off separation
+    setOverlay('Starting stem separation…', 'This runs Demucs on your GPU and takes a few minutes.', true);
+    const sres = await fetch(`/separate/${_jobId}`, { method: 'POST' });
+    if (!sres.ok) {
+      const err = await sres.json();
+      throw new Error(err.detail || 'Separation failed to start');
+    }
+    const sdata = await sres.json();
+    _sepId = sdata.sep_id;
+    window.history.replaceState({}, '', `?job=${_jobId}&sep=${_sepId}`);
+    await checkSepStatus();
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+// ── Step 2: poll/stream separation progress ────────────────────────────────
+async function checkSepStatus() {
+  try {
+    const res  = await fetch(`/separate/status/${_sepId}`);
+    if (!res.ok) throw new Error(`Separation not found (${res.status})`);
+    const sep  = await res.json();
+
+    _title = sep.title || _title;
+    document.getElementById('song-title').textContent = _title;
+
+    if (sep.status === 'done') {
+      await loadStems(sep.stems);
+      return;
+    }
+    if (sep.status === 'error') {
+      showError(sep.message || 'Separation failed');
+      return;
+    }
+
+    // queued or separating — stream progress
+    setOverlay('Separating stems…', 'Demucs is running. This may take several minutes.', true);
+    streamSepProgress();
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+function streamSepProgress() {
+  if (_sseConn) _sseConn.close();
+  const logEl = document.getElementById('overlay-log');
+  logEl.style.display = 'block';
+
+  _sseConn = new EventSource(`/separate/progress/${_sepId}`);
+  _sseConn.onmessage = e => {
+    if (e.data === '__done__') {
+      _sseConn.close();
+      checkSepStatus();
+      return;
+    }
+    try {
+      const line = JSON.parse(e.data);
+      logEl.textContent += line + '\n';
+      logEl.scrollTop = logEl.scrollHeight;
+      // parse progress percentage if present
+      const m = line.match(/(\d+)%/);
+      if (m) {
+        document.getElementById('overlay-bar').style.width = m[1] + '%';
+      }
+    } catch {}
+  };
+  _sseConn.onerror = () => {
+    _sseConn.close();
+    setTimeout(checkSepStatus, 1500);
+  };
+}
+
+// ── Step 3: load AudioBuffers from stem URLs ───────────────────────────────
+async function loadStems(stems) {
+  setOverlay('Loading audio…', 'Decoding stems into memory.', true);
+  _actx = new AudioContext();
+
+  const stemNames = STEM_ORDER.filter(s => stems[s]);
+  let loaded = 0;
+
+  for (const stem of stemNames) {
+    const url = stems[stem].replace('/stems/', `/stems/`);
+    try {
+      const res  = await fetch(url);
+      const buf  = await res.arrayBuffer();
+      const abuf = await _actx.decodeAudioData(buf);
+      if (abuf.duration > _dur) _dur = abuf.duration;
+
+      const gainNode = _actx.createGain();
+      gainNode.connect(_actx.destination);
+
+      tracks[stem] = {
+        buffer:   abuf,
+        source:   null,
+        gainNode,
+        muted:    false,
+        solo:     false,
+        volume:   1.0,
+        peaks:    null,
+        canvas:   null,
+      };
+    } catch (err) {
+      console.warn(`Could not load stem ${stem}:`, err);
+    }
+    loaded++;
+    document.getElementById('overlay-bar').style.width = Math.round(loaded / stemNames.length * 100) + '%';
+  }
+
+  if (Object.keys(tracks).length === 0) {
+    showError('No stems could be loaded.');
+    return;
+  }
+
+  buildUI();
+  hideOverlay();
+}
+
+// ── Build track UI ─────────────────────────────────────────────────────────
+function buildUI() {
+  document.getElementById('song-title').textContent = _title;
+  document.getElementById('duration-display').textContent = '/ ' + fmtTime(_dur);
+  document.getElementById('export-btn').disabled = false;
+
+  const labelsEl = document.getElementById('track-labels');
+  const tracksEl = document.getElementById('tracks-area');
+  labelsEl.innerHTML = '';
+  // Remove existing track rows (keep playhead)
+  tracksEl.querySelectorAll('.track-row').forEach(el => el.remove());
+
+  for (const stem of STEM_ORDER) {
+    if (!tracks[stem]) continue;
+    const t = tracks[stem];
+    const color = STEM_COLORS[stem];
+
+    // Label
+    const label = document.createElement('div');
+    label.className = 'track-label';
+    label.innerHTML = `
+      <span class="track-name" style="color:${color}">${stem}</span>
+      <div class="track-controls">
+        <button class="tb" id="m-${stem}" title="Mute" onclick="toggleMute('${stem}')">M</button>
+        <button class="tb" id="s-${stem}" title="Solo" onclick="toggleSolo('${stem}')">S</button>
+        <input class="vol-slider" type="range" min="0" max="1" step="0.01"
+          value="1" id="v-${stem}" oninput="setVolume('${stem}',+this.value)">
+        <span class="vol-val" id="vv-${stem}">100</span>
+      </div>
+    `;
+    labelsEl.appendChild(label);
+
+    // Track row
+    const row = document.createElement('div');
+    row.className = 'track-row';
+    row.dataset.stem = stem;
+    row.addEventListener('click', onTrackClick);
+
+    const canvas = document.createElement('canvas');
+    canvas.className = 'waveform';
+    row.appendChild(canvas);
+    tracksEl.insertBefore(row, document.getElementById('playhead'));
+    t.canvas = canvas;
+
+    // Compute and draw peaks
+    requestAnimationFrame(() => {
+      t.peaks = computePeaks(t.buffer, canvas.clientWidth || 1200);
+      drawWaveform(canvas, t.peaks, color, false);
+    });
+  }
+
+  buildRuler();
+  startRAF();
+}
+
+// ── Waveform helpers ───────────────────────────────────────────────────────
+function computePeaks(audioBuffer, numBins) {
+  const data  = audioBuffer.getChannelData(0);
+  const step  = Math.ceil(data.length / numBins);
+  const peaks = new Float32Array(numBins);
+  for (let i = 0; i < numBins; i++) {
+    let max = 0;
+    const start = i * step;
+    for (let j = 0; j < step && start + j < data.length; j++) {
+      const v = Math.abs(data[start + j]);
+      if (v > max) max = v;
+    }
+    peaks[i] = max;
+  }
+  return peaks;
+}
+
+function drawWaveform(canvas, peaks, color, dimmed) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth  || 800;
+  const h = canvas.clientHeight || 72;
+  canvas.width  = w * dpr;
+  canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  ctx.clearRect(0, 0, w, h);
+  const mid = h / 2;
+
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0,   dimmed ? '#333' : color + 'cc');
+  grad.addColorStop(0.5, dimmed ? '#222' : color + '66');
+  grad.addColorStop(1,   dimmed ? '#333' : color + 'cc');
+
+  ctx.fillStyle = grad;
+  const barW = Math.max(1, w / peaks.length);
+  for (let i = 0; i < peaks.length; i++) {
+    const amp = peaks[i] * mid * 0.9;
+    ctx.fillRect(i * barW, mid - amp, barW * 0.8, amp * 2);
+  }
+}
+
+function redrawAll() {
+  for (const [stem, t] of Object.entries(tracks)) {
+    if (t.canvas && t.peaks) {
+      const dimmed = t.muted || (soloCount() > 0 && !t.solo);
+      drawWaveform(t.canvas, t.peaks, STEM_COLORS[stem], dimmed);
+    }
+  }
+}
+
+// ── Ruler ─────────────────────────────────────────────────────────────────
+function buildRuler() {
+  const ruler = document.getElementById('timeline-ruler');
+  ruler.innerHTML = '';
+  const w   = ruler.clientWidth || 800;
+  const stp = niceStep(_dur, w);
+  for (let t = 0; t <= _dur; t += stp) {
+    const x   = (t / _dur) * w;
+    const tick = document.createElement('div');
+    tick.style.cssText = `position:absolute;left:${x}px;top:4px;font-size:10px;color:#555;transform:translateX(-50%)`;
+    tick.textContent   = fmtTime(t);
+    ruler.appendChild(tick);
+  }
+  ruler.addEventListener('click', e => {
+    const frac = e.offsetX / ruler.clientWidth;
+    seekTo(frac * _dur);
+  });
+}
+
+function niceStep(dur, pxWidth) {
+  const steps = [1,2,5,10,15,30,60,120,300];
+  for (const s of steps) {
+    if ((dur / s) * (pxWidth / dur) < pxWidth / 8) continue;
+    if (pxWidth / (dur / s) > 40) return s;
+  }
+  return steps[steps.length - 1];
+}
+
+// ── Track click to seek ────────────────────────────────────────────────────
+function onTrackClick(e) {
+  const row = e.currentTarget;
+  const frac = e.offsetX / row.clientWidth;
+  seekTo(frac * _dur);
+}
+
+// ── Playback ───────────────────────────────────────────────────────────────
+function togglePlay() {
+  if (_playing) pausePlayback();
+  else startPlayback();
+}
+
+function startPlayback() {
+  if (!_actx) return;
+  if (_actx.state === 'suspended') _actx.resume();
+
+  _startTime = _actx.currentTime;
+  const offset = _startOff;
+
+  for (const [stem, t] of Object.entries(tracks)) {
+    const src = _actx.createBufferSource();
+    src.buffer = t.buffer;
+    src.connect(t.gainNode);
+    src.start(_actx.currentTime + 0.05, offset);
+    src.onended = () => { if (t.source === src) t.source = null; };
+    t.source = src;
+  }
+
+  _playing = true;
+  document.getElementById('play-btn').classList.add('active');
+  document.getElementById('play-btn').textContent = '⏸';
+}
+
+function pausePlayback() {
+  _startOff = currentPosition();
+  stopSources();
+  _playing = false;
+  document.getElementById('play-btn').classList.remove('active');
+  document.getElementById('play-btn').textContent = '▶';
+}
+
+function stopPlayback() {
+  _startOff = 0;
+  stopSources();
+  _playing = false;
+  document.getElementById('play-btn').classList.remove('active');
+  document.getElementById('play-btn').textContent = '▶';
+  updatePlayhead(0);
+  document.getElementById('time-display').textContent = '0:00';
+}
+
+function stopSources() {
+  for (const t of Object.values(tracks)) {
+    if (t.source) {
+      try { t.source.stop(); } catch {}
+      t.source = null;
+    }
+  }
+}
+
+function seekTo(pos) {
+  const wasPlaying = _playing;
+  if (wasPlaying) stopSources();
+  _startOff = Math.max(0, Math.min(_dur, pos));
+  _startTime = _actx ? _actx.currentTime : 0;
+  if (wasPlaying) startPlayback();
+  else {
+    updatePlayhead(_startOff / _dur);
+    document.getElementById('time-display').textContent = fmtTime(_startOff);
+  }
+}
+
+function currentPosition() {
+  if (!_actx || !_playing) return _startOff;
+  return _startOff + (_actx.currentTime - _startTime);
+}
+
+// ── RAF loop ───────────────────────────────────────────────────────────────
+function startRAF() {
+  function tick() {
+    _rafId = requestAnimationFrame(tick);
+    if (!_playing) return;
+    const pos  = currentPosition();
+    if (pos >= _dur) {
+      stopPlayback();
+      return;
+    }
+    const frac = pos / _dur;
+    updatePlayhead(frac);
+    document.getElementById('time-display').textContent = fmtTime(pos);
+  }
+  _rafId = requestAnimationFrame(tick);
+}
+
+function updatePlayhead(frac) {
+  const area = document.getElementById('tracks-area');
+  const w    = area.clientWidth;
+  document.getElementById('playhead').style.left = (frac * w) + 'px';
+}
+
+// ── Mute / Solo / Volume ───────────────────────────────────────────────────
+function soloCount() {
+  return Object.values(tracks).filter(t => t.solo).length;
+}
+
+function applyGains() {
+  const sc = soloCount();
+  for (const [stem, t] of Object.entries(tracks)) {
+    let g = t.volume;
+    if (t.muted)               g = 0;
+    else if (sc > 0 && !t.solo) g = 0;
+    t.gainNode.gain.setTargetAtTime(g, _actx ? _actx.currentTime : 0, 0.01);
+  }
+  redrawAll();
+}
+
+function toggleMute(stem) {
+  const t = tracks[stem];
+  t.muted = !t.muted;
+  const btn = document.getElementById(`m-${stem}`);
+  btn.classList.toggle('mute-on', t.muted);
+  applyGains();
+}
+
+function toggleSolo(stem) {
+  const t = tracks[stem];
+  t.solo = !t.solo;
+  const btn = document.getElementById(`s-${stem}`);
+  btn.classList.toggle('solo-on', t.solo);
+  applyGains();
+}
+
+function setVolume(stem, val) {
+  tracks[stem].volume = val;
+  document.getElementById(`vv-${stem}`).textContent = Math.round(val * 100);
+  applyGains();
+}
+
+// ── Export Mix ────────────────────────────────────────────────────────────
+async function exportMix() {
+  const btn = document.getElementById('export-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Rendering…';
+
+  try {
+    const sc     = soloCount();
+    const sampleRate = Object.values(tracks)[0].buffer.sampleRate;
+    const length     = Math.ceil(_dur * sampleRate);
+    const offline    = new OfflineAudioContext(2, length, sampleRate);
+
+    for (const [stem, t] of Object.entries(tracks)) {
+      let g = t.volume;
+      if (t.muted)                g = 0;
+      else if (sc > 0 && !t.solo) g = 0;
+      if (g === 0) continue;
+
+      const gain = offline.createGain();
+      gain.gain.value = g;
+      gain.connect(offline.destination);
+
+      const src = offline.createBufferSource();
+      src.buffer = t.buffer;
+      src.connect(gain);
+      src.start(0);
+    }
+
+    const rendered = await offline.startRendering();
+    const wav      = audioBufferToWav(rendered);
+    const blob     = new Blob([wav], { type: 'audio/wav' });
+    const url      = URL.createObjectURL(blob);
+    const a        = document.createElement('a');
+    a.href         = url;
+    a.download     = (_title || 'mix').replace(/[^\w\s-]/g,'').trim().replace(/\s+/g,'_') + '_mix.wav';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) {
+    alert('Export failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⬇ Export Mix';
+  }
+}
+
+// ── WAV encoder ───────────────────────────────────────────────────────────
+function audioBufferToWav(buffer) {
+  const numCh     = buffer.numberOfChannels;
+  const sampleRate= buffer.sampleRate;
+  const numSamples= buffer.length;
+  const dataLen   = numSamples * numCh * 2;
+  const view      = new DataView(new ArrayBuffer(44 + dataLen));
+
+  function writeStr(off, str) { for (let i=0;i<str.length;i++) view.setUint8(off+i, str.charCodeAt(i)); }
+  function setU16(off,v){ view.setUint16(off,v,true); }
+  function setU32(off,v){ view.setUint32(off,v,true); }
+
+  writeStr(0,'RIFF'); setU32(4,36+dataLen); writeStr(8,'WAVE');
+  writeStr(12,'fmt '); setU32(16,16); setU16(20,1); setU16(22,numCh);
+  setU32(24,sampleRate); setU32(28,sampleRate*numCh*2); setU16(32,numCh*2); setU16(34,16);
+  writeStr(36,'data'); setU32(40,dataLen);
+
+  let off = 44;
+  const channels = [];
+  for (let c=0;c<numCh;c++) channels.push(buffer.getChannelData(c));
+  for (let i=0;i<numSamples;i++) {
+    for (let c=0;c<numCh;c++) {
+      const s = Math.max(-1, Math.min(1, channels[c][i]));
+      view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      off += 2;
+    }
+  }
+  return view.buffer;
+}
+
+// ── Overlay helpers ────────────────────────────────────────────────────────
+function setOverlay(title, msg, showProgress) {
+  document.getElementById('overlay').classList.remove('hidden');
+  document.getElementById('overlay-title').textContent = title;
+  document.getElementById('overlay-msg').textContent   = msg;
+  document.getElementById('overlay-err').style.display = 'none';
+  const prog = document.getElementById('overlay-progress');
+  prog.style.display = showProgress ? 'block' : 'none';
+  if (showProgress) document.getElementById('overlay-bar').style.width = '0%';
+}
+
+function showError(msg) {
+  document.getElementById('overlay').classList.remove('hidden');
+  document.querySelector('#overlay .spinner').style.display    = 'none';
+  document.querySelector('#overlay .pulse-dot') && (document.querySelector('#overlay .pulse-dot').style.display = 'none');
+  document.getElementById('overlay-title').textContent = 'Error';
+  document.getElementById('overlay-msg').textContent   = '';
+  document.getElementById('overlay-err').style.display = 'block';
+  document.getElementById('overlay-err').textContent   = msg;
+  document.getElementById('overlay-progress').style.display = 'none';
+}
+
+function hideOverlay() {
+  document.getElementById('overlay').classList.add('hidden');
+}
+
+// ── Format time ────────────────────────────────────────────────────────────
+function fmtTime(s) {
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2,'0')}`;
+}
+
+// ── Keyboard shortcuts ─────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+  if (e.code === 'Home')  { e.preventDefault(); seekTo(0); }
+});
+</script>
+</body>
+</html>

@@ -4,8 +4,11 @@ import re
 import uuid
 import json
 import queue
+import shutil
 import tempfile
 import threading
+import subprocess
+import importlib.util
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -20,15 +23,19 @@ except ImportError:
     _MUTAGEN = False
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 HEARTMULA_PATH = os.environ.get("HEARTMULA_PATH", "F:/HeartMuLa/ckpt")
+PYTHON_EXE     = os.environ.get("PYTHON_EXE", sys.executable)
 OUTPUTS_DIR    = Path(__file__).parent.parent / "outputs"
 FRONTEND_DIR   = Path(__file__).parent.parent / "frontend"
 HISTORY_FILE   = Path(__file__).parent.parent / "history.json"
 OUTPUTS_DIR.mkdir(exist_ok=True)
+
+_DEMUCS = importlib.util.find_spec("demucs") is not None
+_FFMPEG = bool(shutil.which("ffmpeg"))
 
 app = FastAPI(title="WAIvePulse")
 app.mount("/outputs", StaticFiles(directory=str(OUTPUTS_DIR)), name="outputs")
@@ -41,6 +48,9 @@ _pipeline_lock = threading.Lock()
 jobs:         dict = {}   # job_id → job dict
 job_logs:     dict = {}   # job_id → list[str]
 cancel_flags: dict = {}   # job_id → threading.Event
+
+sep_jobs: dict = {}       # sep_id → sep dict
+sep_logs: dict = {}       # sep_id → list[str]
 
 # ── Job queue (single FIFO worker) ────────────────────────────────────────────
 _job_queue = queue.Queue()
@@ -114,7 +124,8 @@ def _output_filename(title: str, job_id: str) -> str:
 
 def _save_history():
     try:
-        HISTORY_FILE.write_text(json.dumps(jobs, indent=2), encoding="utf-8")
+        data = {"jobs": jobs, "sep_jobs": sep_jobs}
+        HISTORY_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
     except Exception as e:
         _real_stderr.write(f"[waivepulse] Failed to save history: {e}\n")
 
@@ -123,12 +134,26 @@ def _load_history():
     if not HISTORY_FILE.exists():
         return
     try:
-        data = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
-        for job_id, job in data.items():
+        raw = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+        # Support old format (flat dict of jobs)
+        if "jobs" in raw and isinstance(raw["jobs"], dict):
+            job_data = raw["jobs"]
+            sep_data = raw.get("sep_jobs", {})
+        else:
+            job_data = raw
+            sep_data = {}
+
+        for job_id, job in job_data.items():
             if job.get("status") in ("generating", "queued"):
                 job["status"]  = "error"
                 job["message"] = "Server restarted — job lost"
             jobs[job_id] = job
+
+        for sep_id, sep in sep_data.items():
+            if sep.get("status") in ("separating", "queued"):
+                sep["status"]  = "error"
+                sep["message"] = "Server restarted — job lost"
+            sep_jobs[sep_id] = sep
     except Exception as e:
         _real_stderr.write(f"[waivepulse] Failed to load history: {e}\n")
 
@@ -215,12 +240,86 @@ def _run_generation(job_id, lyrics, tags, title, artist, max_ms, temperature, cf
         _save_history()
 
 
+# ── Separation worker ─────────────────────────────────────────────────────────
+def _run_separation(sep_id, source_file, job_id):
+    log = []
+    sep_logs[sep_id]      = log
+    sep_jobs[sep_id]["status"] = "separating"
+    _save_history()
+
+    out_dir = OUTPUTS_DIR / f"sep_{sep_id}"
+    out_dir.mkdir(exist_ok=True)
+
+    try:
+        source_path = Path(source_file)
+        if not source_path.exists():
+            raise FileNotFoundError(f"Source file not found: {source_file}")
+
+        cmd = [PYTHON_EXE, "-m", "demucs",
+               "-n", "htdemucs_6s",
+               "--out", str(out_dir),
+               str(source_path)]
+        if _FFMPEG:
+            cmd.insert(3, "--mp3")
+
+        log.append(f"Starting separation: {source_path.name}")
+        log.append(f"Output dir: {out_dir}")
+        log.append(f"Using {'MP3' if _FFMPEG else 'WAV'} output")
+
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+        for line in proc.stdout:
+            clean = _ANSI_RE.sub('', line).strip()
+            if clean:
+                log.append(clean)
+
+        proc.wait()
+
+        if proc.returncode != 0:
+            raise RuntimeError(f"Demucs exited with code {proc.returncode}")
+
+        ext = "mp3" if _FFMPEG else "wav"
+        stem_dir = out_dir / "htdemucs_6s" / source_path.stem
+        stems = {}
+        for stem_name in ("vocals", "drums", "bass", "guitar", "piano", "other"):
+            stem_file = stem_dir / f"{stem_name}.{ext}"
+            if stem_file.exists():
+                stems[stem_name] = f"/stems/{sep_id}/{stem_name}.{ext}"
+
+        sep_jobs[sep_id]["status"] = "done"
+        sep_jobs[sep_id]["stems"]  = stems
+        sep_jobs[sep_id]["message"] = f"Separated into {len(stems)} stems"
+        log.append(f"Done — {len(stems)} stems ready")
+
+    except Exception as e:
+        sep_jobs[sep_id]["status"]  = "error"
+        sep_jobs[sep_id]["message"] = str(e)
+        _real_stderr.write(f"[waivepulse] Separation error for {sep_id}: {e}\n")
+    finally:
+        _save_history()
+
+
+# ── Queue worker ──────────────────────────────────────────────────────────────
 def _queue_worker():
     while True:
-        job_id, kwargs = _job_queue.get()
+        item = _job_queue.get()
         try:
-            if jobs.get(job_id, {}).get("status") != "cancelled":
-                _run_generation(job_id, **kwargs)
+            kind = item[0]
+            if kind == "generate":
+                _, job_id, kwargs = item
+                if jobs.get(job_id, {}).get("status") != "cancelled":
+                    _run_generation(job_id, **kwargs)
+            elif kind == "separate":
+                _, sep_id, kwargs = item
+                if sep_jobs.get(sep_id, {}).get("status") != "cancelled":
+                    _run_separation(sep_id, **kwargs)
         finally:
             _job_queue.task_done()
 
@@ -271,6 +370,14 @@ def index():
     return HTMLResponse(content="<h1>Frontend not found</h1>", status_code=404)
 
 
+@app.get("/studio", response_class=HTMLResponse)
+def studio():
+    html_path = FRONTEND_DIR / "studio.html"
+    if html_path.exists():
+        return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h1>Studio not found</h1>", status_code=404)
+
+
 @app.post("/generate")
 def generate(req: GenerateRequest):
     ms = _models_ready()
@@ -295,7 +402,7 @@ def generate(req: GenerateRequest):
         "created_at":      datetime.now().isoformat(),
     }
     cancel_flags[job_id] = threading.Event()
-    _job_queue.put((job_id, {
+    _job_queue.put(("generate", job_id, {
         "lyrics":      req.lyrics,
         "tags":        req.tags,
         "title":       req.title,
@@ -383,6 +490,114 @@ def delete_job(job_id: str):
     job_logs.pop(job_id, None)
     _save_history()
     return {"deleted": job_id}
+
+
+# ── Separation routes ─────────────────────────────────────────────────────────
+@app.post("/separate/{job_id}")
+def separate(job_id: str):
+    if not _DEMUCS:
+        raise HTTPException(
+            status_code=503,
+            detail="Demucs is not installed. Run: pip install demucs",
+        )
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job = jobs[job_id]
+    if job.get("status") != "done":
+        raise HTTPException(status_code=400, detail="Job must be done before separating")
+
+    stored_file = job.get("file")
+    if not stored_file:
+        raise HTTPException(status_code=400, detail="No output file for this job")
+
+    source_path = OUTPUTS_DIR / Path(stored_file).name
+    if not source_path.exists():
+        raise HTTPException(status_code=404, detail="Output file not found on disk")
+
+    sep_id = str(uuid.uuid4())[:8]
+    sep_jobs[sep_id] = {
+        "status":     "queued",
+        "message":    "Queued",
+        "job_id":     job_id,
+        "title":      job.get("title", "Untitled"),
+        "stems":      {},
+        "created_at": datetime.now().isoformat(),
+    }
+    _job_queue.put(("separate", sep_id, {
+        "source_file": str(source_path),
+        "job_id":      job_id,
+    }))
+    _save_history()
+    return {"sep_id": sep_id}
+
+
+@app.get("/separate/status/{sep_id}")
+def sep_status(sep_id: str):
+    if sep_id not in sep_jobs:
+        raise HTTPException(status_code=404, detail="Separation job not found")
+    return sep_jobs[sep_id]
+
+
+@app.get("/separate/progress/{sep_id}")
+async def sep_progress_stream(sep_id: str):
+    import asyncio
+
+    async def event_stream():
+        sent = 0
+        while True:
+            log = sep_logs.get(sep_id, [])
+            while sent < len(log):
+                yield f"data: {json.dumps(log[sent])}\n\n"
+                sent += 1
+            s = sep_jobs.get(sep_id, {}).get("status", "")
+            if s in ("done", "error"):
+                log = sep_logs.get(sep_id, [])
+                while sent < len(log):
+                    yield f"data: {json.dumps(log[sent])}\n\n"
+                    sent += 1
+                yield "data: __done__\n\n"
+                break
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/stems/{sep_id}/{filename}")
+def serve_stem(sep_id: str, filename: str):
+    if sep_id not in sep_jobs:
+        raise HTTPException(status_code=404, detail="Separation not found")
+
+    sep  = sep_jobs[sep_id]
+    job  = jobs.get(sep.get("job_id", ""), {})
+    src  = job.get("file", "")
+    src_stem = Path(src).stem.rsplit("_", 1)[0] if src else "audio"
+
+    # htdemucs_6s uses the source filename stem as the subfolder
+    ext      = "mp3" if _FFMPEG else "wav"
+    stem_name = Path(filename).stem
+    out_dir  = OUTPUTS_DIR / f"sep_{sep_id}"
+
+    # Find the actual stem file — Demucs uses source filename as subdirectory
+    candidates = list(out_dir.rglob(f"{stem_name}.{ext}"))
+    if not candidates:
+        # Try wav fallback
+        candidates = list(out_dir.rglob(f"{stem_name}.wav"))
+    if not candidates:
+        raise HTTPException(status_code=404, detail=f"Stem {filename} not found")
+
+    return FileResponse(
+        str(candidates[0]),
+        media_type="audio/mpeg" if candidates[0].suffix == ".mp3" else "audio/wav",
+    )
+
+
+@app.get("/demucs-status")
+def demucs_status():
+    return {"available": _DEMUCS, "ffmpeg": _FFMPEG}
 
 
 if __name__ == "__main__":

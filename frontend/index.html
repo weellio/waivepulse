@@ -648,6 +648,7 @@ function jobCardHTML(jobId, title, tags, status, message, file, fileSize, create
       <div class="card-actions">
         <a class="btn-action" href="${file}" download>⬇ Download</a>
         <button class="btn-action" onclick="loadJobToForm('${jobId}')">↺ Use Settings</button>
+        <a class="btn-action" href="/studio?job=${jobId}" target="_blank">🎛 Studio</a>
       </div>
       ${sizeStr ? `<div class="job-meta" id="meta-${jobId}">${sizeStr}</div>` : `<div class="job-meta" id="meta-${jobId}"></div>`}`;
   } else if (status === "error") {
