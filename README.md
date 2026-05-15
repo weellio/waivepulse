@@ -105,15 +105,29 @@ Dancing through the crowded street
 Use the template links (**pop · rock · ballad · hip-hop**) above the lyrics box to load a full example you can edit.
 
 ### 4. Genre & Style Tags
-Click the preset tag buttons to select genres, moods, and instruments. You can also type custom tags in the text field below — comma-separated, no spaces needed.
 
-**Genre examples:** pop, rock, jazz, blues, hip-hop, electronic, classical, country, r&b, metal, folk, reggae, soul, funk, ambient, lofi, indie, punk, synthwave
+Tags are how you communicate the sound you want. HeartMuLa was trained with **8 distinct tag categories** — each one shapes a different dimension of the output. The UI organizes them into collapsible sections so you can pick deliberately rather than guess.
 
-**Mood examples:** happy, sad, energetic, calm, romantic, dark, upbeat, melancholic
+**The most important rule: one tag per category.** The model was trained on examples where each category had a single value. Stacking multiple tags from the same category (e.g. `pop,rock,jazz`) causes the model to average them into something muddier than any one would produce alone. More tags is not better — cleaner is better.
 
-**Instrument examples:** piano, guitar, drums, bass, violin, synthesizer, vocals
+| Category | Importance | What it shapes |
+|---|---|---|
+| **Genre** | Required | The core musical style. Always pick one. |
+| **Timbre** | Recommended | The tone and texture of the sound — bright vs dark, warm vs harsh, smooth vs gritty. |
+| **Gender** | Recommended | Whether the vocalist sounds male, female, or mixed. Also use `no vocals` for instrumentals. |
+| **Mood** | Recommended | The emotional color — nostalgic, epic, melancholic, playful, etc. |
+| **Instrument** | Recommended | A featured instrument the model will try to put front and center. |
+| **Scene** | Optional | A setting or context that influences the atmosphere — coffee shop, stadium, late night, etc. |
+| **Region** | Optional | A cultural flavor — `british` pulls toward melodic rock, `latin` adds rhythmic warmth, `nordic` tends cold and sparse. |
+| **Topic** | Optional | The lyrical subject. Reinforces what you wrote in the lyrics box. |
 
-Mix freely. `pop,piano,happy,upbeat` works great. The more specific, the better the match.
+**Good combo:** `rock,dark,male vocals,nostalgic,electric guitar,british` — clear, one per category, covers the most influential dimensions.
+
+**Avoid:** `pop,rock,jazz` (three Genre tags produce muddy averaging), or `happy,melancholic,dark` (conflicting Mood tags).
+
+**Blending two artists:** The model doesn't know artist names, but you can describe what makes each distinctive across different categories. To blend Linkin Park and The Beatles, for example: Genre `rock`, Timbre `dark`, Region `british` (the key Beatles lever), Mood `nostalgic`, Instrument `electric guitar`. The characteristics come from different categories so they don't conflict.
+
+You can also type freeform tags in the custom field below the grid — comma-separated. Use this for anything not covered by the presets, or for sub-genre descriptors like `nu-metal`, `anthemic`, or `chamber pop`.
 
 ### 5. Tag Presets
 

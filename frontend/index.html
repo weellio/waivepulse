@@ -67,20 +67,36 @@
   input[type=text]:focus, textarea:focus { border-color: #7c5cbf; }
   textarea { min-height: 220px; font-size: 0.85rem; line-height: 1.6; }
 
-  .tags-grid { margin-top: 2px; }
-  .tag-category { margin-bottom: 4px; }
+  .tags-grid { margin-top: 4px; }
+  .tag-grid-tip {
+    font-size: 0.68rem; color: #4a4a66; margin-bottom: 6px; line-height: 1.5;
+  }
+  .tag-grid-tip strong { color: #6a5a9a; }
+  .tag-category { margin-bottom: 3px; }
   .tag-cat-header {
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex; align-items: center; gap: 6px;
     cursor: pointer; padding: 4px 0 3px; user-select: none;
-    color: #4a4a66; font-size: 0.65rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.09em;
     border-bottom: 1px solid #18181f; transition: color .15s;
   }
-  .tag-cat-header:hover { color: #888; border-color: #252535; }
-  .tag-cat-header.open { color: #7c5cbf; border-color: #2a2040; }
-  .cat-arrow { font-size: 0.5rem; transition: transform .18s; line-height: 1; }
+  .tag-cat-header:hover .cat-name { color: #999; }
+  .tag-cat-header:hover { border-color: #252535; }
+  .tag-cat-header.open .cat-name { color: #a07cef; }
+  .tag-cat-header.open { border-color: #2a2040; }
+  .cat-name {
+    color: #555; font-size: 0.65rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.09em; transition: color .15s;
+  }
+  .cat-desc { color: #383850; font-size: 0.62rem; flex: 1; font-style: italic; }
+  .cat-pct {
+    font-size: 0.6rem; font-weight: 700; padding: 1px 5px;
+    border-radius: 8px; border: 1px solid;
+  }
+  .pct-required    { color: #4caf7d; border-color: #1e3d2c; background: #0e2018; }
+  .pct-recommended { color: #c9a227; border-color: #3d3010; background: #1e1808; }
+  .pct-optional    { color: #888;    border-color: #2a2a38; background: #111118; }
+  .cat-arrow { font-size: 0.5rem; color: #333; transition: transform .18s; line-height: 1; }
   .tag-cat-header.open .cat-arrow { transform: rotate(90deg); }
-  .tag-cat-body { display: flex; flex-wrap: wrap; gap: 5px; padding: 5px 0 3px; }
+  .tag-cat-body { display: flex; flex-wrap: wrap; gap: 5px; padding: 5px 0 4px; }
   .tag-cat-body.collapsed { display: none; }
   .tag-btn {
     background: #1a1a24; border: 1px solid #2a2a38; border-radius: 20px;
@@ -89,6 +105,7 @@
   }
   .tag-btn:hover { border-color: #555; color: #ddd; }
   .tag-btn.active { background: #3b2a72; border-color: #7c5cbf; color: #c4aaff; }
+  .tag-btn.warn   { border-color: #5a3a10; }
   .custom-tags { margin-top: 8px; }
 
   /* Tag presets */
@@ -348,6 +365,7 @@ Every day the fire burns"></textarea>
 
     <div>
       <label>Style Tags</label>
+      <div class="tag-grid-tip">8 categories — <strong>Genre is required</strong>, others are recommended or optional. Pick <strong>one tag per category</strong>; stacking multiple same-category tags blurs the style.</div>
       <div class="tags-grid" id="tagGrid"></div>
       <div class="custom-tags">
         <input type="text" id="customTags" placeholder="or type custom tags: jazz,trumpet,upbeat">
@@ -408,50 +426,74 @@ Every day the fire burns"></textarea>
 
 <script>
 // ── Constants ──────────────────────────────────────────────────────────────────
+// Official HeartMuLa training categories (importance = how strongly it shapes output)
+// Source: https://github.com/OneMonkeyArmy/heartlib/blob/main/TAGS_GUIDE.md
+// One tag per category gives clearest results. Genre is required.
 const TAG_CATEGORIES = [
-  { label: "Genre", open: true, tags: [
-    "pop","rock","jazz","blues","hip-hop","electronic","classical","country","r&b",
-    "metal","folk","reggae","soul","funk","ambient","lofi","indie","punk",
-    "synthwave","gospel","latin","disco","new wave","bossa nova","opera"
-  ]},
-  { label: "Era", open: false, tags: [
-    "70s","80s","90s","00s","2010s","retro","vintage","modern","timeless"
-  ]},
-  { label: "Subgenre", open: false, tags: [
-    "adult contemporary","soft rock","power ballad","singer-songwriter",
-    "dream pop","shoegaze","art rock","chamber pop","post-rock","nu-metal",
-    "alternative","grunge","emo","trap","boom bap","dancehall","afrobeats",
-    "k-pop","progressive rock","psychedelic"
-  ]},
-  { label: "Mood", open: true, tags: [
-    "happy","sad","energetic","calm","romantic","dark","upbeat","melancholic",
-    "nostalgic","hopeful","aggressive","mysterious","triumphant","desperate",
-    "tender","longing","bittersweet","playful","epic","haunting","angry","peaceful"
-  ]},
-  { label: "Atmosphere", open: false, tags: [
-    "dreamy","cinematic","ethereal","gritty","raw","warm","intimate","lush",
-    "sparse","anthemic","spacious","tense","whimsical","brooding","euphoric","eerie"
-  ]},
-  { label: "Vocals", open: false, tags: [
-    "male vocals","female vocals","breathy vocals","powerful vocals","raspy vocals",
-    "falsetto","choir","duet","harmonies","rap","spoken word","whisper",
-    "no vocals","instrumental"
-  ]},
-  { label: "Instruments", open: false, tags: [
-    "piano","rhodes piano","electric piano","acoustic guitar","electric guitar",
-    "bass guitar","drums","violin","cello","strings","synthesizer","synth pads",
-    "synth strings","brass","trumpet","saxophone","flute","organ","banjo","harp",
-    "mandolin","ukulele","808 bass","drum machine"
-  ]},
-  { label: "Production", open: false, tags: [
-    "big reverb","heavy delay","dry mix","lo-fi","analog warmth","compressed",
-    "punchy","wide stereo","layered","minimal","orchestral","bedroom pop",
-    "studio polish","tape saturation","distorted","clean"
-  ]},
-  { label: "Tempo", open: false, tags: [
-    "slow","mid-tempo","uptempo","fast","ballad tempo","driving groove",
-    "swing","60 bpm","80 bpm","100 bpm","120 bpm","140 bpm","waltz"
-  ]},
+  { label: "Genre", importance: "required", open: true,
+    desc: "primary style — pick one, always",
+    tags: [
+      "pop","rock","jazz","blues","hip-hop","electronic","classical","country","r&b",
+      "metal","folk","reggae","soul","funk","ambient","lofi","indie","punk",
+      "synthwave","gospel","latin","disco","new wave","bossa nova","opera",
+      "k-pop","dance","edm","alternative","grunge","emo","trap","acoustic"
+    ]
+  },
+  { label: "Timbre", importance: "recommended", open: false,
+    desc: "tone quality / texture",
+    tags: [
+      "bright","dark","warm","cool","soft","harsh","crisp","mellow",
+      "thin","thick","full","nasal","metallic","woody","smooth","gritty",
+      "airy","rich","resonant","clean","distorted","raw"
+    ]
+  },
+  { label: "Gender", importance: "recommended", open: false,
+    desc: "vocalist gender",
+    tags: [
+      "male vocals","female vocals","mixed vocals","choir","no vocals","instrumental"
+    ]
+  },
+  { label: "Mood", importance: "recommended", open: true,
+    desc: "emotional tone",
+    tags: [
+      "happy","sad","energetic","calm","romantic","dark","upbeat","melancholic",
+      "nostalgic","hopeful","angry","mysterious","triumphant","desperate",
+      "tender","longing","bittersweet","playful","epic","haunting","peaceful","euphoric"
+    ]
+  },
+  { label: "Instrument", importance: "recommended", open: false,
+    desc: "featured instrument(s)",
+    tags: [
+      "piano","rhodes piano","electric piano","acoustic guitar","electric guitar",
+      "bass guitar","drums","violin","cello","strings","synthesizer","synth pads",
+      "trumpet","saxophone","flute","organ","banjo","ukulele","harp",
+      "mandolin","808 bass","drum machine","brass","harpsichord"
+    ]
+  },
+  { label: "Scene", importance: "optional", open: false,
+    desc: "setting / context",
+    tags: [
+      "ballroom","nightclub","coffee shop","concert hall","street","beach",
+      "rain","forest","stadium","bedroom","church","bar","wedding",
+      "sunset","late night","morning","summer","winter","road trip","city"
+    ]
+  },
+  { label: "Region", importance: "optional", open: false,
+    desc: "cultural / geographic style",
+    tags: [
+      "american","british","japanese","korean","latin","african","european",
+      "australian","nordic","celtic","mediterranean","caribbean","indian",
+      "chinese","middle eastern","french","italian","spanish"
+    ]
+  },
+  { label: "Topic", importance: "optional", open: false,
+    desc: "lyrical subject matter",
+    tags: [
+      "love","heartbreak","friendship","freedom","nostalgia","youth","struggle",
+      "faith","party","nature","urban life","family","loneliness","empowerment",
+      "travel","loss","hope","identity","revenge","redemption"
+    ]
+  },
 ];
 
 const VIZ_CYCLE  = ['ring', 'bars', 'wave', 'galaxy', 'aurora', 'particles', 'scope'];
@@ -488,7 +530,7 @@ function buildTagGrid() {
 
     const header = document.createElement('div');
     header.className = 'tag-cat-header' + (cat.open ? ' open' : '');
-    header.innerHTML = `<span>${cat.label}</span><span class="cat-arrow">▶</span>`;
+    header.innerHTML = `<span class="cat-name">${cat.label}</span><span class="cat-desc">${cat.desc || ''}</span><span class="cat-pct pct-${cat.importance || 'optional'}">${cat.importance || ''}</span><span class="cat-arrow">▶</span>`;
     header.onclick = () => {
       const isOpen = header.classList.toggle('open');
       body.classList.toggle('collapsed', !isOpen);
