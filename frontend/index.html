@@ -67,10 +67,24 @@
   input[type=text]:focus, textarea:focus { border-color: #7c5cbf; }
   textarea { min-height: 220px; font-size: 0.85rem; line-height: 1.6; }
 
-  .tags-grid { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 2px; }
+  .tags-grid { margin-top: 2px; }
+  .tag-category { margin-bottom: 4px; }
+  .tag-cat-header {
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; padding: 4px 0 3px; user-select: none;
+    color: #4a4a66; font-size: 0.65rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.09em;
+    border-bottom: 1px solid #18181f; transition: color .15s;
+  }
+  .tag-cat-header:hover { color: #888; border-color: #252535; }
+  .tag-cat-header.open { color: #7c5cbf; border-color: #2a2040; }
+  .cat-arrow { font-size: 0.5rem; transition: transform .18s; line-height: 1; }
+  .tag-cat-header.open .cat-arrow { transform: rotate(90deg); }
+  .tag-cat-body { display: flex; flex-wrap: wrap; gap: 5px; padding: 5px 0 3px; }
+  .tag-cat-body.collapsed { display: none; }
   .tag-btn {
     background: #1a1a24; border: 1px solid #2a2a38; border-radius: 20px;
-    color: #aaa; padding: 5px 13px; font-size: 0.78rem;
+    color: #aaa; padding: 4px 11px; font-size: 0.75rem;
     cursor: pointer; transition: all 0.15s; user-select: none;
   }
   .tag-btn:hover { border-color: #555; color: #ddd; }
@@ -333,7 +347,7 @@ Every day the fire burns"></textarea>
     </div>
 
     <div>
-      <label>Genre &amp; Style Tags</label>
+      <label>Style Tags</label>
       <div class="tags-grid" id="tagGrid"></div>
       <div class="custom-tags">
         <input type="text" id="customTags" placeholder="or type custom tags: jazz,trumpet,upbeat">
@@ -394,11 +408,50 @@ Every day the fire burns"></textarea>
 
 <script>
 // ── Constants ──────────────────────────────────────────────────────────────────
-const PRESET_TAGS = [
-  "pop","rock","jazz","blues","hip-hop","electronic","classical","country","r&b",
-  "metal","folk","reggae","soul","funk","ambient","lofi","indie","punk","synthwave",
-  "happy","sad","energetic","calm","romantic","dark","upbeat","melancholic",
-  "piano","guitar","drums","bass","violin","synthesizer","vocals"
+const TAG_CATEGORIES = [
+  { label: "Genre", open: true, tags: [
+    "pop","rock","jazz","blues","hip-hop","electronic","classical","country","r&b",
+    "metal","folk","reggae","soul","funk","ambient","lofi","indie","punk",
+    "synthwave","gospel","latin","disco","new wave","bossa nova","opera"
+  ]},
+  { label: "Era", open: false, tags: [
+    "70s","80s","90s","00s","2010s","retro","vintage","modern","timeless"
+  ]},
+  { label: "Subgenre", open: false, tags: [
+    "adult contemporary","soft rock","power ballad","singer-songwriter",
+    "dream pop","shoegaze","art rock","chamber pop","post-rock","nu-metal",
+    "alternative","grunge","emo","trap","boom bap","dancehall","afrobeats",
+    "k-pop","progressive rock","psychedelic"
+  ]},
+  { label: "Mood", open: true, tags: [
+    "happy","sad","energetic","calm","romantic","dark","upbeat","melancholic",
+    "nostalgic","hopeful","aggressive","mysterious","triumphant","desperate",
+    "tender","longing","bittersweet","playful","epic","haunting","angry","peaceful"
+  ]},
+  { label: "Atmosphere", open: false, tags: [
+    "dreamy","cinematic","ethereal","gritty","raw","warm","intimate","lush",
+    "sparse","anthemic","spacious","tense","whimsical","brooding","euphoric","eerie"
+  ]},
+  { label: "Vocals", open: false, tags: [
+    "male vocals","female vocals","breathy vocals","powerful vocals","raspy vocals",
+    "falsetto","choir","duet","harmonies","rap","spoken word","whisper",
+    "no vocals","instrumental"
+  ]},
+  { label: "Instruments", open: false, tags: [
+    "piano","rhodes piano","electric piano","acoustic guitar","electric guitar",
+    "bass guitar","drums","violin","cello","strings","synthesizer","synth pads",
+    "synth strings","brass","trumpet","saxophone","flute","organ","banjo","harp",
+    "mandolin","ukulele","808 bass","drum machine"
+  ]},
+  { label: "Production", open: false, tags: [
+    "big reverb","heavy delay","dry mix","lo-fi","analog warmth","compressed",
+    "punchy","wide stereo","layered","minimal","orchestral","bedroom pop",
+    "studio polish","tape saturation","distorted","clean"
+  ]},
+  { label: "Tempo", open: false, tags: [
+    "slow","mid-tempo","uptempo","fast","ballad tempo","driving groove",
+    "swing","60 bpm","80 bpm","100 bpm","120 bpm","140 bpm","waltz"
+  ]},
 ];
 
 const VIZ_CYCLE  = ['ring', 'bars', 'wave', 'galaxy', 'aurora', 'particles', 'scope'];
@@ -428,15 +481,36 @@ let _actx = null;
 // ── Tag grid ──────────────────────────────────────────────────────────────────
 function buildTagGrid() {
   const grid = document.getElementById("tagGrid");
-  PRESET_TAGS.forEach(tag => {
-    const btn = document.createElement("div");
-    btn.className = "tag-btn";
-    btn.textContent = tag;
-    btn.onclick = () => {
-      if (selectedTags.has(tag)) { selectedTags.delete(tag); btn.classList.remove("active"); }
-      else { selectedTags.add(tag); btn.classList.add("active"); }
+  grid.innerHTML = '';
+  TAG_CATEGORIES.forEach(cat => {
+    const section = document.createElement('div');
+    section.className = 'tag-category';
+
+    const header = document.createElement('div');
+    header.className = 'tag-cat-header' + (cat.open ? ' open' : '');
+    header.innerHTML = `<span>${cat.label}</span><span class="cat-arrow">▶</span>`;
+    header.onclick = () => {
+      const isOpen = header.classList.toggle('open');
+      body.classList.toggle('collapsed', !isOpen);
     };
-    grid.appendChild(btn);
+
+    const body = document.createElement('div');
+    body.className = 'tag-cat-body' + (cat.open ? '' : ' collapsed');
+
+    cat.tags.forEach(tag => {
+      const btn = document.createElement('div');
+      btn.className = 'tag-btn';
+      btn.textContent = tag;
+      btn.onclick = () => {
+        if (selectedTags.has(tag)) { selectedTags.delete(tag); btn.classList.remove('active'); }
+        else { selectedTags.add(tag); btn.classList.add('active'); }
+      };
+      body.appendChild(btn);
+    });
+
+    section.appendChild(header);
+    section.appendChild(body);
+    grid.appendChild(section);
   });
 }
 
