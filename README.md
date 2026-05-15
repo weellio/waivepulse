@@ -141,11 +141,26 @@ While generating, each job card shows:
 
 Each finished card has:
 
-- **Audio player** with ring / bars / wave visualizer (toggle button)
+- **Audio player** with 7 visualizer styles — click the style button to cycle, or **double-click the visualizer** (or click ⛶) to go **fullscreen**
 - **⬇ Download** — saves the MP3 directly to disk
 - **↺ Use Settings** — loads this song's lyrics, tags, and artist back into the form so you can regenerate or tweak
+- **🎛 Studio** — opens the stem separation Studio page for this song
 - **Duration and file size** shown in the card
 - **ID3 metadata** embedded in the file (readable by any media player or DAW)
+
+**Visualizer styles:**
+
+| Style | Description |
+| --- | --- |
+| ◉ Ring | Circular frequency bars around a glowing core |
+| ▐ Bars | Vertical frequency spectrum with glow |
+| ∿ Wave | Mirrored waveform fill |
+| ✦ Galaxy | Rotating starburst — lines radiate from center, colored by frequency |
+| ≋ Aurora | Layered flowing sine bands, like northern lights |
+| ✺ Particles | Frequency-reactive particles that scatter outward and drift with gravity |
+| ⊙ Scope | Stabilized oscilloscope with zero-crossing lock |
+
+**Fullscreen:** double-click any visualizer (or click the ⛶ icon in the corner) to launch it fullscreen — works great on a TV or second screen. Move the mouse to reveal the style-cycle and exit controls. Press **Escape** to exit.
 
 | Tag | Value |
 | --- | --- |
@@ -165,6 +180,49 @@ Active jobs (queued or generating) have a **Cancel** button in the card header. 
 ### 10. Load MP3
 
 Use the **▶ Load MP3** button to load one or more local audio files into the history panel for visualization. Also supports **drag and drop** — drag MP3 files anywhere onto the right-hand panel.
+
+---
+
+## Studio (Stem Separation)
+
+Click **🎛 Studio** on any completed song card to open the Studio page for that song.
+
+### What it does
+
+The Studio page runs **Demucs** (Facebook Research) on your song to separate it into up to 6 individual stems, then gives you a DAW-style mixer to play them back together.
+
+### Setup
+
+- **Demucs** installed in your Python environment: `pip install demucs`
+- **ffmpeg** on your PATH for MP3 stem output (WAV fallback if not present): `winget install ffmpeg`
+- Separation uses your GPU and takes a few minutes per song
+
+### Stems
+
+| Stem | Description |
+| --- | --- |
+| Vocals | Lead and backing vocals |
+| Drums | Drum kit and percussion |
+| Bass | Bass guitar and low-end |
+| Guitar | Electric and acoustic guitar |
+| Piano | Piano and keys |
+| Other | Everything else |
+
+### Controls
+
+- **Mute (M)** — silence an individual track
+- **Solo (S)** — hear only soloed tracks (multiple solo works)
+- **Volume slider** — per-track level
+- **Click anywhere on a waveform / ruler** — seek to that position
+- **Space** — play / pause
+- **Home** — jump to start
+- **⬇ Export Mix** — renders the current mute/solo/volume state to a WAV file you can save
+
+### Notes
+
+- Separation and generation share the same job queue — only one runs at a time to avoid VRAM conflicts
+- The stems are cached: clicking Studio again on the same song loads instantly
+- The `?sep=` URL parameter lets you bookmark or share a direct link to a finished separation
 
 ---
 

@@ -213,6 +213,16 @@
     backdrop-filter: blur(4px); letter-spacing: 0.04em;
   }
   .viz-toggle:hover { border-color: #7c5cbf; color: #c4aaff; }
+  .viz-fs-btn {
+    position: absolute; bottom: 8px; right: 8px;
+    background: rgba(14,14,22,0.85); border: 1px solid #2a2a38;
+    border-radius: 6px; color: #555; font-size: 0.9rem;
+    width: 26px; height: 26px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; backdrop-filter: blur(4px); padding: 0;
+  }
+  .viz-fs-btn:hover { border-color: #7c5cbf; color: #c4aaff; }
+  .viz-wrap { cursor: pointer; }
 
   /* Card action buttons */
   .card-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
@@ -370,8 +380,8 @@ const PRESET_TAGS = [
   "piano","guitar","drums","bass","violin","synthesizer","vocals"
 ];
 
-const VIZ_CYCLE  = ['ring', 'bars', 'wave'];
-const VIZ_LABELS = { ring: '◉ Ring', bars: '▐ Bars', wave: '∿ Wave' };
+const VIZ_CYCLE  = ['ring', 'bars', 'wave', 'galaxy', 'aurora', 'particles', 'scope'];
+const VIZ_LABELS = { ring: '◉ Ring', bars: '▐ Bars', wave: '∿ Wave', galaxy: '✦ Galaxy', aurora: '≋ Aurora', particles: '✺ Particles', scope: '⊙ Scope' };
 
 const TEMPLATES = {
   pop: `[Verse]\nChasing dreams in the city lights\nEverything is moving fast tonight\nI can feel the rhythm in my bones\nNever gonna make it on my own\n\n[Prechorus]\nBut when the music plays\nI forget my fears\n\n[Chorus]\nTurn it up, let it go\nFeel the beat from down below\nWe are alive, we are free\nThis is where we want to be\n\n[Verse]\nStrangers turn to friends by dawn\nThe night is short but we carry on\nEvery second counts tonight\nDancing till the morning light\n\n[Chorus]\nTurn it up, let it go\nFeel the beat from down below\nWe are alive, we are free\nThis is where we want to be\n\n[Outro]\nThis is where we want to be`,
@@ -389,6 +399,7 @@ const jobLogLines  = {};   // job_id → string[]
 const sseConns     = {};   // job_id → EventSource
 const vizStyles    = {};
 const vizFrames    = {};
+const vizState     = {};   // job_id → { t, pts } for stateful viz
 const audioNodes   = new WeakMap();
 let _actx = null;
 
@@ -641,9 +652,10 @@ function jobCardHTML(jobId, title, tags, status, message, file, fileSize, create
     const sizeStr = formatSize(fileSize);
     bodyContent = `
       <audio controls preload="metadata"><source src="${file}" type="audio/mpeg"></audio>
-      <div class="viz-wrap">
+      <div class="viz-wrap" ondblclick="launchFullscreen('${jobId}')" title="Double-click for fullscreen">
         <canvas id="viz-${jobId}" class="viz-canvas" width="400" height="260"></canvas>
-        <button class="viz-toggle" id="viz-btn-${jobId}" onclick="cycleVizStyle('${jobId}')">${vizLabel}</button>
+        <button class="viz-toggle" id="viz-btn-${jobId}" onclick="cycleVizStyle('${jobId}');event.stopPropagation()" title="Cycle visualization style">${vizLabel}</button>
+        <button class="viz-fs-btn" onclick="launchFullscreen('${jobId}');event.stopPropagation()" title="Fullscreen (or double-click)">⛶</button>
       </div>
       <div class="card-actions">
         <a class="btn-action" href="${file}" download>⬇ Download</a>
@@ -931,6 +943,7 @@ function cycleVizStyle(jobId) {
   const cur  = vizStyles[jobId] || 'ring';
   const next = VIZ_CYCLE[(VIZ_CYCLE.indexOf(cur) + 1) % VIZ_CYCLE.length];
   vizStyles[jobId] = next;
+  if (vizState[jobId]) vizState[jobId].pts = [];
   const btn = document.getElementById(`viz-btn-${jobId}`);
   if (btn) btn.textContent = VIZ_LABELS[next];
 }
@@ -939,6 +952,7 @@ function startViz(jobId, audioEl) {
   const canvas = document.getElementById(`viz-${jobId}`);
   if (!canvas) return;
   stopViz(jobId);
+  if (!vizState[jobId]) vizState[jobId] = { t: 0 };
   const ctx2d    = canvas.getContext('2d');
   const analyser = getAnalyser(audioEl);
   const bufLen   = analyser.frequencyBinCount;
@@ -949,14 +963,23 @@ function startViz(jobId, audioEl) {
     vizFrames[jobId] = requestAnimationFrame(frame);
     const W = canvas.width, H = canvas.height;
     const style = vizStyles[jobId] || 'ring';
+    const state = vizState[jobId];
+    state.t = (state.t || 0) + 1;
+    const t = state.t;
     ctx2d.clearRect(0, 0, W, H);
-    if (style === 'wave') {
+    if (style === 'wave' || style === 'scope') {
       analyser.getByteTimeDomainData(timeData);
-      drawWave(ctx2d, W, H, timeData, bufLen);
+      style === 'wave' ? drawWave(ctx2d,W,H,timeData,bufLen)
+                       : drawScope(ctx2d,W,H,timeData,bufLen);
     } else {
       analyser.getByteFrequencyData(freqData);
-      style === 'ring' ? drawRing(ctx2d, W, H, freqData, bufLen)
-                       : drawBars(ctx2d, W, H, freqData, bufLen);
+      switch (style) {
+        case 'ring':      drawRing(ctx2d,W,H,freqData,bufLen); break;
+        case 'bars':      drawBars(ctx2d,W,H,freqData,bufLen); break;
+        case 'galaxy':    drawGalaxy(ctx2d,W,H,freqData,bufLen,t); break;
+        case 'aurora':    drawAurora(ctx2d,W,H,freqData,bufLen,t); break;
+        case 'particles': drawParticles(ctx2d,W,H,freqData,bufLen,t,state); break;
+      }
     }
   }
   frame();
@@ -1081,11 +1104,223 @@ function drawWave(ctx, W, H, data, bufLen) {
   ctx.shadowBlur = 0;
 }
 
+function drawGalaxy(ctx, W, H, data, bufLen, t) {
+  const cx = W/2, cy = H/2, maxR = Math.min(W,H) * 0.44;
+  const N = 200;
+  let bass = 0;
+  for (let i=0;i<10;i++) bass += data[i];
+  bass /= (10*255);
+  const rot = t * 0.00025;
+  const grd = ctx.createRadialGradient(cx,cy,0,cx,cy,maxR*0.5);
+  grd.addColorStop(0, `rgba(80,40,160,${bass*0.45})`);
+  grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.beginPath(); ctx.arc(cx,cy,maxR*0.5,0,Math.PI*2); ctx.fill();
+  ctx.save();
+  ctx.translate(cx,cy);
+  for (let i=0;i<N;i++) {
+    const v   = data[Math.floor(i*bufLen*0.7/N)] / 255;
+    const ang = (i/N)*Math.PI*2 + rot;
+    const r0  = maxR*0.07, r1 = r0 + v*maxR*0.92;
+    const hue = (i/N)*300 + t*0.03;
+    ctx.strokeStyle = `hsla(${hue},90%,65%,${0.15+v*0.85})`;
+    ctx.shadowColor = `hsla(${hue},90%,70%,${v*0.5})`;
+    ctx.shadowBlur  = v*14;
+    ctx.lineWidth   = 1+v*2.5;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(ang)*r0, Math.sin(ang)*r0);
+    ctx.lineTo(Math.cos(ang)*r1, Math.sin(ang)*r1);
+    ctx.stroke();
+  }
+  ctx.shadowBlur  = 20;
+  ctx.shadowColor = '#c4aaff';
+  ctx.fillStyle   = `rgba(180,140,255,${0.6+bass*0.4})`;
+  ctx.beginPath(); ctx.arc(0,0,4+bass*8,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+  ctx.shadowBlur = 0;
+}
+
+function drawAurora(ctx, W, H, data, bufLen, t) {
+  const bands = 7;
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  for (let b=0;b<bands;b++) {
+    const lo = Math.floor((b/bands)*bufLen*0.6);
+    const hi = Math.floor(((b+1)/bands)*bufLen*0.6);
+    let avg = 0;
+    for (let i=lo;i<hi;i++) avg += data[i];
+    avg /= ((hi-lo)*255);
+    const baseY = H*(0.2 + b*0.1);
+    const amp   = avg*H*0.28 + 4;
+    const hue   = 160 + b*28 + t*0.015;
+    ctx.beginPath();
+    ctx.moveTo(0,H);
+    for (let x=0;x<=W;x+=3) {
+      const nx = x/W;
+      const y  = baseY
+               + Math.sin(nx*Math.PI*3 + t*0.0008 + b*1.1)*amp
+               + Math.sin(nx*Math.PI*5 - t*0.0006 + b*0.7)*amp*0.4
+               + Math.sin(nx*Math.PI*2 + t*0.0012)*amp*0.25;
+      ctx.lineTo(x,y);
+    }
+    ctx.lineTo(W,H); ctx.closePath();
+    const gr = ctx.createLinearGradient(0,baseY-amp*1.5,0,H);
+    gr.addColorStop(0, `hsla(${hue},90%,65%,${0.1+avg*0.45})`);
+    gr.addColorStop(0.6, `hsla(${hue+20},85%,55%,${(0.1+avg*0.45)*0.3})`);
+    gr.addColorStop(1, `hsla(${hue},90%,65%,0)`);
+    ctx.fillStyle = gr; ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawParticles(ctx, W, H, data, bufLen, t, state) {
+  const cx = W/2, cy = H/2;
+  if (!state.pts) state.pts = [];
+  for (let i=0;i<14;i++) {
+    const bin = Math.floor(Math.random()*bufLen*0.7);
+    const v   = data[bin]/255;
+    if (v < 0.28) continue;
+    const ang = Math.random()*Math.PI*2;
+    const spd = 1 + v*5;
+    state.pts.push({
+      x:cx, y:cy,
+      vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd,
+      life: 1,
+      decay: 0.01 + Math.random()*0.02,
+      r: 1+v*3.5,
+      hue: (bin/bufLen)*300 + t*0.05,
+    });
+  }
+  state.pts = state.pts.filter(p => p.life > 0);
+  for (const p of state.pts) {
+    p.x  += p.vx; p.y  += p.vy;
+    p.vy += 0.04;
+    p.life -= p.decay;
+    ctx.globalAlpha  = p.life * 0.85;
+    ctx.fillStyle    = `hsl(${p.hue},90%,65%)`;
+    ctx.shadowColor  = `hsl(${p.hue},90%,70%)`;
+    ctx.shadowBlur   = 8;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r*p.life, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+}
+
+function drawScope(ctx, W, H, data, bufLen) {
+  const cy = H/2;
+  let start = 0;
+  for (let i=1;i<bufLen-1;i++) {
+    if (data[i-1]<128 && data[i]>=128) { start=i; break; }
+  }
+  const slice = W / (bufLen - start);
+  ctx.lineWidth=6; ctx.strokeStyle='rgba(100,180,255,0.07)'; ctx.shadowBlur=0;
+  ctx.beginPath();
+  for (let i=0;i<bufLen-start;i++) {
+    const y = cy + ((data[start+i]/128.0)-1)*cy*0.85;
+    i===0 ? ctx.moveTo(i*slice,y) : ctx.lineTo(i*slice,y);
+  }
+  ctx.stroke();
+  ctx.lineWidth=2; ctx.strokeStyle='#88ddff';
+  ctx.shadowColor='#44aaff'; ctx.shadowBlur=14;
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.beginPath();
+  for (let i=0;i<bufLen-start;i++) {
+    const y = cy + ((data[start+i]/128.0)-1)*cy*0.85;
+    i===0 ? ctx.moveTo(i*slice,y) : ctx.lineTo(i*slice,y);
+  }
+  ctx.stroke();
+  ctx.strokeStyle='rgba(68,170,255,0.1)'; ctx.shadowBlur=0; ctx.lineWidth=1;
+  ctx.setLineDash([4,8]);
+  ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(W,cy); ctx.stroke();
+  ctx.setLineDash([]); ctx.shadowBlur=0;
+}
+
+// ── Fullscreen visualizer ──────────────────────────────────────────────────────
+let _fsJobId = null, _fsRafId = null, _fsStyle = 'ring', _fsState = {};
+
+function launchFullscreen(jobId) {
+  const audioEl = document.querySelector(`#job-${jobId} audio`);
+  if (!audioEl) return;
+  _fsJobId = jobId;
+  _fsStyle = vizStyles[jobId] || 'ring';
+  _fsState = {};
+  const titleEl = document.querySelector(`#job-${jobId} .job-title`);
+  document.getElementById('fs-title').textContent = titleEl ? titleEl.textContent : '';
+  document.getElementById('fs-style-btn').textContent = VIZ_LABELS[_fsStyle] || '◉ Ring';
+  const overlay = document.getElementById('fs-overlay');
+  overlay.style.display = 'flex';
+  overlay.requestFullscreen().catch(() => {});
+  startFsViz(audioEl);
+}
+
+function startFsViz(audioEl) {
+  if (_fsRafId) cancelAnimationFrame(_fsRafId);
+  const canvas   = document.getElementById('fs-canvas');
+  const ctx      = canvas.getContext('2d');
+  const analyser = getAnalyser(audioEl);
+  analyser.fftSize = 2048;
+  const bufLen   = analyser.frequencyBinCount;
+  const freqData = new Uint8Array(bufLen);
+  const timeData = new Uint8Array(bufLen);
+  function frame() {
+    _fsRafId = requestAnimationFrame(frame);
+    const overlay = document.getElementById('fs-overlay');
+    const W = overlay.clientWidth, H = overlay.clientHeight;
+    if (canvas.width !== W || canvas.height !== H) { canvas.width=W; canvas.height=H; }
+    ctx.clearRect(0,0,W,H);
+    _fsState.t = (_fsState.t||0) + 1;
+    const t = _fsState.t;
+    if (_fsStyle==='wave'||_fsStyle==='scope') {
+      analyser.getByteTimeDomainData(timeData);
+      _fsStyle==='wave' ? drawWave(ctx,W,H,timeData,bufLen)
+                        : drawScope(ctx,W,H,timeData,bufLen);
+    } else {
+      analyser.getByteFrequencyData(freqData);
+      switch (_fsStyle) {
+        case 'ring':      drawRing(ctx,W,H,freqData,bufLen); break;
+        case 'bars':      drawBars(ctx,W,H,freqData,bufLen); break;
+        case 'galaxy':    drawGalaxy(ctx,W,H,freqData,bufLen,t); break;
+        case 'aurora':    drawAurora(ctx,W,H,freqData,bufLen,t); break;
+        case 'particles': drawParticles(ctx,W,H,freqData,bufLen,t,_fsState); break;
+      }
+    }
+  }
+  frame();
+}
+
+function exitFs() {
+  if (_fsRafId) { cancelAnimationFrame(_fsRafId); _fsRafId=null; }
+  if (document.fullscreenElement) document.exitFullscreen();
+  document.getElementById('fs-overlay').style.display='none';
+}
+
+function cycleFsStyle() {
+  const next = VIZ_CYCLE[(VIZ_CYCLE.indexOf(_fsStyle)+1) % VIZ_CYCLE.length];
+  _fsStyle = next;
+  _fsState = {};
+  document.getElementById('fs-style-btn').textContent = VIZ_LABELS[next];
+}
+
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) exitFs();
+});
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 buildTagGrid();
 renderPresets();
 loadHistory();
 checkModelStatus();
 </script>
+
+<!-- Fullscreen visualizer overlay -->
+<div id="fs-overlay" style="display:none;position:fixed;inset:0;background:#000;z-index:9999;align-items:center;justify-content:center;flex-direction:column">
+  <canvas id="fs-canvas" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
+  <div id="fs-controls" style="position:absolute;bottom:28px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;z-index:1;opacity:0.3;transition:opacity .25s" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.3'">
+    <span id="fs-title" style="color:#bbb;font-size:13px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'Segoe UI',sans-serif"></span>
+    <button id="fs-style-btn" onclick="cycleFsStyle()" style="background:rgba(15,15,22,0.92);border:1px solid #333;color:#aaa;padding:5px 14px;border-radius:16px;cursor:pointer;font-size:12px;font-family:'Segoe UI',sans-serif;transition:border-color .15s" onmouseenter="this.style.borderColor='#7c5cbf'" onmouseleave="this.style.borderColor='#333'">◉ Ring</button>
+    <button onclick="exitFs()" style="background:rgba(15,15,22,0.92);border:1px solid #333;color:#aaa;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:13px;font-family:'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;transition:border-color .15s" onmouseenter="this.style.borderColor='#7c5cbf'" onmouseleave="this.style.borderColor='#333'">✕</button>
+  </div>
+</div>
 </body>
 </html>
