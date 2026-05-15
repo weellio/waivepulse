@@ -11,13 +11,16 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 - Takes structured lyrics (with `[Verse]`, `[Chorus]`, etc. section markers) and a list of style/genre tags
 - Generates a complete song with full vocals, instrumentation, and structure as an MP3
 - Serves a dark-themed web UI on `http://localhost:7860`
-- Queues and tracks jobs — you can submit a new request while one is generating
-- Shows a live audio player with visualizer when each song is done
+- Queues jobs in order — submit new requests while one is generating, they run one at a time
+- Shows real-time generation progress (language model phase + codec phase) with live log output
+- Persists job history across server restarts
+- Audio player with ring/bars/wave visualizer for every completed song
 
 ---
 
 <img width="1103" height="881" alt="image" src="https://github.com/user-attachments/assets/01819fb0-771f-4d88-a06d-d259415ed424" />
 
+---
 
 ## Requirements
 
@@ -68,7 +71,7 @@ Then open **http://localhost:7860** in any browser.
 ## Using the Web UI
 
 ### 1. Song Title
-Optional label — used as the name displayed in the history panel.
+Optional label — used as the filename and display name in the history panel.
 
 ### 2. Lyrics
 Write your lyrics using section markers. HeartMuLa is trained on this format and produces much better results with proper structure.
@@ -107,7 +110,11 @@ Click the preset tag buttons to select genres, moods, and instruments. You can a
 
 Mix freely. `pop,piano,happy,upbeat` works great. The more specific, the better the match.
 
-### 4. Advanced Settings (click to expand)
+### 4. Tag Presets
+
+Click **+ Save current** next to "Tag Presets" to save your active tag selection under a name. Saved presets appear as chips — click a chip to apply it, × to delete it. Presets are stored in browser localStorage and persist across sessions.
+
+### 5. Advanced Settings (click to expand)
 
 | Setting | Default | Range | Description |
 |---|---|---|---|
@@ -115,19 +122,38 @@ Mix freely. `pop,piano,happy,upbeat` works great. The more specific, the better 
 | Temperature | 1.0 | 0.5 – 2.0 | Higher = more creative/unpredictable. Lower = more conservative/structured. |
 | CFG Scale | 1.5 | 1.0 – 5.0 | How strictly the output follows your tags. Higher = stronger style adherence. |
 
-### 5. Generate
-Hit **Generate Song**. The button re-enables immediately so you can queue another request, but only one job runs at a time — the second waits until the first finishes.
+### 6. Generate
+Hit **Generate Song**. The button re-enables immediately so you can queue another request. Only one job runs at a time — others wait in the queue.
 
-**The amber pulsing dot** = currently generating. **Green dot** = done, audio player appears.
+While generating, each job card shows:
 
-### 6. Load MP3
-Use the **Load MP3** button to load one or more local MP3 files into the history panel for visualization. Supports multi-select.
+- **Language model** progress bar — token generation (phase 1)
+- **Audio codec** progress bar — waveform decode (phase 2)
+- **Live log** — raw output from the model, scrolling in real time
+
+**Amber pulsing dot** = generating. **Green dot** = done, audio player appears.
+
+### 7. Completed cards
+
+Each finished card has:
+
+- **Audio player** with ring / bars / wave visualizer (toggle button)
+- **⬇ Download** — saves the MP3 directly to disk
+- **↺ Use Settings** — loads this song's lyrics and tags back into the form so you can regenerate or tweak
+- **Duration and file size** shown in the card
+
+### 8. Cancel
+
+Active jobs (queued or generating) have a **Cancel** button in the card header. Queued jobs cancel immediately. In-progress jobs finish the current generation, then discard the output.
+
+### 9. Load MP3
+Use the **▶ Load MP3** button to load one or more local audio files into the history panel for visualization. Also supports **drag and drop** — drag MP3 files anywhere onto the right-hand panel.
 
 ---
 
 ## Generation Time
 
-Approximate times on a mid-range GPU with 12 GB VRAM — your hardware may vary:
+Approximate times on a mid-range GPU with 12 GB VRAM — your hardware will vary:
 
 | Duration | LM Tokens | Approx. Time |
 |---|---|---|
@@ -138,10 +164,11 @@ Approximate times on a mid-range GPU with 12 GB VRAM — your hardware may vary:
 | 5 minutes | ~3750 tokens | 100–130 min |
 
 Two phases run sequentially:
-1. **Language model phase** — generates audio tokens (~1.5 tokens/sec)
+
+1. **Language model phase** — autoregressive audio token generation (~1.5 tokens/sec)
 2. **Codec decode phase** — converts tokens to waveform (~41 sec/step, 10 steps per ~30s of audio)
 
-The UI shows "Generating…" throughout. Check the terminal running `start.bat` to see detailed progress bars.
+Progress for both phases is shown live in the browser via the job card.
 
 ---
 
@@ -153,7 +180,7 @@ waivepulse/
 ├── README.md                   This file
 │
 ├── backend/
-│   └── app.py                  FastAPI server — API endpoints, job queue, pipeline loader
+│   └── app.py                  FastAPI server — queue, SSE, history, pipeline loader
 │
 ├── frontend/
 │   └── index.html              Single-page UI — no build step, served directly by FastAPI
@@ -163,6 +190,7 @@ waivepulse/
 │   ├── download_models.py      Download/re-download model weights from HuggingFace
 │   └── fix_dist_infos.py       Utility to remove stale dist-info conflicts in site-packages
 │
+├── history.json                Persisted job history (auto-created, gitignored)
 └── outputs/                    All generated MP3 files saved here (gitignored)
     └── *.mp3
 ```
@@ -211,13 +239,13 @@ Returns the frontend HTML.
   "topk": 50
 }
 ```
-Returns `{"job_id": "abc12345"}`.
+Returns `{"job_id": "abc12345"}`. Job is added to the FIFO queue immediately.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
 | lyrics | string | required | Full lyrics with section markers |
 | tags | string | required | Comma-separated style tags |
-| title | string | "Untitled" | Display name only, not passed to model |
+| title | string | "Untitled" | Used for display name and output filename |
 | max_duration_sec | int | 300 | Maximum audio length in seconds |
 | temperature | float | 1.0 | Sampling temperature (0.5–2.0) |
 | cfg_scale | float | 1.5 | Classifier-free guidance scale |
@@ -228,19 +256,38 @@ Returns `{"job_id": "abc12345"}`.
 {
   "status": "done",
   "message": "Generation complete",
-  "file": "/outputs/abc12345.mp3",
+  "file": "/outputs/My_Song_abc12345.mp3",
+  "file_size": 4521984,
   "title": "My Song",
   "tags": "pop,piano,upbeat",
-  "created_at": "2026-05-13T19:16:02.634449"
+  "lyrics": "...",
+  "temperature": 1.0,
+  "cfg_scale": 1.5,
+  "max_duration_sec": 60,
+  "created_at": "2026-05-14T19:16:02.634449"
 }
 ```
-Status values: `queued` → `generating` → `done` or `error`
+Status values: `queued` → `generating` → `done` / `error` / `cancelled`
+
+### `POST /cancel/{job_id}`
+
+Cancels a queued or generating job. Queued jobs cancel immediately. Generating jobs are flagged — the output is discarded once generation finishes.
+
+### `GET /progress/{job_id}`
+
+Server-Sent Events stream of live log lines from the generation thread. Each event is a JSON-encoded string. Ends with a `__done__` event when the job completes.
+
+```
+data: "Generating tokens:  45%|████  | 337/750 [10:23<12:44]"
+data: "Codec decode step: 6/10 [04:52<03:20]"
+data: "__done__"
+```
 
 ### `GET /outputs/{filename}.mp3`
-Direct download/stream of generated audio.
+Direct download/stream of a generated audio file.
 
 ### `GET /history`
-Returns array of all jobs in reverse chronological order (in-memory, cleared on server restart).
+Returns all jobs in reverse chronological order. Includes full job data (lyrics, settings, file path, etc.). Persisted in `history.json` across server restarts.
 
 ### `DELETE /history/{job_id}`
 Deletes the job record and the corresponding MP3 file on disk.
@@ -274,26 +321,33 @@ Normal. The first `POST /generate` after starting the server triggers model load
 ### `import error: No module named 'triton'`
 Harmless warning from PyTorch on Windows — triton is Linux-only. Generation still works correctly.
 
+### History not showing after restart
+
+History is loaded from `history.json` on startup. Any jobs that were `queued` or `generating` when the server stopped are automatically marked as errors.
+
 ---
 
 ## How It Works (Technical)
 
 ```
-Browser → FastAPI (uvicorn) → BackgroundTask → HeartMuLaGenPipeline
-                                                    │
-                                          1. Language Model (3B params)
-                                             Autoregressive token generation
-                                             Input: lyrics text + style tags
-                                             Output: audio tokens (discrete codes)
-                                                    │
-                                          2. HeartCodec (decoder)
-                                             Converts audio tokens → waveform
-                                             Multiple decode passes per audio segment
-                                                    │
-                                          3. MP3 saved to outputs/{job_id}.mp3
+Browser → FastAPI (uvicorn) → FIFO queue → worker thread → HeartMuLaGenPipeline
+                    ↑                              │
+             SSE /progress              thread-local stdout capture
+             (real-time logs)                      │
+                                       1. Language Model (3B params)
+                                          Autoregressive token generation
+                                          Input: lyrics text + style tags
+                                          Output: audio tokens (discrete codes)
+                                                   │
+                                       2. HeartCodec (decoder)
+                                          Converts audio tokens → waveform
+                                          Multiple decode passes per audio segment
+                                                   │
+                                       3. MP3 saved to outputs/{title}_{job_id}.mp3
+                                          history.json updated
 ```
 
-The pipeline is loaded once on the first request and kept in GPU memory for subsequent jobs. Restart the server to reload.
+A single background worker thread processes jobs in order. `stdout` and `stderr` are wrapped with a thread-local tee so each generation thread's output is captured separately and streamed to the browser without interfering with other output.
 
 ---
 
