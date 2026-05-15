@@ -120,7 +120,8 @@
 
   /* ── Right panel ── */
   .panel-history {
-    flex: 1; padding: 28px; overflow-y: auto; transition: background 0.15s;
+    flex: 1; padding: 28px; overflow-y: scroll; transition: background 0.15s;
+    scrollbar-gutter: stable;
   }
   .panel-history.drag-over {
     background: #111120;
@@ -204,7 +205,7 @@
   audio { width: 100%; margin-top: 10px; accent-color: #7c5cbf; }
   audio::-webkit-media-controls-panel { background: #1a1a28; }
   .viz-wrap { position: relative; margin-top: 8px; }
-  .viz-canvas { width: 100%; height: auto; border-radius: 8px; background: #080810; display: block; }
+  .viz-canvas { width: 100%; aspect-ratio: 20/13; border-radius: 8px; background: #080810; display: block; }
   .viz-toggle {
     position: absolute; top: 8px; right: 8px;
     background: rgba(14,14,22,0.85); border: 1px solid #2a2a38;
@@ -1237,21 +1238,37 @@ function drawScope(ctx, W, H, data, bufLen) {
 }
 
 // ── Fullscreen visualizer ──────────────────────────────────────────────────────
-let _fsJobId = null, _fsRafId = null, _fsStyle = 'ring', _fsState = {};
+let _fsJobId = null, _fsRafId = null, _fsStyle = 'ring', _fsState = {}, _fsAudioEl = null;
 
 function launchFullscreen(jobId) {
   const audioEl = document.querySelector(`#job-${jobId} audio`);
   if (!audioEl) return;
-  _fsJobId = jobId;
-  _fsStyle = vizStyles[jobId] || 'ring';
-  _fsState = {};
+  _fsJobId    = jobId;
+  _fsStyle    = vizStyles[jobId] || 'ring';
+  _fsState    = {};
+  _fsAudioEl  = audioEl;
   const titleEl = document.querySelector(`#job-${jobId} .job-title`);
   document.getElementById('fs-title').textContent = titleEl ? titleEl.textContent : '';
   document.getElementById('fs-style-btn').textContent = VIZ_LABELS[_fsStyle] || '◉ Ring';
+  _syncFsPlayBtn();
+  audioEl.addEventListener('play',  _syncFsPlayBtn);
+  audioEl.addEventListener('pause', _syncFsPlayBtn);
+  audioEl.addEventListener('ended', _syncFsPlayBtn);
   const overlay = document.getElementById('fs-overlay');
   overlay.style.display = 'flex';
   overlay.requestFullscreen().catch(() => {});
   startFsViz(audioEl);
+}
+
+function _syncFsPlayBtn() {
+  const btn = document.getElementById('fs-play-btn');
+  if (!btn || !_fsAudioEl) return;
+  btn.textContent = _fsAudioEl.paused ? '▶' : '⏸';
+}
+
+function toggleFsPlay() {
+  if (!_fsAudioEl) return;
+  _fsAudioEl.paused ? _fsAudioEl.play() : _fsAudioEl.pause();
 }
 
 function startFsViz(audioEl) {
@@ -1291,6 +1308,12 @@ function startFsViz(audioEl) {
 
 function exitFs() {
   if (_fsRafId) { cancelAnimationFrame(_fsRafId); _fsRafId=null; }
+  if (_fsAudioEl) {
+    _fsAudioEl.removeEventListener('play',  _syncFsPlayBtn);
+    _fsAudioEl.removeEventListener('pause', _syncFsPlayBtn);
+    _fsAudioEl.removeEventListener('ended', _syncFsPlayBtn);
+    _fsAudioEl = null;
+  }
   if (document.fullscreenElement) document.exitFullscreen();
   document.getElementById('fs-overlay').style.display='none';
 }
@@ -1306,6 +1329,13 @@ document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement) exitFs();
 });
 
+document.addEventListener('keydown', e => {
+  if (document.fullscreenElement && e.code === 'Space') {
+    e.preventDefault();
+    toggleFsPlay();
+  }
+});
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 buildTagGrid();
 renderPresets();
@@ -1318,6 +1348,7 @@ checkModelStatus();
   <canvas id="fs-canvas" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
   <div id="fs-controls" style="position:absolute;bottom:28px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;z-index:1;opacity:0.3;transition:opacity .25s" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.3'">
     <span id="fs-title" style="color:#bbb;font-size:13px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'Segoe UI',sans-serif"></span>
+    <button id="fs-play-btn" onclick="toggleFsPlay()" style="background:rgba(15,15,22,0.92);border:1px solid #333;color:#ddd;width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:15px;font-family:'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;transition:border-color .15s" onmouseenter="this.style.borderColor='#7c5cbf'" onmouseleave="this.style.borderColor='#333'">▶</button>
     <button id="fs-style-btn" onclick="cycleFsStyle()" style="background:rgba(15,15,22,0.92);border:1px solid #333;color:#aaa;padding:5px 14px;border-radius:16px;cursor:pointer;font-size:12px;font-family:'Segoe UI',sans-serif;transition:border-color .15s" onmouseenter="this.style.borderColor='#7c5cbf'" onmouseleave="this.style.borderColor='#333'">◉ Ring</button>
     <button onclick="exitFs()" style="background:rgba(15,15,22,0.92);border:1px solid #333;color:#aaa;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:13px;font-family:'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;transition:border-color .15s" onmouseenter="this.style.borderColor='#7c5cbf'" onmouseleave="this.style.borderColor='#333'">✕</button>
   </div>
