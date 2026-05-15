@@ -139,6 +139,16 @@
   }
   .btn-load-mp3:hover { border-color: #7c5cbf; color: #c4aaff; }
 
+  /* ── Toast ── */
+  #toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(12px);
+    background: #1e1e2a; border: 1px solid #3a3a50; border-radius: 8px;
+    color: #aaa; font-size: 0.8rem; padding: 8px 18px;
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+    z-index: 8000; white-space: nowrap; max-width: 90vw; text-overflow: ellipsis; overflow: hidden;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
   /* ── Job cards ── */
   .job-card {
     background: #14141e; border: 1px solid #1e1e2a;
@@ -402,6 +412,7 @@ const vizStyles    = {};
 const vizFrames    = {};
 const vizState     = {};   // job_id → { t, pts } for stateful viz
 const audioNodes   = new WeakMap();
+const loadedLocalFiles = new Set();  // "name|size" keys to prevent duplicate loads
 let _actx = null;
 
 // ── Tag grid ──────────────────────────────────────────────────────────────────
@@ -854,9 +865,15 @@ async function loadHistory() {
 function loadFilesAsCards(files) {
   const list  = document.getElementById("historyList");
   const empty = list.querySelector(".empty-state");
-  if (empty) empty.remove();
+  const dupes = [];
 
   files.forEach(file => {
+    const key = `${file.name}|${file.size}`;
+    if (loadedLocalFiles.has(key)) { dupes.push(file.name); return; }
+    loadedLocalFiles.add(key);
+
+    if (empty) empty.remove();
+
     const blobUrl   = URL.createObjectURL(file);
     const jobId     = "local_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6);
     const title     = file.name.replace(/\.[^.]+$/, "");
@@ -870,6 +887,22 @@ function loadFilesAsCards(files) {
     list.insertBefore(card, list.firstChild);
     setTimeout(() => { attachVizListeners(jobId); attachMetaListeners(jobId); }, 0);
   });
+
+  if (dupes.length) {
+    const msg = dupes.length === 1
+      ? `Already loaded: ${dupes[0]}`
+      : `${dupes.length} files already loaded`;
+    showToast(msg);
+  }
+}
+
+let _toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
 }
 
 function loadLocalMP3(input) {
@@ -1342,6 +1375,8 @@ renderPresets();
 loadHistory();
 checkModelStatus();
 </script>
+
+<div id="toast"></div>
 
 <!-- Fullscreen visualizer overlay -->
 <div id="fs-overlay" style="display:none;position:fixed;inset:0;background:#000;z-index:9999;align-items:center;justify-content:center;flex-direction:column">
