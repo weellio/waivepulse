@@ -120,7 +120,7 @@
 
   /* ── Right panel ── */
   .panel-history {
-    flex: 1; padding: 28px; overflow-y: scroll; transition: background 0.15s;
+    flex: 1; padding: 16px 20px; overflow-y: scroll; transition: background 0.15s;
     scrollbar-gutter: stable;
   }
   .panel-history.drag-over {
@@ -129,7 +129,7 @@
     outline-offset: -14px;
   }
   .panel-history-header {
-    display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
   }
   .panel-history h2 { font-size: 1rem; font-weight: 600; color: #ccc; }
   .btn-load-mp3 {
@@ -152,8 +152,8 @@
   /* ── Job cards ── */
   .job-card {
     background: #14141e; border: 1px solid #1e1e2a;
-    border-radius: 12px; padding: 16px 18px;
-    margin-bottom: 12px; transition: border-color 0.2s;
+    border-radius: 10px; padding: 9px 14px;
+    margin-bottom: 5px; transition: border-color 0.2s;
   }
   .job-card:hover { border-color: #2e2e44; }
   .job-card.active-job { border-color: #4a3a80; background: #16152a; }
@@ -161,26 +161,26 @@
   /* Card accordion */
   .job-row {
     display: flex; align-items: center; gap: 8px;
-    cursor: pointer; user-select: none; padding: 2px 0;
+    cursor: pointer; user-select: none; padding: 1px 0;
   }
   .job-row-text { flex: 1; min-width: 0; overflow: hidden; }
   .job-title {
-    font-weight: 600; font-size: 0.92rem;
+    font-weight: 600; font-size: 0.87rem;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
   }
   .job-tags {
-    font-size: 0.72rem; color: #555;
+    font-size: 0.70rem; color: #555;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    display: block; margin-top: 1px;
+    display: block; margin-top: 0;
   }
-  .job-time { font-size: 0.7rem; color: #555; white-space: nowrap; flex-shrink: 0; }
-  .job-duration { font-size: 0.7rem; color: #4a7a5a; white-space: nowrap; flex-shrink: 0; }
-  .expand-icon { font-size: 0.6rem; color: #444; flex-shrink: 0; transition: transform 0.2s; line-height: 1; }
+  .job-time { font-size: 0.68rem; color: #555; white-space: nowrap; flex-shrink: 0; }
+  .job-duration { font-size: 0.68rem; color: #4a7a5a; white-space: nowrap; flex-shrink: 0; }
+  .expand-icon { font-size: 0.58rem; color: #444; flex-shrink: 0; transition: transform 0.2s; line-height: 1; }
   .job-body { max-height: 0; overflow: hidden; transition: max-height 0.35s ease; }
   .job-body.open { max-height: 1200px; }
-  .job-body-inner { padding-top: 12px; }
+  .job-body-inner { padding-top: 10px; }
 
-  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
   .dot-queued    { background: #555; }
   .dot-generating { background: #f5a623; animation: pulse 1s infinite; }
   .dot-done      { background: #4caf7d; }
@@ -785,7 +785,6 @@ function updateJobCard(jobId, data) {
 
   const done = data.status === "done" || data.status === "error" || data.status === "cancelled";
   card.className = done ? "job-card" : "job-card active-job";
-  if (done) openCards.add(jobId);
 
   card.innerHTML = jobCardHTML(jobId, data.title || "Untitled", data.tags || "", data.status, data.message, data.file, data.file_size, data.created_at);
 
@@ -879,7 +878,6 @@ function loadFilesAsCards(files) {
     const title     = file.name.replace(/\.[^.]+$/, "");
     const createdAt = new Date().toISOString();
 
-    openCards.add(jobId);
     const card = document.createElement("div");
     card.className = "job-card";
     card.id = `job-${jobId}`;
