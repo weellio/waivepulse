@@ -418,9 +418,49 @@ def generate(req: GenerateRequest):
     return {"job_id": job_id}
 
 
+def _recover_job(job_id: str) -> bool:
+    """Try to reconstruct a job record from the outputs directory."""
+    candidates = list(OUTPUTS_DIR.glob(f"*_{job_id}.mp3"))
+    if not candidates:
+        return False
+    mp3 = candidates[0]
+    title = mp3.stem.rsplit(f"_{job_id}", 1)[0].replace("_", " ")
+    jobs[job_id] = {
+        "status":   "done", "message": "Recovered from disk",
+        "file":     f"/outputs/{mp3.name}",
+        "file_size": mp3.stat().st_size,
+        "title":    title,  "artist": "",
+        "tags":     "",     "lyrics": "",
+        "max_duration_sec": None, "temperature": None,
+        "cfg_scale": None,  "created_at": None,
+    }
+    return True
+
+
+def _recover_sep(sep_id: str) -> bool:
+    """Try to reconstruct a separation record from the outputs directory."""
+    out_dir = OUTPUTS_DIR / f"sep_{sep_id}"
+    if not out_dir.exists():
+        return False
+    ext   = "mp3" if _FFMPEG else "wav"
+    stems = {}
+    for name in ("vocals", "drums", "bass", "guitar", "piano", "other"):
+        hits = list(out_dir.rglob(f"{name}.{ext}")) or list(out_dir.rglob(f"{name}.wav"))
+        if hits:
+            stems[name] = f"/stems/{sep_id}/{hits[0].name}"
+    if not stems:
+        return False
+    sep_jobs[sep_id] = {
+        "status": "done", "message": f"Recovered from disk ({len(stems)} stems)",
+        "job_id": None,   "title": "Unknown",
+        "stems":  stems,  "created_at": None,
+    }
+    return True
+
+
 @app.get("/status/{job_id}")
 def status(job_id: str):
-    if job_id not in jobs:
+    if job_id not in jobs and not _recover_job(job_id):
         raise HTTPException(status_code=404, detail="Job not found")
     return jobs[job_id]
 
@@ -535,7 +575,7 @@ def separate(job_id: str):
 
 @app.get("/separate/status/{sep_id}")
 def sep_status(sep_id: str):
-    if sep_id not in sep_jobs:
+    if sep_id not in sep_jobs and not _recover_sep(sep_id):
         raise HTTPException(status_code=404, detail="Separation job not found")
     return sep_jobs[sep_id]
 
@@ -599,36 +639,35 @@ def serve_stem(sep_id: str, filename: str):
 
 @app.get("/stems/{sep_id}/zip")
 def download_stems_zip(sep_id: str):
-    if sep_id not in sep_jobs:
-        raise HTTPException(status_code=404, detail="Separation not found")
-    sep = sep_jobs[sep_id]
-    if sep.get("status") != "done":
-        raise HTTPException(status_code=400, detail="Separation not complete")
-    stems = sep.get("stems", {})
-    if not stems:
-        raise HTTPException(status_code=404, detail="No stems found")
-
-    ext     = "mp3" if _FFMPEG else "wav"
     out_dir = OUTPUTS_DIR / f"sep_{sep_id}"
-    buf     = io.BytesIO()
+    if not out_dir.exists():
+        raise HTTPException(status_code=404, detail="Separation directory not found — stem files may have been deleted")
 
+    ext = "mp3" if _FFMPEG else "wav"
+    stem_files = []
+    for name in ("vocals", "drums", "bass", "guitar", "piano", "other"):
+        hits = list(out_dir.rglob(f"{name}.{ext}")) or list(out_dir.rglob(f"{name}.wav"))
+        if hits:
+            stem_files.append(hits[0])
+
+    if not stem_files:
+        raise HTTPException(status_code=404, detail="No stem files found")
+
+    sep   = sep_jobs.get(sep_id) or {}
+    title = sep.get("title", "stems")
+    buf   = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for stem_name in stems:
-            candidates = list(out_dir.rglob(f"{stem_name}.{ext}"))
-            if not candidates:
-                candidates = list(out_dir.rglob(f"{stem_name}.wav"))
-            if candidates:
-                zf.write(candidates[0], arcname=candidates[0].name)
+        for f in stem_files:
+            zf.write(f, arcname=f.name)
 
     buf.seek(0)
-    slug = re.sub(r"[^\w\s-]", "", sep.get("title", "stems")).strip()
+    slug = re.sub(r"[^\w\s-]", "", title).strip()
     slug = re.sub(r"[\s_]+", "_", slug)[:48].strip("_") or "stems"
-    filename = f"{slug}_stems.zip"
 
     return StreamingResponse(
         buf,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f'attachment; filename="{slug}_stems.zip"'},
     )
 
 
