@@ -14,7 +14,8 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 - Queues jobs in order — submit new requests while one is generating, they run one at a time
 - Shows real-time generation progress (language model phase + codec phase) with live log output
 - Persists job history across server restarts
-- Audio player with ring/bars/wave visualizer for every completed song
+- 7 audio visualizer styles with fullscreen mode (great on a TV)
+- **Studio page** — separates any generated song into 6 stems (vocals, drums, bass, guitar, piano, other) with a DAW-style mixer, waveform display, mute/solo/volume per track, and stem zip export
 
 ---
 
@@ -184,6 +185,8 @@ Use the **▶ Load MP3** button to load one or more local audio files into the h
 ---
 
 ## Studio (Stem Separation)
+
+<!-- screenshot -->
 
 Click **🎛 Studio** on any completed song card to open the Studio page for that song.
 
