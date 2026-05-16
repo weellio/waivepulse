@@ -17,7 +17,10 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 - Shows real-time generation progress (language model phase + codec phase) with live log output
 - Persists job history across server restarts
 - 7 audio visualizer styles with fullscreen mode (great on a TV)
+- **BPM + key detection** — each completed song card shows the detected tempo and musical key (requires `librosa`)
 - **Studio page** — separates any generated song into 6 stems (vocals, drums, bass, guitar, piano, other) with a DAW-style mixer, waveform display, mute/solo/volume per track, and stem zip export
+- **Studio stem presets** — one-click mix presets: Full Mix, Karaoke (vocals off), Acappella (instruments off), Drums Only, No Drums
+- **Studio A-B loop** — drag on the ruler to mark a loop region; playback repeats within that region when loop is enabled; ESC clears it
 
 ---
 
@@ -34,6 +37,7 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 | Python | 3.10+ with a virtual environment set up for heartlib |
 | Model | HeartMuLa-oss-3B (~15 GB) + HeartCodec-oss (~6.2 GB) |
 | Framework | FastAPI + uvicorn |
+| BPM/Key | `librosa` (optional) — `pip install librosa` |
 
 ---
 
@@ -163,6 +167,7 @@ Each finished card has:
 - **↺ Use Settings** — loads this song's lyrics, tags, and artist back into the form so you can regenerate or tweak
 - **🎛 Studio** — opens the stem separation Studio page for this song
 - **Duration and file size** shown in the card
+- **BPM and key** displayed as chips on the card (e.g. `♩ 128 BPM`, `♬ A minor`) — requires `librosa`
 - **ID3 metadata** embedded in the file (readable by any media player or DAW)
 
 **Visualizer styles:**
@@ -227,15 +232,33 @@ The Studio page runs **Demucs** (Facebook Research) on your song to separate it 
 | Piano | Piano and keys |
 | Other | Everything else |
 
+### Presets
+
+One-click buttons above the mixer apply common stem combinations:
+
+| Preset | What's audible |
+| --- | --- |
+| Full Mix | All stems |
+| Karaoke | Everything except vocals — sing along |
+| Acappella | Vocals only |
+| Drums Only | Drums only |
+| No Drums | Everything except drums |
+
+### A-B Loop
+
+**Drag on the ruler** to mark a loop region — a cyan highlight shows the selected range. Enable the **⟳** loop button and playback will repeat within that region. **ESC** clears the loop region.
+
 ### Controls
 
 - **Mute (M)** — silence an individual track
 - **Solo (S)** — hear only soloed tracks (multiple solo works)
-- **Volume slider** — per-track level
-- **Click anywhere on a waveform / ruler** — seek to that position
+- **Volume, Pan, EQ, Reverb, Delay knobs** — per-track; drag up/down or scroll wheel; double-click to reset
+- **NRM** — normalize track to peak level
+- **RST** — reset all knobs to default
+- **Click anywhere on a waveform / ruler** — seek to that position (drag on ruler to set A-B loop)
 - **Space** — play / pause
 - **Home** — jump to start
-- **⬇ Export Mix** — renders the current mute/solo/volume state to a WAV file you can save
+- **⬇ Export Mix** — renders the current mute/solo/volume/EQ state to a WAV file you can save
 
 ### Notes
 
