@@ -43,36 +43,40 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 
 ## Quick Start
 
-### 1. Set your paths
+### 1. First-time setup
 
-Open `start.bat` and edit the two lines at the top:
+Open `setup.sh` (Linux) or `setup.bat` (Windows) and edit the two lines at the top to point to your HeartMuLa virtualenv and model directory, then run it once:
 
+**Linux:**
+```bash
+# Edit PYTHON_EXE and HEARTMULA_PATH at the top of setup.sh, then:
+bash setup.sh
+```
+
+**Windows:**
 ```batch
-set PYTHON_EXE=F:\HeartMuLa\venv\Scripts\python.exe
-set HEARTMULA_PATH=F:\HeartMuLa\ckpt
+:: Edit PYTHON_EXE and HEARTMULA_PATH at the top of setup.bat, then:
+setup.bat
 ```
 
-Point `PYTHON_EXE` to the Python interpreter in your heartlib virtual environment, and `HEARTMULA_PATH` to the directory containing your downloaded model weights.
+The setup script installs all Python dependencies and downloads the HeartMuLa model weights (~21 GB) in one step.
 
-### 2. Download models (first run only)
+### 2. Launch
 
+**Linux:**
+```bash
+# Edit PYTHON_EXE and HEARTMULA_PATH at the top of start.sh to match setup.sh, then:
+bash start.sh
 ```
-<your-python> scripts\download_models.py
-```
 
-Total download size is ~21 GB. You can also set `HEARTMULA_PATH` as an environment variable before running the script.
-
-### 3. Launch
-
-Double-click `start.bat` (or run it from a terminal):
-
-```
-.\start.bat
+**Windows:**
+```batch
+start.bat
 ```
 
 Then open **http://localhost:7860** in any browser.
 
-`start.bat` automatically kills any old server process on port 7860 before starting a new one.
+Both launchers automatically kill any old server process on port 7860 before starting a new one.
 
 ---
 
@@ -217,8 +221,10 @@ The Studio page runs **Demucs** (Facebook Research) on your song to separate it 
 
 ### Setup
 
-- **Demucs** installed in your Python environment: `pip install demucs`
-- **ffmpeg** on your PATH for MP3 stem output (WAV fallback if not present): `winget install ffmpeg`
+- **Demucs** installed in your Python environment: `pip install demucs` (included in `requirements.txt`)
+- **ffmpeg** on your PATH for MP3 stem output (WAV fallback if not present)
+  - Linux: `sudo apt install ffmpeg`
+  - Windows: `winget install ffmpeg`
 - Separation uses your GPU and takes a few minutes per song
 
 ### Stems
@@ -293,7 +299,11 @@ Progress for both phases is shown live in the browser via the job card.
 
 ```
 waivepulse/
-├── start.bat                   Launch the server (edit paths at top, then run this)
+├── setup.sh                    First-time setup: install deps + download models (Linux)
+├── setup.bat                   First-time setup: install deps + download models (Windows)
+├── start.sh                    Launch the server (Linux)
+├── start.bat                   Launch the server (Windows)
+├── requirements.txt            Python dependencies (installed by setup script)
 ├── README.md                   This file
 │
 ├── backend/
@@ -414,20 +424,32 @@ Deletes the job record and the corresponding MP3 file on disk.
 ## Troubleshooting
 
 ### Port already in use
-`start.bat` automatically kills any existing process on port 7860 before starting. If you still see the error, run manually:
+The launchers automatically kill any existing process on port 7860 before starting. If you still see the error, run manually:
+
+Linux:
+```bash
+fuser -k 7860/tcp
+```
+Windows:
 ```batch
 for /f "tokens=5" %a in ('netstat -ano ^| findstr ":7860 " ^| findstr "LISTENING"') do taskkill /F /PID %a
 ```
 
 ### "Models missing" badge
-Run the download script:
+Run the download script directly:
+
+Linux:
+```bash
+HEARTMULA_PATH="$HOME/HeartMuLa/ckpt" <your-python> scripts/download_models.py
 ```
+Windows:
+```batch
 <your-python> scripts\download_models.py
 ```
 Total download size is ~21 GB. The badge auto-refreshes every 10 seconds while downloading.
 
 ### Generation error in job card
-Check the terminal running `start.bat` for the full Python traceback. Common causes:
+Check the terminal running the launcher for the full Python traceback. Common causes:
 
 - **Out of VRAM** — close other GPU-heavy apps before generating
 - **Corrupted model file** — re-run `download_models.py` to re-download
@@ -436,7 +458,7 @@ Check the terminal running `start.bat` for the full Python traceback. Common cau
 Normal. The first `POST /generate` after starting the server triggers model load (~20–30 seconds) before generation begins. Subsequent requests use the already-loaded model.
 
 ### `import error: No module named 'triton'`
-Harmless warning from PyTorch on Windows — triton is Linux-only. Generation still works correctly.
+Harmless warning from PyTorch on Windows — triton is Linux-only and will be present automatically on Linux. Generation still works correctly on Windows without it.
 
 ### History not showing after restart
 
@@ -470,11 +492,11 @@ A single background worker thread processes jobs in order. `stdout` and `stderr`
 
 ## Configuration
 
-All machine-specific paths are controlled by two settings in `start.bat`:
+All machine-specific paths are controlled by two settings at the top of each script (`setup.sh` / `setup.bat` / `start.sh` / `start.bat`). Set them to the same values in all four files:
 
-| Variable | Description |
-| --- | --- |
-| `PYTHON_EXE` | Path to your heartlib virtualenv's Python interpreter |
-| `HEARTMULA_PATH` | Path to the model checkpoint directory |
+| Variable | Linux example | Windows example |
+| --- | --- | --- |
+| `PYTHON_EXE` | `$HOME/HeartMuLa/venv/bin/python` | `F:\HeartMuLa\venv\Scripts\python.exe` |
+| `HEARTMULA_PATH` | `$HOME/HeartMuLa/ckpt` | `F:\HeartMuLa\ckpt` |
 
-Both can also be set as system environment variables before launching.
+Both can also be set as environment variables before launching — the scripts will use them if set.

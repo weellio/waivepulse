@@ -1,0 +1,23 @@
+# WAIvePulse dependencies
+# Install into your heartlib virtualenv:
+#   pip install -r requirements.txt
+#
+# NOTE: PyTorch and heartlib are NOT listed here — they must already be
+# installed in your virtualenv as part of the HeartMuLa setup.
+
+# Core server
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+
+# Metadata embedding
+mutagen>=1.47.0
+
+# Model download
+huggingface_hub>=0.20.0
+
+# BPM / key detection (optional — safe to remove if you don't need it)
+librosa>=0.10.0
+numpy>=1.24.0
+
+# Stem separation — Studio page (optional — safe to remove if you don't need it)
+demucs>=4.0.0

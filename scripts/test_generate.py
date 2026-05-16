@@ -5,8 +5,14 @@ Set HEARTMULA_PATH env var to your model checkpoint directory before running.
 import torch
 import os
 import sys
+import platform
+from pathlib import Path
 
-CKPT = os.environ.get("HEARTMULA_PATH", "F:/HeartMuLa/ckpt")
+_default_ckpt = (
+    "F:/HeartMuLa/ckpt" if platform.system() == "Windows"
+    else str(Path.home() / "HeartMuLa" / "ckpt")
+)
+CKPT = os.environ.get("HEARTMULA_PATH", _default_ckpt)
 OUT  = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "outputs", "test_output.mp3"))
 
 LYRICS = """[Verse]

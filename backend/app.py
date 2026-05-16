@@ -29,7 +29,12 @@ from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-HEARTMULA_PATH = os.environ.get("HEARTMULA_PATH", "F:/HeartMuLa/ckpt")
+import platform as _platform
+_DEFAULT_HEARTMULA = (
+    "F:/HeartMuLa/ckpt" if _platform.system() == "Windows"
+    else str(Path.home() / "HeartMuLa" / "ckpt")
+)
+HEARTMULA_PATH = os.environ.get("HEARTMULA_PATH", _DEFAULT_HEARTMULA)
 PYTHON_EXE     = os.environ.get("PYTHON_EXE", sys.executable)
 OUTPUTS_DIR    = Path(__file__).parent.parent / "outputs"
 FRONTEND_DIR   = Path(__file__).parent.parent / "frontend"
