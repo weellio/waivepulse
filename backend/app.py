@@ -38,8 +38,9 @@ HISTORY_FILE   = Path(__file__).parent.parent / "history.json"
 OUTPUTS_DIR.mkdir(exist_ok=True)
 ASSETS_DIR.mkdir(exist_ok=True)
 
-_DEMUCS = importlib.util.find_spec("demucs") is not None
-_FFMPEG = bool(shutil.which("ffmpeg"))
+_DEMUCS  = importlib.util.find_spec("demucs")  is not None
+_LIBROSA = importlib.util.find_spec("librosa") is not None
+_FFMPEG  = bool(shutil.which("ffmpeg"))
 
 app = FastAPI(title="WAIvePulse")
 app.mount("/outputs", StaticFiles(directory=str(OUTPUTS_DIR)), name="outputs")
@@ -125,6 +126,37 @@ def _output_filename(title: str, job_id: str) -> str:
     slug = re.sub(r"[^\w\s-]", "", title).strip()
     slug = re.sub(r"[\s_]+", "_", slug)[:48].strip("_")
     return f"{slug}_{job_id}" if slug else job_id
+
+
+def _detect_bpm_key(mp3_path: str) -> tuple:
+    """Return (bpm_int, key_str) or (None, None) if librosa unavailable."""
+    if not _LIBROSA:
+        return None, None
+    try:
+        import librosa
+        import numpy as np
+        y, sr = librosa.load(mp3_path, sr=22050, mono=True, duration=120)
+        tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+        bpm = int(round(float(tempo))) if tempo else None
+
+        chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
+        chroma_mean = chroma.mean(axis=1)
+        # Krumhansl-Schmuckler key profiles
+        major = np.array([6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88])
+        minor = np.array([6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17])
+        NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
+        best_score, best_key = -1e9, "C major"
+        for i in range(12):
+            for profile, quality in [(major, "major"), (minor, "minor")]:
+                rotated = np.roll(chroma_mean, -i)
+                score   = float(np.corrcoef(rotated, profile)[0, 1])
+                if score > best_score:
+                    best_score = score
+                    best_key   = f"{NOTES[i]} {quality}"
+        return bpm, best_key
+    except Exception as e:
+        _real_stderr.write(f"[waivepulse] BPM/key detection failed: {e}\n")
+        return None, None
 
 
 def _save_history():
@@ -230,11 +262,14 @@ def _run_generation(job_id, lyrics, tags, title, artist, max_ms, temperature, cf
             jobs[job_id]["message"] = "Cancelled"
         else:
             _write_metadata(out_path, title, artist, tags, temperature, cfg_scale)
+            bpm, key = _detect_bpm_key(out_path)
             filename = _output_filename(title, job_id)
             jobs[job_id]["status"]    = "done"
             jobs[job_id]["file"]      = f"/outputs/{filename}.mp3"
             jobs[job_id]["file_size"] = os.path.getsize(out_path)
             jobs[job_id]["message"]   = "Generation complete"
+            jobs[job_id]["bpm"]       = bpm
+            jobs[job_id]["key"]       = key
 
     except Exception as e:
         jobs[job_id]["status"]  = "error"
@@ -405,6 +440,8 @@ def generate(req: GenerateRequest):
         "temperature":     req.temperature,
         "cfg_scale":       req.cfg_scale,
         "created_at":      datetime.now().isoformat(),
+        "bpm":             None,
+        "key":             None,
     }
     cancel_flags[job_id] = threading.Event()
     _job_queue.put(("generate", job_id, {

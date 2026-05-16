@@ -283,7 +283,10 @@
   }
   .btn-action:hover { border-color: #2ab8b8; color: #b8ffff; }
 
-  .job-meta { font-size: 0.71rem; color: #444; margin-top: 8px; }
+  .job-meta { font-size: 0.71rem; color: #444; margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em; }
+  .chip-bpm { background: #0d3030; color: #8cffff; border: 1px solid #2ab8b8; }
+  .chip-key { background: #0d2a20; color: #8cffaa; border: 1px solid #2ab870; }
 
   .btn-delete {
     background: none; border: none; color: #444; cursor: pointer;
@@ -737,7 +740,7 @@ function formatSize(bytes) {
   return bytes > 1048576 ? (bytes / 1048576).toFixed(1) + ' MB' : Math.round(bytes / 1024) + ' KB';
 }
 
-function jobCardHTML(jobId, title, tags, status, message, file, fileSize, createdAt) {
+function jobCardHTML(jobId, title, tags, status, message, file, fileSize, createdAt, bpm, key) {
   const timeStr  = createdAt ? new Date(createdAt).toLocaleTimeString() : "";
   const isOpen   = openCards.has(jobId);
   const vizStyle = vizStyles[jobId] || 'ring';
@@ -798,7 +801,11 @@ function jobCardHTML(jobId, title, tags, status, message, file, fileSize, create
         ${!jobId.startsWith('local_') ? `<button class="btn-action" onclick="loadJobToForm('${jobId}')">↺ Use Settings</button>` : ''}
         ${!jobId.startsWith('local_') ? `<a class="btn-action" href="/studio?job=${jobId}" target="_blank">🎛 Studio</a>` : ''}
       </div>
-      ${sizeStr ? `<div class="job-meta" id="meta-${jobId}">${sizeStr}</div>` : `<div class="job-meta" id="meta-${jobId}"></div>`}`;
+      <div class="job-meta" id="meta-${jobId}">
+        ${sizeStr ? `<span>${sizeStr}</span>` : ''}
+        ${bpm  ? `<span class="chip chip-bpm">♩ ${bpm} BPM</span>` : ''}
+        ${key  ? `<span class="chip chip-key">♬ ${escHtml(key)}</span>` : ''}
+      </div>`;
   } else if (status === "error") {
     bodyContent = `
       <div style="font-size:0.82rem;color:#e05555;padding:8px 0">${escHtml(message)}</div>
@@ -910,7 +917,7 @@ function updateJobCard(jobId, data) {
   const done = data.status === "done" || data.status === "error" || data.status === "cancelled";
   card.className = done ? "job-card" : "job-card active-job";
 
-  card.innerHTML = jobCardHTML(jobId, data.title || "Untitled", data.tags || "", data.status, data.message, data.file, data.file_size, data.created_at);
+  card.innerHTML = jobCardHTML(jobId, data.title || "Untitled", data.tags || "", data.status, data.message, data.file, data.file_size, data.created_at, data.bpm, data.key);
 
   if (data.status === "done") {
     setTimeout(() => { attachVizListeners(jobId); attachMetaListeners(jobId); }, 0);
@@ -971,7 +978,7 @@ async function loadHistory() {
       const done = j.status === "done" || j.status === "error" || j.status === "cancelled";
       card.className = done ? "job-card" : "job-card active-job";
       card.id = `job-${j.job_id}`;
-      card.innerHTML = jobCardHTML(j.job_id, j.title || "Untitled", j.tags || "", j.status, j.message, j.file, j.file_size, j.created_at);
+      card.innerHTML = jobCardHTML(j.job_id, j.title || "Untitled", j.tags || "", j.status, j.message, j.file, j.file_size, j.created_at, j.bpm, j.key);
       list.appendChild(card);
       if (!done) {
         openCards.add(j.job_id);
@@ -1166,10 +1173,17 @@ function attachMetaListeners(jobId) {
     const s = Math.floor(dur % 60).toString().padStart(2, '0');
     const durEl  = document.getElementById(`dur-${jobId}`);
     const metaEl = document.getElementById(`meta-${jobId}`);
-    if (durEl)  durEl.textContent  = `${m}:${s}`;
+    if (durEl)  durEl.textContent = `${m}:${s}`;
     if (metaEl) {
-      const existing = metaEl.textContent;
-      metaEl.textContent = existing ? `${m}:${s} · ${existing}` : `${m}:${s}`;
+      const durSpanEl = metaEl.querySelector('.meta-dur');
+      if (durSpanEl) {
+        durSpanEl.textContent = `${m}:${s}`;
+      } else {
+        const span = document.createElement('span');
+        span.className = 'meta-dur';
+        span.textContent = `${m}:${s}`;
+        metaEl.prepend(span);
+      }
     }
   });
 }

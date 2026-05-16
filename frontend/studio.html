@@ -32,6 +32,17 @@ body{background:#0d0d0d;color:#e0e0e0;font-family:'Segoe UI',system-ui,sans-seri
 #export-btn:disabled,#zip-btn:disabled{opacity:.4;cursor:not-allowed}
 #comp-btn{font-size:10px;width:auto;padding:0 8px;letter-spacing:.3px}
 
+/* ── Preset bar ── */
+#preset-bar{display:flex;align-items:center;gap:8px;padding:5px 16px;background:#0f0f0f;border-bottom:1px solid #1e1e1e;flex-shrink:0}
+#preset-bar .pb-label{font-size:10px;color:#444;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap;margin-right:2px}
+.preset-btn{background:#141414;border:1px solid #2a2a2a;color:#888;padding:3px 12px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;transition:all .15s;white-space:nowrap}
+.preset-btn:hover{border-color:#555;color:#ccc;background:#1e1e1e}
+.preset-btn.active{background:#062828;border-color:#1ab8b8;color:#8cffff}
+
+/* ── Loop region overlay ── */
+#loop-region{position:absolute;top:0;bottom:0;background:rgba(140,255,255,0.06);border-left:2px solid rgba(140,255,255,0.4);border-right:2px solid rgba(140,255,255,0.4);pointer-events:none;z-index:4;display:none}
+#loop-region::before{content:'';position:absolute;top:0;left:0;right:0;height:28px;background:rgba(140,255,255,0.18)}
+
 /* ── Main layout: sidebar + scroll content side by side ── */
 #main{display:flex;flex:1;overflow:hidden}
 
@@ -167,6 +178,15 @@ canvas.waveform{
   <button id="zip-btn"    disabled onclick="downloadZip()">⬇ Stems</button>
 </div>
 
+<div id="preset-bar">
+  <span class="pb-label">Presets</span>
+  <button class="preset-btn active" id="pb-full"     onclick="applyPreset('full')">Full Mix</button>
+  <button class="preset-btn"        id="pb-karaoke"  onclick="applyPreset('karaoke')">Karaoke</button>
+  <button class="preset-btn"        id="pb-acappella"onclick="applyPreset('acappella')">Acappella</button>
+  <button class="preset-btn"        id="pb-drumsonly"onclick="applyPreset('drumsonly')">Drums Only</button>
+  <button class="preset-btn"        id="pb-nodrums"  onclick="applyPreset('nodrums')">No Drums</button>
+</div>
+
 <div id="main">
   <!-- Left: fixed control strips, scroll-synced via JS -->
   <div id="sidebar">
@@ -178,6 +198,7 @@ canvas.waveform{
   <div id="content-area">
     <div id="scroll-content">
       <div id="ruler-inner"></div>
+      <div id="loop-region"></div>
       <!-- track rows inserted here by JS -->
       <div id="playhead"></div>
     </div>
@@ -212,6 +233,15 @@ let _actx=null,_playing=false,_looping=false;
 let _startTime=0,_startOff=0,_rafId=null,_sseConn=null;
 let _zoom=1;
 let _compEnabled=false;
+let _loopStart=null,_loopEnd=null,_rulerDrag=null,_activePreset='full';
+
+const PRESETS={
+  full:     {},
+  karaoke:  {vocals:true},
+  acappella:{drums:true,bass:true,guitar:true,piano:true,other:true},
+  drumsonly:{vocals:true,bass:true,guitar:true,piano:true,other:true},
+  nodrums:  {drums:true},
+};
 
 // Global FX
 let _masterBus,_masterComp,_compDryGain,_compWetGain;
@@ -461,9 +491,11 @@ function buildUI(){
   const st=document.getElementById('sidebar-tracks');
   sc.addEventListener('scroll',()=>{ st.scrollTop=sc.scrollTop; });
 
-  // Ruler click
-  document.getElementById('ruler-inner').addEventListener('click',e=>{
-    seekTo((e.offsetX/getCanvasWidth())*_dur);
+  // Ruler: click = seek, drag = set A-B loop region
+  document.getElementById('ruler-inner').addEventListener('mousedown',e=>{
+    e.preventDefault();
+    const sc=document.getElementById('scroll-content');
+    _rulerDrag={startAbs:e.offsetX+sc.scrollLeft,moved:false};
   });
 
   applyZoom();
@@ -601,6 +633,7 @@ function applyZoom(){
   document.getElementById('ruler-inner').style.width=cw+'px';
   redrawAll();
   buildRuler();
+  updateLoopRegion();
 }
 
 function zoomIn(){_zoom=Math.min(16,_zoom*2);applyZoom();}
@@ -688,7 +721,9 @@ function startRAF(){
     _rafId=requestAnimationFrame(tick);
     if(!_playing)return;
     const pos=currentPosition();
-    if(pos>=_dur){_looping?(seekTo(0),startPlayback()):stopPlayback();return;}
+    const loopEnd=(_looping&&_loopEnd!==null)?_loopEnd:_dur;
+    const loopStart=(_looping&&_loopStart!==null)?_loopStart:0;
+    if(pos>=loopEnd){_looping?seekTo(loopStart):stopPlayback();return;}
     updatePlayhead(pos);
     document.getElementById('time-display').textContent=fmtTime(pos);
     autoScrollToPlayhead(pos);
@@ -709,6 +744,37 @@ function autoScrollToPlayhead(pos){
   if(x<sc.scrollLeft+vw*.05||x>sc.scrollLeft+vw*.85){
     sc.scrollLeft=Math.max(0,x-vw*.2);
   }
+}
+
+// ── Stem presets ───────────────────────────────────────────────────────────
+function applyPreset(name){
+  _activePreset=name;
+  const muteSet=PRESETS[name]||{};
+  for(const stem of STEM_ORDER){
+    if(!tracks[stem])continue;
+    const t=tracks[stem];
+    t.muted=!!muteSet[stem];
+    t.solo=false;
+    const mb=document.getElementById('m-'+stem);
+    const sb=document.getElementById('s-'+stem);
+    if(mb)mb.classList.toggle('mute-on',t.muted);
+    if(sb)sb.classList.remove('solo-on');
+  }
+  document.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('active'));
+  const pb=document.getElementById('pb-'+name);
+  if(pb)pb.classList.add('active');
+  applyGains();
+}
+
+// ── Loop region ────────────────────────────────────────────────────────────
+function updateLoopRegion(){
+  const el=document.getElementById('loop-region');
+  if(!el)return;
+  if(_loopStart===null||_loopEnd===null||_dur===0){el.style.display='none';return;}
+  const cw=getCanvasWidth();
+  el.style.left=((_loopStart/_dur)*cw)+'px';
+  el.style.width=(((_loopEnd-_loopStart)/_dur)*cw)+'px';
+  el.style.display='block';
 }
 
 // ── Mix controls ───────────────────────────────────────────────────────────
@@ -862,6 +928,31 @@ document.addEventListener('keydown',e=>{
   if(e.target.tagName==='INPUT')return;
   if(e.code==='Space'){e.preventDefault();togglePlay();}
   if(e.code==='Home'){e.preventDefault();seekTo(0);}
+  if(e.code==='Escape'){_loopStart=null;_loopEnd=null;updateLoopRegion();}
+});
+
+document.addEventListener('mousemove',e=>{
+  if(!_rulerDrag)return;
+  const sc=document.getElementById('scroll-content');
+  const ruler=document.getElementById('ruler-inner');
+  const rect=ruler.getBoundingClientRect();
+  const absX=Math.max(0,Math.min(getCanvasWidth(),e.clientX-rect.left+sc.scrollLeft));
+  if(Math.abs(absX-_rulerDrag.startAbs)>5)_rulerDrag.moved=true;
+  if(_rulerDrag.moved){
+    const cw=getCanvasWidth();
+    _loopStart=(Math.min(_rulerDrag.startAbs,absX)/cw)*_dur;
+    _loopEnd=(Math.max(_rulerDrag.startAbs,absX)/cw)*_dur;
+    updateLoopRegion();
+  }
+});
+
+document.addEventListener('mouseup',e=>{
+  if(!_rulerDrag)return;
+  if(!_rulerDrag.moved){
+    const cw=getCanvasWidth();
+    seekTo((_rulerDrag.startAbs/cw)*_dur);
+  }
+  _rulerDrag=null;
 });
 
 window.addEventListener('resize',()=>{ if(Object.keys(tracks).length)applyZoom(); });
