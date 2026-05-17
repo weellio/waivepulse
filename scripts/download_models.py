@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Download HeartMuLa model weights from HuggingFace.
 
 Set the HEARTMULA_PATH environment variable (or edit the default below)
@@ -16,8 +17,9 @@ _default_ckpt = (
 CKPT = os.environ.get("HEARTMULA_PATH", _default_ckpt)
 
 models = [
+    ("HeartMuLa/HeartMuLaGen",                    f"{CKPT}"),
     ("HeartMuLa/HeartMuLa-oss-3B-happy-new-year", f"{CKPT}/HeartMuLa-oss-3B"),
-    ("HeartMuLa/HeartCodec-oss-20260123", f"{CKPT}/HeartCodec-oss"),
+    ("HeartMuLa/HeartCodec-oss-20260123",          f"{CKPT}/HeartCodec-oss"),
 ]
 
 for repo_id, local_dir in models:

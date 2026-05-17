@@ -808,7 +808,7 @@ function jobCardHTML(jobId, title, tags, status, message, file, fileSize, create
       </div>`;
   } else if (status === "error") {
     bodyContent = `
-      <div style="font-size:0.82rem;color:#e05555;padding:8px 0">${escHtml(message)}</div>
+      <div style="font-size:0.82rem;color:#e05555;padding:8px 0;white-space:pre-wrap">${escHtml(message)}</div>
       ${jobSettings[jobId] ? `<div class="card-actions"><button class="btn-action" onclick="loadJobToForm('${jobId}')">↺ Use Settings</button></div>` : ''}`;
   } else if (status === "cancelled") {
     bodyContent = `

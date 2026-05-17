@@ -6,6 +6,9 @@ A local, fully offline AI music generation tool powered by **HeartMuLa 3B**. Giv
 
 Runs on your own machine. No cloud, no subscription, no usage limits.
 
+> **Supported platforms: Windows and Linux only.**
+> macOS is not supported — this tool requires an NVIDIA GPU with CUDA, which no modern Mac provides.
+
 ---
 
 ## What It Does
@@ -33,39 +36,43 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 
 | Component | Requirement |
 |---|---|
-| GPU | NVIDIA GPU with ~10 GB VRAM minimum |
-| Python | 3.10+ with a virtual environment set up for heartlib |
-| Model | HeartMuLa-oss-3B (~15 GB) + HeartCodec-oss (~6.2 GB) |
-| Framework | FastAPI + uvicorn |
-| BPM/Key | `librosa` (optional) — `pip install librosa` |
+| OS | Windows 10/11 or Linux (macOS not supported) |
+| GPU | NVIDIA GPU with ~10 GB VRAM minimum (CUDA required) |
+| Python | 3.10+ |
+| Model | HeartMuLa-oss-3B (~15 GB) + HeartCodec-oss (~6.2 GB) + HeartMuLaGen (~small) |
+| Framework | FastAPI + uvicorn (installed automatically by setup) |
 
 ---
 
 ## Quick Start
 
-### 1. First-time setup
-
-Open `setup.sh` (Linux) or `setup.bat` (Windows) and edit the two lines at the top to point to your HeartMuLa virtualenv and model directory, then run it once:
+### 1. First-time setup (run once)
 
 **Linux:**
 ```bash
-# Edit PYTHON_EXE and HEARTMULA_PATH at the top of setup.sh, then:
 bash setup.sh
 ```
 
 **Windows:**
 ```batch
-:: Edit PYTHON_EXE and HEARTMULA_PATH at the top of setup.bat, then:
 setup.bat
 ```
 
-The setup script installs all Python dependencies and downloads the HeartMuLa model weights (~21 GB) in one step.
+The setup script does everything automatically:
+- Installs Python, ffmpeg, and git (if not already present)
+- Checks your NVIDIA GPU and CUDA version
+- Creates a Python virtual environment
+- Installs PyTorch (with the right CUDA build), heartlib, and all other dependencies
+- Downloads the HeartMuLa model weights (~21 GB — this takes a while)
 
-### 2. Launch
+No manual steps. When it finishes, you're ready to launch.
+
+> **Default install locations** — models and the venv go under `~/HeartMuLa/` (Linux) or `%USERPROFILE%\HeartMuLa\` (Windows). To use a different location, set `WAIVEPULSE_VENV` and `WAIVEPULSE_CKPT` environment variables before running setup.
+
+### 2. Launch (every time)
 
 **Linux:**
 ```bash
-# Edit PYTHON_EXE and HEARTMULA_PATH at the top of start.sh to match setup.sh, then:
 bash start.sh
 ```
 
@@ -76,7 +83,7 @@ start.bat
 
 Then open **http://localhost:7860** in any browser.
 
-Both launchers automatically kill any old server process on port 7860 before starting a new one.
+The launchers automatically kill any old server process on port 7860 before starting.
 
 ---
 
@@ -492,11 +499,16 @@ A single background worker thread processes jobs in order. `stdout` and `stderr`
 
 ## Configuration
 
-All machine-specific paths are controlled by two settings at the top of each script (`setup.sh` / `setup.bat` / `start.sh` / `start.bat`). Set them to the same values in all four files:
+Setup writes a small config file (`.waivepulse` on Linux, `.waivepulse.bat` on Windows) that `start` reads automatically — you never need to edit `start.sh` or `start.bat`.
 
-| Variable | Linux example | Windows example |
+To change the install location, set these environment variables **before running setup**:
+
+| Variable | Default (Linux) | Default (Windows) |
 | --- | --- | --- |
-| `PYTHON_EXE` | `$HOME/HeartMuLa/venv/bin/python` | `F:\HeartMuLa\venv\Scripts\python.exe` |
-| `HEARTMULA_PATH` | `$HOME/HeartMuLa/ckpt` | `F:\HeartMuLa\ckpt` |
+| `WAIVEPULSE_VENV` | `~/HeartMuLa/venv` | `%USERPROFILE%\HeartMuLa\venv` |
+| `WAIVEPULSE_CKPT` | `~/HeartMuLa/ckpt` | `%USERPROFILE%\HeartMuLa\ckpt` |
 
-Both can also be set as environment variables before launching — the scripts will use them if set.
+Example:
+```bash
+WAIVEPULSE_CKPT=/mnt/models/HeartMuLa bash setup.sh
+```

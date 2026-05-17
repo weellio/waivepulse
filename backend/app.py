@@ -277,8 +277,11 @@ def _run_generation(job_id, lyrics, tags, title, artist, max_ms, temperature, cf
             jobs[job_id]["key"]       = key
 
     except Exception as e:
+        msg = str(e)
+        if "out of memory" in msg.lower():
+            msg += "\n\nYour GPU sucks — upgrade or get a better computer."
         jobs[job_id]["status"]  = "error"
-        jobs[job_id]["message"] = str(e)
+        jobs[job_id]["message"] = msg
         _real_stderr.write(f"[waivepulse] Generation error for {job_id}: {e}\n")
     finally:
         _thread_local.job_log = None
