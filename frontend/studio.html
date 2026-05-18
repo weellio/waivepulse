@@ -367,7 +367,8 @@ kbd{display:inline-block;background:#1c1c1c;border:1px solid #383838;border-bott
         <table class="help-table"><tbody>
           <tr><td><b>＋ Track button</b></td><td>Open file picker. Accepts MP3, WAV, FLAC, OGG, M4A, AAC.</td></tr>
           <tr><td><b>Drag &amp; drop</b></td><td>Drop one or more audio files anywhere onto the Studio window. A drop target appears.</td></tr>
-          <tr><td><b>⟳ button</b></td><td>Loop this track. A short sample will repeat continuously for the full song duration. Loop state is baked into Export Mix.</td></tr>
+          <tr><td><b>Drag the clip block</b></td><td>Click and drag the gold waveform block left or right on the timeline to set where in the song it plays. The cursor turns to a grab hand when hovering over the block. The clip is clamped so it can't go past the song boundaries. Works at any zoom level.</td></tr>
+          <tr><td><b>⟳ button</b></td><td>Loop this track. A short sample will repeat continuously for the full song duration. Loop state is baked into Export Mix. (Looping disables clip positioning — the clip plays from time 0.)</td></tr>
           <tr><td><b>× button</b></td><td>Remove the imported track permanently</td></tr>
         </tbody></table>
       </div>
@@ -443,6 +444,7 @@ let _importCounter=0;
 let _dragDepth=0;         // tracks dragenter/dragleave nesting
 let _masterSubEQ,_masterAirEQ,_exciterHP,_exciterSat,_exciterWet,_exciterEnabled=false;
 let _selectedTrack=null;
+let _trackPosDrag=null; // {stemKey, songX0, startTime0} — import track repositioning
 
 const IMPORT_COLOR='#e8c84a';
 
@@ -740,19 +742,33 @@ function addTrackToUI(stemKey){
     if(e.button!==0)return;
     selectTrack(stemKey);
     const pos=(e.offsetX/getCanvasWidth())*_dur;
+    const t=tracks[stemKey];
     if(e.shiftKey){
       e.preventDefault();
       _rangeDrawing={stemKey,startPos:pos,currentPos:pos};
+    }else if(t?.isImport&&!t.loopTrack){
+      const st=t.startTime||0,end=st+(t.buffer?.duration||0);
+      if(pos>=st&&pos<=end){
+        e.preventDefault();
+        _trackPosDrag={stemKey,songX0:e.clientX,startTime0:st};
+        row.style.cursor='grabbing';
+      }else{seekTo(pos);}
     }else{
-      const idx=(tracks[stemKey]?.muteRanges||[]).findIndex(r=>pos>=r.start&&pos<=r.end);
-      if(idx>=0){tracks[stemKey].muteRanges.splice(idx,1);redrawAll();}
+      const idx=(t?.muteRanges||[]).findIndex(r=>pos>=r.start&&pos<=r.end);
+      if(idx>=0){t.muteRanges.splice(idx,1);redrawAll();}
       else seekTo(pos);
     }
   });
   row.addEventListener('mousemove',e=>{
+    const t=tracks[stemKey];
     const pos=(e.offsetX/getCanvasWidth())*_dur;
-    const inR=(tracks[stemKey]?.muteRanges||[]).some(r=>pos>=r.start&&pos<=r.end);
-    row.style.cursor=e.shiftKey?'crosshair':inR?'pointer':'default';
+    if(t?.isImport&&!t.loopTrack){
+      const st=t.startTime||0,end=st+(t.buffer?.duration||0);
+      row.style.cursor=e.shiftKey?'crosshair':(pos>=st&&pos<=end)?'grab':'default';
+    }else{
+      const inR=(t?.muteRanges||[]).some(r=>pos>=r.start&&pos<=r.end);
+      row.style.cursor=e.shiftKey?'crosshair':inR?'pointer':'default';
+    }
   });
   const canvas=document.createElement('canvas');
   canvas.className='waveform';
@@ -767,7 +783,8 @@ function addTrackToUI(stemKey){
 
   requestAnimationFrame(()=>{
     if(!t.peaks)t.peaks=computePeaks(t.buffer);
-    drawWaveform(canvas,t.peaks,color,false);
+    if(t.isImport)drawPositionedWaveform(canvas,t.peaks,IMPORT_COLOR,false,t.startTime||0,t.buffer.duration,_dur);
+    else drawWaveform(canvas,t.peaks,color,false);
   });
 }
 
@@ -954,11 +971,53 @@ function drawWaveform(canvas,peaks,color,dimmed){
   for(let i=0;i<peaks.length;i++){const amp=peaks[i]*mid*.9;ctx.fillRect(i*bw,mid-amp,bw*.75,amp*2);}
 }
 
+function drawPositionedWaveform(canvas,peaks,color,dimmed,startTime,bufDur,songDur){
+  const dpr=window.devicePixelRatio||1;
+  const w=canvas.clientWidth||800,h=canvas.clientHeight||72;
+  canvas.width=w*dpr; canvas.height=h*dpr;
+  const ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+  // dark void background
+  ctx.fillStyle='#080808'; ctx.fillRect(0,0,w,h);
+  if(!songDur)return;
+  const xS=Math.round((startTime/songDur)*w);
+  const cw=Math.max(2,Math.round((bufDur/songDur)*w));
+  // clip region background
+  ctx.fillStyle=dimmed?'#161616':'#111';
+  ctx.fillRect(xS,0,cw,h);
+  // waveform bars — subsample peaks to fit within clip pixels
+  const mid=h/2;
+  const grad=ctx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0,  dimmed?'#2a2a2a':color+'cc');
+  grad.addColorStop(.5, dimmed?'#1a1a1a':color+'55');
+  grad.addColorStop(1,  dimmed?'#2a2a2a':color+'cc');
+  ctx.fillStyle=grad;
+  const numBars=Math.max(1,Math.floor(cw));
+  const step=peaks.length/numBars;
+  const bw=cw/numBars;
+  for(let i=0;i<numBars;i++){
+    const amp=peaks[Math.floor(i*step)]*mid*.9;
+    ctx.fillRect(xS+i*bw,mid-amp,Math.max(0.5,bw*.75),amp*2);
+  }
+  // border + edge handles
+  ctx.strokeStyle=dimmed?'#2a2a2a':color+'88';
+  ctx.lineWidth=1;ctx.strokeRect(xS+.5,1,cw-1,h-2);
+  ctx.strokeStyle=dimmed?'#444':color;
+  ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(xS+1,4);ctx.lineTo(xS+1,h-4);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(xS+cw-1,4);ctx.lineTo(xS+cw-1,h-4);ctx.stroke();
+}
+
 function redrawAll(){
   const sc=soloCount();
   for(const[key,t]of Object.entries(tracks)){
     if(t.canvas&&t.peaks){
-      drawWaveform(t.canvas,t.peaks,STEM_COLORS[baseStemOf(key)]||IMPORT_COLOR,t.muted||(sc>0&&!t.solo));
+      const dimmed=t.muted||(sc>0&&!t.solo);
+      if(t.isImport){
+        drawPositionedWaveform(t.canvas,t.peaks,IMPORT_COLOR,dimmed,t.startTime||0,t.buffer.duration,_dur);
+      }else{
+        drawWaveform(t.canvas,t.peaks,STEM_COLORS[baseStemOf(key)]||IMPORT_COLOR,dimmed);
+      }
       const ranges=[...(t.muteRanges||[])];
       if(_rangeDrawing&&_rangeDrawing.stemKey===key)
         ranges.push({start:Math.min(_rangeDrawing.startPos,_rangeDrawing.currentPos),end:Math.max(_rangeDrawing.startPos,_rangeDrawing.currentPos)});
@@ -1020,7 +1079,7 @@ async function handleImportFiles(files){
         volume:1,pan:0,eqB:0,eqM:0,eqT:0,revAmt:0,dlyAmt:0,
         offset:0,
         isDuplicate:false,isImport:true,baseStem:key,
-        importName:file.name.replace(/\.[^.]+$/,''),loopTrack:false,
+        importName:file.name.replace(/\.[^.]+$/,''),loopTrack:false,startTime:0,
         eqS:0,peaks:null,canvas:null,knobs:{},muteRanges:[],_inMuteRange:false,
       };
       wireTrack(key);
@@ -1090,13 +1149,26 @@ function startPlayback(){
   for(const[,t]of Object.entries(tracks)){
     const src=_actx.createBufferSource();
     src.buffer=t.buffer;
-    src.loop=!!(t.isImport&&t.loopTrack);
-    const srcOff=src.loop?(offset%t.buffer.duration):offset;
     src.connect(t.offsetNode||t.gainNode);
-    src.start(_actx.currentTime+0.05,srcOff);
     src.onended=()=>{if(t.source===src)t.source=null;};
     t.source=src;
     t._inMuteRange=false;
+    if(t.isImport&&t.loopTrack){
+      src.loop=true;
+      src.start(_actx.currentTime+0.05,offset%t.buffer.duration);
+    }else if(t.isImport){
+      // positioned clip: schedule relative to playhead position
+      const clipStart=t.startTime||0;
+      const clipEnd=clipStart+t.buffer.duration;
+      if(offset>=clipEnd){try{src.disconnect();}catch{}t.source=null;continue;} // clip already past
+      if(offset>=clipStart){
+        src.start(_actx.currentTime+0.05,offset-clipStart);
+      }else{
+        src.start(_actx.currentTime+0.05+(clipStart-offset),0);
+      }
+    }else{
+      src.start(_actx.currentTime+0.05,offset);
+    }
   }
   _playing=true;
   const btn=document.getElementById('play-btn');
@@ -1351,11 +1423,12 @@ async function exportMix(){
       const revS=off.createGain();revS.gain.value=t.revAmt;
       const dlyS=off.createGain();dlyS.gain.value=t.dlyAmt;
       const src=off.createBufferSource();src.buffer=t.buffer;
-      src.loop=!!(t.isImport&&t.loopTrack);
       const ofs=off.createDelay(0.051);ofs.delayTime.value=t.offset||0;
       src.connect(ofs);ofs.connect(muteGain);muteGain.connect(gain);gain.connect(pan);pan.connect(eqS);eqS.connect(eqB);eqB.connect(eqM);eqM.connect(eqT);
       eqT.connect(offBus);eqT.connect(revS);revS.connect(offRev);eqT.connect(dlyS);dlyS.connect(offDlyIn);
-      src.start(0);
+      if(t.isImport&&t.loopTrack){src.loop=true;src.start(0);}
+      else if(t.isImport){src.start(t.startTime||0);}
+      else{src.start(0);}
     }
     const rendered=await off.startRendering();
     const wav=audioBufferToWav(rendered);
@@ -1500,6 +1573,17 @@ document.addEventListener('mousemove',e=>{
       redrawAll();
     }
   }
+  if(_trackPosDrag){
+    const {stemKey,songX0,startTime0}=_trackPosDrag;
+    const t=tracks[stemKey];
+    if(t){
+      const dx=e.clientX-songX0;
+      const dt=(dx/getCanvasWidth())*_dur;
+      const bufDur=t.buffer?.duration||0;
+      t.startTime=Math.max(0,Math.min(_dur-bufDur,startTime0+dt));
+      redrawAll();
+    }
+  }
 });
 
 document.addEventListener('mouseup',e=>{
@@ -1519,6 +1603,12 @@ document.addEventListener('mouseup',e=>{
       tracks[stemKey].muteRanges=mergeRanges(tracks[stemKey].muteRanges);
     }
     redrawAll();
+  }
+  if(_trackPosDrag){
+    const {stemKey}=_trackPosDrag;
+    _trackPosDrag=null;
+    const row=document.querySelector(`#scroll-content .track-row[data-stem="${stemKey}"]`);
+    if(row)row.style.cursor='grab';
   }
 });
 

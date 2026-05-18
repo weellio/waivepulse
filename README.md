@@ -26,7 +26,12 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 - **Studio A-B loop** — drag on the ruler to mark a loop region; playback repeats within that region when loop is enabled; ESC clears it
 - **Studio track duplication** — DUP button per track creates a layered copy with independent knobs; OFS knob (0–50 ms) on every track for ADT doubling effects
 - **Studio mute automation** — shift+drag on any waveform to draw red mute regions; live during playback and baked into exports; click a region to delete it
-- **Studio track import** — drag & drop or ＋ Track button adds any audio file (MP3/WAV/FLAC/OGG) as a full mixer track with loop toggle; layered into the export render
+- **Studio track import** — drag & drop or ＋ Track button adds any audio file (MP3/WAV/FLAC/OGG) as a full mixer track; drag the clip block left/right on the timeline to set its start position; loop toggle repeats short clips for the full song
+- **Studio per-track SUB knob** — 60 Hz lowshelf shelf per track; AI music often lacks sub-bass — boost this on drums and bass stems to add physical rumble and body
+- **Studio master harmonic exciter** — EXC button on the master bus; high-passes at 3 kHz, applies soft saturation, mixes back at 18% wet; adds overtone shimmer and "air" AI audio typically lacks
+- **Studio MASTER preset** — one-click mastering treatment: duplicates drums at 12 ms ADT offset, boosts sub/treble per stem, adds reverb presence, enables the exciter, and boosts master sub + air EQ
+- **Studio track selection + DAW shortcuts** — click any track to select it (cyan border); keyboard shortcuts then operate on that track (M/S/N/R/D); Tab/Shift+Tab cycles tracks; full shortcut reference via the **?** button or H key
+- **Studio help modal** — **?** button (top-right) or **H** key opens a full in-app reference covering every knob, button, and keyboard shortcut
 - **AI content watermarking** — AudioSeal neural watermark (survives re-encoding) + C2PA provenance manifest embedded in every generated MP3 (requires `audioseal`, `torchaudio`, `c2pa`, `cryptography`)
 
 ---
@@ -293,14 +298,24 @@ Bring in any audio file as an extra mixer track — a sample, a loop, a scratch 
 
 - **Mute (M)** — silence an individual track
 - **Solo (S)** — hear only soloed tracks (multiple solo works)
-- **Volume, Pan, EQ, Reverb, Delay knobs** — per-track; drag up/down or scroll wheel; double-click to reset
+- **Volume, Pan, SUB, Bass, Mid, Treb, Rev, Dly, OFS knobs** — per-track; drag up/down or scroll wheel; double-click to reset
 - **NRM** — normalize track to peak level
 - **RST** — reset all knobs to default
+- **DUP** — duplicate track with independent knobs (use OFS knob for ADT/doubling)
+- **Click a track strip or waveform row** — selects that track (cyan highlight); keyboard shortcuts then apply to it
+- **Tab / Shift+Tab** — cycle to next / previous track
 - **Click anywhere on a waveform / ruler** — seek to that position (drag on ruler to set A-B loop)
 - **Shift + drag on a waveform** — draw a mute region for that section
+- **Drag an imported clip block** — reposition where in the song it plays (grab cursor appears on hover)
+- **EXC** — toggle master bus harmonic exciter (adds overtone shimmer to high frequencies only)
+- **LMT** — toggle master bus limiter/compressor (loudness glue, tames peaks)
+- **MASTER** — one-click mastering preset applied to all stems
+- **? / H** — open the in-app help reference
 - **Space** — play / pause
-- **Home** — jump to start
-- **⬇ Export Mix** — renders the current mute/solo/volume/EQ/mute-automation state to a WAV file
+- **Home** — stop and return to start
+- **⬇ Export Mix** — renders the full mix (all knobs, EQ, mute regions, positioning, master chain) to a lossless WAV
+
+**Full keyboard shortcut reference:** press **?** or **H** inside the Studio to open the built-in help panel.
 
 ### Notes
 
