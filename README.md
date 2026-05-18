@@ -41,6 +41,12 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 
 ---
 
+## Demo
+
+▶ [Sing-along demo made with WAIvePulse](https://www.youtube.com/watch?v=gKttuxGeLkw) — AI-generated song with lyrics displayed on screen
+
+---
+
 ## Requirements
 
 | Component | Requirement |
