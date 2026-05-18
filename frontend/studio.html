@@ -137,11 +137,40 @@ canvas.waveform{
 #scroll-content::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:3px}
 #scroll-content::-webkit-scrollbar-corner{background:#111}
 
+/* ── Selected track ── */
+.ctrl-strip.selected{border-left:3px solid #1ab8b8;background:#0a1515}
+.track-row.selected{background:#0a1010}
+
 /* ── Drop-to-import overlay ── */
 #drop-overlay{position:fixed;inset:0;border:3px dashed rgba(140,255,255,0.5);background:rgba(0,28,28,.55);pointer-events:none;z-index:300;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px}
 #drop-overlay.active{display:flex}
 #drop-overlay span{color:#8cffff;font-size:22px;font-weight:600;letter-spacing:.5px}
 #drop-overlay small{color:#2ab8b8;font-size:13px}
+
+/* ── Help modal ── */
+#help-modal{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:500;display:none;align-items:center;justify-content:center;padding:20px}
+#help-modal.open{display:flex}
+#help-panel{background:#111;border:1px solid #2a2a2a;border-radius:10px;width:100%;max-width:700px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.6)}
+.help-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #1e1e1e;flex-shrink:0;background:#131313}
+.help-hdr-title{font-size:15px;font-weight:600;color:#8cffff;letter-spacing:.4px}
+.help-hdr-sub{font-size:11px;color:#444;margin-top:1px}
+.help-close{background:none;border:none;color:#555;font-size:22px;cursor:pointer;padding:0 2px;line-height:1;transition:color .1s}
+.help-close:hover{color:#ccc}
+.help-body{overflow-y:auto;padding:18px 22px;flex:1}
+.help-body::-webkit-scrollbar{width:5px}
+.help-body::-webkit-scrollbar-track{background:#111}
+.help-body::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:3px}
+.help-section{margin-bottom:26px}
+.help-section:last-child{margin-bottom:0}
+.help-section-title{font-size:11px;font-weight:700;color:#8cffff;letter-spacing:1px;text-transform:uppercase;margin-bottom:9px;padding-bottom:5px;border-bottom:1px solid #1d1d1d}
+.help-p{font-size:12px;color:#888;line-height:1.65;margin-bottom:6px}
+.help-table{width:100%;border-collapse:collapse;font-size:12px}
+.help-table th{text-align:left;color:#444;font-size:10px;letter-spacing:.5px;text-transform:uppercase;padding:3px 8px 6px;border-bottom:1px solid #1d1d1d}
+.help-table td{padding:5px 8px;color:#aaa;border-bottom:1px solid #0f0f0f;vertical-align:top;line-height:1.5}
+.help-table td:first-child{white-space:nowrap;color:#ddd;min-width:150px}
+.help-table.knob-table td:first-child{color:#8cffff;font-family:'Courier New',monospace;font-size:11px}
+.help-table.knob-table td:nth-child(2){color:#555;font-size:11px;white-space:nowrap;min-width:110px}
+kbd{display:inline-block;background:#1c1c1c;border:1px solid #383838;border-bottom-width:2px;border-radius:3px;padding:1px 5px;font-family:'Courier New',monospace;font-size:10px;color:#ccc;white-space:nowrap;line-height:1.4}
 
 /* ── Loading overlay ── */
 #overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(13,13,13,.97);z-index:200;gap:16px}
@@ -165,6 +194,7 @@ canvas.waveform{
   <span id="song-title">Loading…</span>
   <span id="audio-info"></span>
   <button id="back-btn" onclick="window.location.href='/'">← Back</button>
+  <button id="help-btn" onclick="showHelp()" title="Help (H)" style="background:none;border:1px solid #333;color:#8cffff;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:13px;font-weight:700;transition:border-color .15s;white-space:nowrap">?</button>
 </div>
 
 <div id="transport">
@@ -181,7 +211,9 @@ canvas.waveform{
   <button class="t-btn" title="Zoom out" onclick="zoomOut()">−</button>
   <button class="t-btn" style="font-size:10px;width:auto;padding:0 7px" title="Fit" onclick="zoomFit()">FIT</button>
   <div class="t-divider"></div>
-  <button class="t-btn" id="comp-btn" style="font-size:10px;width:auto;padding:0 8px" title="Master limiter" onclick="toggleCompressor()">LMT OFF</button>
+  <button class="t-btn" id="comp-btn"    style="font-size:10px;width:auto;padding:0 8px" title="Master limiter" onclick="toggleCompressor()">LMT OFF</button>
+  <button class="t-btn" id="exciter-btn" style="font-size:10px;width:auto;padding:0 8px" title="Harmonic exciter — adds air and presence" onclick="toggleExciter()">EXC</button>
+  <button class="t-btn" id="master-btn"  style="font-size:10px;width:auto;padding:0 9px;color:#c8a832;border-color:#6b5200" title="Apply mastering preset to all stems" onclick="applyMasterPreset()">MASTER</button>
   <div class="t-divider"></div>
   <button id="export-btn" disabled onclick="exportMix()">⬇ Export Mix</button>
   <button id="zip-btn"    disabled onclick="downloadZip()">⬇ Stems</button>
@@ -223,6 +255,162 @@ canvas.waveform{
   <small>MP3 · WAV · FLAC · OGG</small>
 </div>
 
+<div id="help-modal">
+  <div id="help-panel">
+    <div class="help-hdr">
+      <div><div class="help-hdr-title">WAIvePulse Studio — Help</div><div class="help-hdr-sub">Press <kbd>H</kbd> or <kbd>?</kbd> to toggle · <kbd>Esc</kbd> to close</div></div>
+      <button class="help-close" onclick="closeHelp()">×</button>
+    </div>
+    <div class="help-body">
+
+      <div class="help-section">
+        <div class="help-section-title">▶ Playback &amp; Transport</div>
+        <table class="help-table"><tbody>
+          <tr><td><kbd>Space</kbd></td><td>Play / Pause</td></tr>
+          <tr><td><kbd>Home</kbd></td><td>Stop and return to start</td></tr>
+          <tr><td><kbd>→</kbd> / <kbd>←</kbd></td><td>Nudge playhead forward / back 2 seconds</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>→</kbd> / <kbd>←</kbd></td><td>Jump forward / back 10 seconds</td></tr>
+          <tr><td><kbd>.</kbd></td><td>Jump to end of song</td></tr>
+          <tr><td>Click on ruler</td><td>Seek to that position</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">🔍 Zoom &amp; Navigation</div>
+        <table class="help-table"><tbody>
+          <tr><td><kbd>+</kbd> / <kbd>=</kbd></td><td>Zoom in</td></tr>
+          <tr><td><kbd>−</kbd></td><td>Zoom out</td></tr>
+          <tr><td><kbd>F</kbd></td><td>Fit — reset zoom to see full song</td></tr>
+          <tr><td>Scroll wheel on waveform</td><td>Pan left / right when zoomed in</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">⟳ A-B Loop</div>
+        <table class="help-table"><tbody>
+          <tr><td>Drag on ruler</td><td>Set loop in/out region (cyan highlight appears)</td></tr>
+          <tr><td><kbd>L</kbd></td><td>Toggle loop on / off</td></tr>
+          <tr><td><kbd>[</kbd></td><td>Set loop IN point at current playhead position</td></tr>
+          <tr><td><kbd>]</kbd></td><td>Set loop OUT point at current playhead position</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Clear loop region</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">🎚 Per-Track Knobs</div>
+        <p class="help-p">Drag up/down to adjust · Scroll wheel for fine steps · Double-click to reset to default.</p>
+        <table class="help-table knob-table"><thead><tr><th>Knob</th><th>Range</th><th>What it does</th></tr></thead><tbody>
+          <tr><td>VOL</td><td>0 – 150%</td><td>Track volume. 100% = unity. Boosting above 100% can clip if multiple loud tracks are summed — use the limiter (LMT) to catch peaks.</td></tr>
+          <tr><td>PAN</td><td>L100 – R100</td><td>Stereo position. C = center. Try panning drums slightly left, guitar slightly right to add width without changing the mix.</td></tr>
+          <tr><td>SUB</td><td>±12 dB @ 60 Hz</td><td>Sub-bass shelf. AI music consistently lacks this frequency range — it's the physical rumble and body you feel in a car or on headphones. Boost the bass and drums stems first.</td></tr>
+          <tr><td>BASS</td><td>±12 dB @ 200 Hz</td><td>Low-mid shelf. Adds warmth and body. Too much makes everything sound muddy. The bass stem benefits most; cut slightly on vocals to clean up the low end.</td></tr>
+          <tr><td>MID</td><td>±12 dB @ 1 kHz</td><td>Presence bell (peaking filter). Vocals and guitars live here. Boost for forward presence; cut to push a track back in the mix without muting it.</td></tr>
+          <tr><td>TREB</td><td>±12 dB @ 4 kHz</td><td>Brightness shelf. Adds clarity and "air." Too much becomes harsh and fatiguing. Vocals and hi-hats respond well. Cut on bass/drums to reduce harshness.</td></tr>
+          <tr><td>REV</td><td>0 – 100%</td><td>Reverb send. Adds acoustic space — room, hall, depth. All tracks share one convolution reverb. A little goes a long way; too much washes out the mix.</td></tr>
+          <tr><td>DLY</td><td>0 – 100%</td><td>Delay send. Echo effect (~350ms, ~38% feedback). All tracks share one delay line. Works well on vocals and guitar for rhythmic depth.</td></tr>
+          <tr><td>OFS</td><td>0 – 50 ms</td><td>Timing offset — delays this track by up to 50ms. Classic use: duplicate a stem (DUP button), set OFS to 10–20ms on the copy. This is called ADT (automatic double tracking) and makes thin AI audio sound fuller, like it was recorded twice.</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">🔴 Mute Automation</div>
+        <p class="help-p">Draw silent sections on individual tracks — useful for acappella refrains, drum solos, instrumental breakdowns, or call-and-response sections.</p>
+        <table class="help-table"><tbody>
+          <tr><td><kbd>Shift</kbd> + drag on waveform</td><td>Paint a red mute region. Hold shift, click, and drag left or right. The track goes silent only during those seconds.</td></tr>
+          <tr><td>Click inside a red region</td><td>Delete that mute region</td></tr>
+          <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Clear ALL mute regions on the selected track</td></tr>
+        </tbody></table>
+        <p class="help-p" style="margin-top:8px">Mute regions are active during live playback and are baked into the Export Mix WAV file.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">🎯 Track Selection &amp; Shortcuts</div>
+        <p class="help-p">Click any track strip (left side) or waveform row (right side) to select it — it highlights with a cyan border. Keyboard shortcuts then operate on that track.</p>
+        <table class="help-table"><tbody>
+          <tr><td><kbd>Tab</kbd></td><td>Select next track (cycles through all tracks in order)</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>Tab</kbd></td><td>Select previous track</td></tr>
+          <tr><td><kbd>M</kbd></td><td>Mute / unmute selected track</td></tr>
+          <tr><td><kbd>S</kbd></td><td>Solo / unsolo selected track</td></tr>
+          <tr><td><kbd>N</kbd></td><td>Normalize selected track to peak level</td></tr>
+          <tr><td><kbd>R</kbd></td><td>Reset all knobs on selected track to defaults</td></tr>
+          <tr><td><kbd>D</kbd></td><td>Duplicate selected track (creates a copy with independent knobs)</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">🎛 Stem Presets</div>
+        <p class="help-p">One-click mute combinations for common listening scenarios. Presets only affect the original six stems — imported and duplicate tracks are left alone.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>Full Mix</b></td><td>All stems playing — the default output from the AI</td></tr>
+          <tr><td><b>Karaoke</b></td><td>Vocals muted — sing along to the full instrumental</td></tr>
+          <tr><td><b>Acappella</b></td><td>Vocals only — all instruments muted. Good for checking lyric clarity.</td></tr>
+          <tr><td><b>Drums Only</b></td><td>Isolated drum track. Useful for checking the groove or practicing.</td></tr>
+          <tr><td><b>No Drums</b></td><td>Everything except drums — good for practice or creating a chill version</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">✨ Mastering Tools</div>
+        <p class="help-p">AI-generated music often sounds thinner and flatter than professionally recorded music. These tools help close that gap.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>MASTER button</b></td><td>One-click mastering preset. Duplicates drums at 12ms offset (ADT thickening), boosts sub-bass and treble air per stem, adds reverb presence to instruments, enables the harmonic exciter, and boosts the master sub and air EQ. Use this as a starting point, then tweak individual knobs.</td></tr>
+          <tr><td><b>EXC (Exciter)</b></td><td>Harmonic exciter on the master bus. High-passes the signal at 3kHz, applies soft saturation to only the high frequencies, then mixes it back at 18% wet. Adds overtone shimmer and "air" that AI audio typically lacks — makes it sound more alive and present without affecting the low end.</td></tr>
+          <tr><td><b>LMT (Limiter)</b></td><td>Master bus limiter/compressor. Tames loud peaks and adds a sense of loudness glue. Settings: −18dB threshold, 4:1 ratio, fast attack. Toggle on for a more radio-ready sound.</td></tr>
+          <tr><td><b>DUP button</b></td><td>Duplicate any stem as its own independent track. Set OFS to 10–20ms on the copy for ADT doubling. Try panning the two copies slightly apart (e.g. L20 and R20) for a wide stereo image.</td></tr>
+        </tbody></table>
+        <p class="help-p" style="margin-top:8px">Tip: All mastering settings — master EQ, exciter, per-track knobs — are fully baked into <b>Export Mix</b>.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">📥 Importing Tracks</div>
+        <p class="help-p">Bring in any audio file as a full mixer track — samples, loops, scratch vocals, backing tracks.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>＋ Track button</b></td><td>Open file picker. Accepts MP3, WAV, FLAC, OGG, M4A, AAC.</td></tr>
+          <tr><td><b>Drag &amp; drop</b></td><td>Drop one or more audio files anywhere onto the Studio window. A drop target appears.</td></tr>
+          <tr><td><b>⟳ button</b></td><td>Loop this track. A short sample will repeat continuously for the full song duration. Loop state is baked into Export Mix.</td></tr>
+          <tr><td><b>× button</b></td><td>Remove the imported track permanently</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">💾 Export</div>
+        <table class="help-table"><tbody>
+          <tr><td><b>⬇ Export Mix</b></td><td>Renders the full mix to a lossless 16-bit WAV file. All knobs, EQ, reverb, delay, mute regions, looped imports, and the master chain are baked in. This is your final output — use it for sharing, uploading, or loading into a DAW.</td></tr>
+          <tr><td><b>⬇ Stems</b></td><td>Download the six raw separated stems as a ZIP. Use them in any DAW (Pro Tools, Logic, Ableton, etc.) for full professional editing.</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Export Mix shortcut</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">⌨ All Keyboard Shortcuts</div>
+        <table class="help-table"><tbody>
+          <tr><td><kbd>?</kbd> / <kbd>H</kbd></td><td>Open / close this help panel</td></tr>
+          <tr><td><kbd>Space</kbd></td><td>Play / Pause</td></tr>
+          <tr><td><kbd>Home</kbd></td><td>Stop and return to start</td></tr>
+          <tr><td><kbd>→</kbd> / <kbd>←</kbd></td><td>Nudge playhead ±2 seconds</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>→</kbd> / <kbd>←</kbd></td><td>Jump ±10 seconds</td></tr>
+          <tr><td><kbd>.</kbd></td><td>Jump to end</td></tr>
+          <tr><td><kbd>L</kbd></td><td>Toggle loop</td></tr>
+          <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Set loop in / out at playhead</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Clear loop region (or close help)</td></tr>
+          <tr><td><kbd>+</kbd> / <kbd>−</kbd></td><td>Zoom in / out</td></tr>
+          <tr><td><kbd>F</kbd></td><td>Fit to window</td></tr>
+          <tr><td><kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd></td><td>Select next / previous track</td></tr>
+          <tr><td><kbd>M</kbd></td><td>Mute selected track</td></tr>
+          <tr><td><kbd>S</kbd></td><td>Solo selected track</td></tr>
+          <tr><td><kbd>N</kbd></td><td>Normalize selected track</td></tr>
+          <tr><td><kbd>R</kbd></td><td>Reset knobs on selected track</td></tr>
+          <tr><td><kbd>D</kbd></td><td>Duplicate selected track</td></tr>
+          <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Clear all mute regions on selected track</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Export Mix</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd></td><td>Apply MASTER preset</td></tr>
+        </tbody></table>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <div id="overlay">
   <div class="spinner"></div>
   <div id="overlay-title">Loading Studio</div>
@@ -253,6 +441,8 @@ let _loopStart=null,_loopEnd=null,_rulerDrag=null,_activePreset='full';
 let _rangeDrawing=null;   // {stemKey, startPos, currentPos} during shift+drag
 let _importCounter=0;
 let _dragDepth=0;         // tracks dragenter/dragleave nesting
+let _masterSubEQ,_masterAirEQ,_exciterHP,_exciterSat,_exciterWet,_exciterEnabled=false;
+let _selectedTrack=null;
 
 const IMPORT_COLOR='#e8c84a';
 
@@ -356,7 +546,7 @@ async function loadStems(stems){
       tracks[stem]={
         buffer:abuf,source:null,gainNode,
         muted:false,solo:false,
-        volume:1,pan:0,eqB:0,eqM:0,eqT:0,revAmt:0,dlyAmt:0,
+        volume:1,pan:0,eqS:0,eqB:0,eqM:0,eqT:0,revAmt:0,dlyAmt:0,
         offset:0,
         isDuplicate:false,isImport:false,baseStem:stem,
         peaks:null,canvas:null,knobs:{},muteRanges:[],
@@ -387,8 +577,16 @@ function setupGlobalFX(){
   _masterComp=_actx.createDynamicsCompressor();
   _masterComp.threshold.value=-18; _masterComp.knee.value=12;
   _masterComp.ratio.value=4; _masterComp.attack.value=0.005; _masterComp.release.value=0.15;
-  _masterBus.connect(_compDryGain); _compDryGain.connect(_actx.destination);
-  _masterBus.connect(_masterComp); _masterComp.connect(_compWetGain); _compWetGain.connect(_actx.destination);
+  // Master chain: sub EQ → air EQ → comp + exciter
+  _masterSubEQ=_actx.createBiquadFilter(); _masterSubEQ.type='lowshelf';  _masterSubEQ.frequency.value=60;    _masterSubEQ.gain.value=0;
+  _masterAirEQ=_actx.createBiquadFilter(); _masterAirEQ.type='highshelf'; _masterAirEQ.frequency.value=10000; _masterAirEQ.gain.value=0;
+  _exciterHP =_actx.createBiquadFilter();  _exciterHP.type='highpass';    _exciterHP.frequency.value=3000;
+  _exciterSat=_actx.createWaveShaper();    _exciterSat.curve=makeSatCurve(200); _exciterSat.oversample='4x';
+  _exciterWet=_actx.createGain();          _exciterWet.gain.value=0;
+  _masterBus.connect(_masterSubEQ); _masterSubEQ.connect(_masterAirEQ);
+  _masterAirEQ.connect(_compDryGain);   _compDryGain.connect(_actx.destination);
+  _masterAirEQ.connect(_masterComp);    _masterComp.connect(_compWetGain); _compWetGain.connect(_actx.destination);
+  _masterAirEQ.connect(_exciterHP);     _exciterHP.connect(_exciterSat);   _exciterSat.connect(_exciterWet); _exciterWet.connect(_actx.destination);
 
   _reverbNode=_actx.createConvolver(); _reverbNode.buffer=makeIR(_actx);
   _reverbReturn=_actx.createGain(); _reverbReturn.gain.value=0.85;
@@ -401,6 +599,12 @@ function setupGlobalFX(){
   _delayInput.connect(_delayNode);
   _delayNode.connect(_delayFeedback); _delayFeedback.connect(_delayNode);
   _delayNode.connect(_delayReturn); _delayReturn.connect(_masterBus);
+}
+
+function makeSatCurve(k){
+  const n=256,c=new Float32Array(n);
+  for(let i=0;i<n;i++){const x=(i*2/n)-1;c[i]=((Math.PI+k)*x)/(Math.PI+k*Math.abs(x));}
+  return c;
 }
 
 function makeIR(ctx,dur=2.5,decay=2.0){
@@ -420,15 +624,16 @@ function wireTrack(stem){
   const t=tracks[stem],x=_actx;
   t.offsetNode=x.createDelay(0.051); t.offsetNode.delayTime.value=t.offset||0;
   t.panNode=x.createStereoPanner();
-  t.eqBass=x.createBiquadFilter(); t.eqBass.type='lowshelf';  t.eqBass.frequency.value=200;
-  t.eqMid=x.createBiquadFilter();  t.eqMid.type='peaking';    t.eqMid.frequency.value=1000; t.eqMid.Q.value=1.4;
-  t.eqTreble=x.createBiquadFilter();t.eqTreble.type='highshelf';t.eqTreble.frequency.value=4000;
+  t.eqSub=x.createBiquadFilter();    t.eqSub.type='lowshelf';   t.eqSub.frequency.value=60;   t.eqSub.gain.value=t.eqS||0;
+  t.eqBass=x.createBiquadFilter();   t.eqBass.type='lowshelf';  t.eqBass.frequency.value=200;
+  t.eqMid=x.createBiquadFilter();    t.eqMid.type='peaking';    t.eqMid.frequency.value=1000; t.eqMid.Q.value=1.4;
+  t.eqTreble=x.createBiquadFilter(); t.eqTreble.type='highshelf';t.eqTreble.frequency.value=4000;
   t.reverbSend=x.createGain(); t.reverbSend.gain.value=0;
   t.delaySend=x.createGain();  t.delaySend.gain.value=0;
-  // src → offsetNode → gainNode → panNode → eqChain → masterBus
+  // src → offsetNode → gainNode → panNode → sub→bass→mid→treb → masterBus
   t.offsetNode.connect(t.gainNode);
   t.gainNode.connect(t.panNode);
-  t.panNode.connect(t.eqBass); t.eqBass.connect(t.eqMid); t.eqMid.connect(t.eqTreble);
+  t.panNode.connect(t.eqSub); t.eqSub.connect(t.eqBass); t.eqBass.connect(t.eqMid); t.eqMid.connect(t.eqTreble);
   t.eqTreble.connect(_masterBus);
   t.eqTreble.connect(t.reverbSend); t.reverbSend.connect(_reverbNode);
   t.eqTreble.connect(t.delaySend);  t.delaySend.connect(_delayInput);
@@ -504,6 +709,8 @@ function addTrackToUI(stemKey){
     onChange:v=>{t.volume=v;applyGains();}});
   t.knobs.pan =new Knob(r2,{label:'PAN', min:-1,  max:1,   value:t.pan,   def:0,  color, bipolar:true,
     onChange:v=>{t.pan=v;t.panNode.pan.setTargetAtTime(v,_actx.currentTime,0.01);}});
+  t.knobs.sub =new Knob(r2,{label:'SUB', min:-12, max:12,  value:t.eqS||0,def:0,  color, bipolar:true,
+    onChange:v=>{t.eqS=v;if(t.eqSub)t.eqSub.gain.setTargetAtTime(v,_actx.currentTime,0.01);}});
   t.knobs.bass=new Knob(r2,{label:'BASS',min:-12, max:12,  value:t.eqB,   def:0,  color, bipolar:true,
     onChange:v=>{t.eqB=v;t.eqBass.gain.setTargetAtTime(v,_actx.currentTime,0.01);}});
   t.knobs.mid =new Knob(r2,{label:'MID', min:-12, max:12,  value:t.eqM,   def:0,  color, bipolar:true,
@@ -518,6 +725,7 @@ function addTrackToUI(stemKey){
     onChange:v=>{t.offset=v/1000;if(t.offsetNode)t.offsetNode.delayTime.setTargetAtTime(v/1000,_actx.currentTime,0.005);}});
 
   strip.append(r1,r2);
+  strip.addEventListener('mousedown',()=>selectTrack(stemKey));
 
   // Insert strip after last sibling with same baseStem, otherwise append
   const strips=[...sidebarTracks.querySelectorAll('.ctrl-strip')];
@@ -530,6 +738,7 @@ function addTrackToUI(stemKey){
   if(t.isDuplicate)row.style.opacity='0.75';
   row.addEventListener('mousedown',e=>{
     if(e.button!==0)return;
+    selectTrack(stemKey);
     const pos=(e.offsetX/getCanvasWidth())*_dur;
     if(e.shiftKey){
       e.preventDefault();
@@ -612,7 +821,7 @@ function duplicateTrack(stemKey){
   tracks[newKey]={
     buffer:orig.buffer,source:null,gainNode,
     muted:false,solo:false,
-    volume:1,pan:0,eqB:0,eqM:0,eqT:0,revAmt:0,dlyAmt:0,
+    volume:1,pan:0,eqS:0,eqB:0,eqM:0,eqT:0,revAmt:0,dlyAmt:0,
     offset:0,
     isDuplicate:true,isImport:false,baseStem:base,
     peaks:orig.peaks,canvas:null,knobs:{},muteRanges:[],
@@ -812,7 +1021,7 @@ async function handleImportFiles(files){
         offset:0,
         isDuplicate:false,isImport:true,baseStem:key,
         importName:file.name.replace(/\.[^.]+$/,''),loopTrack:false,
-        peaks:null,canvas:null,knobs:{},muteRanges:[],_inMuteRange:false,
+        eqS:0,peaks:null,canvas:null,knobs:{},muteRanges:[],_inMuteRange:false,
       };
       wireTrack(key);
       addTrackToUI(key);
@@ -1012,6 +1221,69 @@ function toggleLoop(){
   _looping=!_looping;
   document.getElementById('loop-btn').classList.toggle('active',_looping);
 }
+// ── Track selection ────────────────────────────────────────────────────────
+function selectTrack(key){
+  _selectedTrack=key;
+  document.querySelectorAll('.ctrl-strip,.track-row').forEach(el=>el.classList.remove('selected'));
+  document.querySelector(`#sidebar-tracks .ctrl-strip[data-stem="${key}"]`)?.classList.add('selected');
+  document.querySelector(`#scroll-content .track-row[data-stem="${key}"]`)?.classList.add('selected');
+}
+function cycleTrack(dir){
+  const keys=Object.keys(tracks);if(!keys.length)return;
+  const idx=_selectedTrack?keys.indexOf(_selectedTrack):-1;
+  selectTrack(keys[(idx+dir+keys.length)%keys.length]);
+}
+
+// ── Help modal ─────────────────────────────────────────────────────────────
+function showHelp(){document.getElementById('help-modal').classList.add('open');}
+function closeHelp(){document.getElementById('help-modal').classList.remove('open');}
+
+function toggleExciter(){
+  _exciterEnabled=!_exciterEnabled;
+  _exciterWet.gain.setTargetAtTime(_exciterEnabled?0.18:0,_actx.currentTime,0.05);
+  const eb=document.getElementById('exciter-btn');
+  eb.classList.toggle('active',_exciterEnabled);
+  eb.textContent=_exciterEnabled?'EXC ON':'EXC';
+}
+
+function applyMasterPreset(){
+  if(!_actx||!Object.keys(tracks).length)return;
+  // Drums ADT duplicate at 12ms for thickness
+  if(tracks['drums']&&!tracks['drums_2']){
+    duplicateTrack('drums');
+    tracks['drums_2'].knobs.ofs.set(12);
+    tracks['drums_2'].knobs.vol.set(0.65);
+    tracks['drums_2'].knobs.rev.set(0.12);
+  }
+  // Per-stem EQ + reverb tuning
+  const cfg={
+    drums:  {sub:3,  bass:2,                    rev:0.10},
+    bass:   {sub:6,  bass:3                              },
+    vocals: {               mid:2,  treb:3,      rev:0.08},
+    guitar: {               mid:1,               rev:0.22},
+    piano:  {                       treb:1,      rev:0.18},
+    other:  {                                    rev:0.10},
+  };
+  for(const[key,t]of Object.entries(tracks)){
+    const s=cfg[baseStemOf(key)];if(!s)continue;
+    if(s.sub !=null)t.knobs.sub?.set(s.sub);
+    if(s.bass!=null)t.knobs.bass?.set(s.bass);
+    if(s.mid !=null)t.knobs.mid?.set(s.mid);
+    if(s.treb!=null)t.knobs.treb?.set(s.treb);
+    if(s.rev !=null)t.knobs.rev?.set(s.rev);
+  }
+  // Master bus boost
+  _masterSubEQ.gain.setTargetAtTime(4,_actx.currentTime,0.05);
+  _masterAirEQ.gain.setTargetAtTime(3,_actx.currentTime,0.05);
+  _exciterEnabled=true;
+  _exciterWet.gain.setTargetAtTime(0.18,_actx.currentTime,0.05);
+  const eb=document.getElementById('exciter-btn');
+  if(eb){eb.classList.add('active');eb.textContent='EXC ON';}
+  // Flash the master button to confirm
+  const mb=document.getElementById('master-btn');
+  if(mb){mb.style.color='#8cffff';mb.style.borderColor='#1ab8b8';setTimeout(()=>{mb.style.color='';mb.style.borderColor='';},800);}
+}
+
 function toggleCompressor(){
   _compEnabled=!_compEnabled;
   const now=_actx?_actx.currentTime:0;
@@ -1053,7 +1325,16 @@ async function exportMix(){
     const offDlyRtn=off.createGain();offDlyRtn.gain.value=0.8;
     offDlyIn.connect(offDly);offDly.connect(offDlyFB);offDlyFB.connect(offDly);
     offDly.connect(offDlyRtn);offDlyRtn.connect(offBus);
-    offBus.connect(off.destination);
+    // Master EQ + exciter chain
+    const offSubEQ=off.createBiquadFilter();offSubEQ.type='lowshelf'; offSubEQ.frequency.value=60;    offSubEQ.gain.value=_masterSubEQ.gain.value;
+    const offAirEQ=off.createBiquadFilter();offAirEQ.type='highshelf';offAirEQ.frequency.value=10000; offAirEQ.gain.value=_masterAirEQ.gain.value;
+    offBus.connect(offSubEQ);offSubEQ.connect(offAirEQ);offAirEQ.connect(off.destination);
+    if(_exciterEnabled){
+      const offExcHP=off.createBiquadFilter();offExcHP.type='highpass';offExcHP.frequency.value=3000;
+      const offExcSat=off.createWaveShaper();offExcSat.curve=makeSatCurve(200);offExcSat.oversample='4x';
+      const offExcWet=off.createGain();offExcWet.gain.value=_exciterWet.gain.value;
+      offAirEQ.connect(offExcHP);offExcHP.connect(offExcSat);offExcSat.connect(offExcWet);offExcWet.connect(off.destination);
+    }
     for(const[stem,t]of Object.entries(tracks)){
       let g=t.volume;if(t.muted||(sc>0&&!t.solo))g=0;if(g===0)continue;
       const gain=off.createGain();gain.gain.value=g;
@@ -1063,15 +1344,16 @@ async function exportMix(){
         muteGain.gain.setValueAtTime(1,Math.min(_dur,r.end));
       }
       const pan=off.createStereoPanner();pan.pan.value=t.pan;
-      const eqB=off.createBiquadFilter();eqB.type='lowshelf';eqB.frequency.value=200;eqB.gain.value=t.eqB;
-      const eqM=off.createBiquadFilter();eqM.type='peaking';eqM.frequency.value=1000;eqM.Q.value=1.4;eqM.gain.value=t.eqM;
-      const eqT=off.createBiquadFilter();eqT.type='highshelf';eqT.frequency.value=4000;eqT.gain.value=t.eqT;
+      const eqS=off.createBiquadFilter();eqS.type='lowshelf'; eqS.frequency.value=60;   eqS.gain.value=t.eqS||0;
+      const eqB=off.createBiquadFilter();eqB.type='lowshelf'; eqB.frequency.value=200;  eqB.gain.value=t.eqB;
+      const eqM=off.createBiquadFilter();eqM.type='peaking';  eqM.frequency.value=1000; eqM.Q.value=1.4;eqM.gain.value=t.eqM;
+      const eqT=off.createBiquadFilter();eqT.type='highshelf';eqT.frequency.value=4000; eqT.gain.value=t.eqT;
       const revS=off.createGain();revS.gain.value=t.revAmt;
       const dlyS=off.createGain();dlyS.gain.value=t.dlyAmt;
       const src=off.createBufferSource();src.buffer=t.buffer;
       src.loop=!!(t.isImport&&t.loopTrack);
       const ofs=off.createDelay(0.051);ofs.delayTime.value=t.offset||0;
-      src.connect(ofs);ofs.connect(muteGain);muteGain.connect(gain);gain.connect(pan);pan.connect(eqB);eqB.connect(eqM);eqM.connect(eqT);
+      src.connect(ofs);ofs.connect(muteGain);muteGain.connect(gain);gain.connect(pan);pan.connect(eqS);eqS.connect(eqB);eqB.connect(eqM);eqM.connect(eqT);
       eqT.connect(offBus);eqT.connect(revS);revS.connect(offRev);eqT.connect(dlyS);dlyS.connect(offDlyIn);
       src.start(0);
     }
@@ -1143,9 +1425,55 @@ function fmtTime(s){const m=Math.floor(s/60);return`${m}:${Math.floor(s%60).toSt
 
 document.addEventListener('keydown',e=>{
   if(e.target.tagName==='INPUT')return;
-  if(e.code==='Space'){e.preventDefault();togglePlay();}
-  if(e.code==='Home'){e.preventDefault();seekTo(0);}
-  if(e.code==='Escape'){_loopStart=null;_loopEnd=null;updateLoopRegion();}
+  const ctrl=e.ctrlKey||e.metaKey;
+
+  // Help toggle
+  if(!ctrl&&(e.key==='?'||e.key==='h'||e.key==='H')){
+    document.getElementById('help-modal').classList.contains('open')?closeHelp():showHelp();return;
+  }
+
+  // Escape: close help first, then clear loop
+  if(e.code==='Escape'){
+    if(document.getElementById('help-modal').classList.contains('open')){closeHelp();return;}
+    _loopStart=null;_loopEnd=null;updateLoopRegion();return;
+  }
+
+  // Ctrl shortcuts
+  if(ctrl){
+    if(e.key==='e'||e.key==='E'){e.preventDefault();if(!document.getElementById('export-btn').disabled)exportMix();return;}
+    if((e.key==='m'||e.key==='M')&&e.shiftKey){e.preventDefault();applyMasterPreset();return;}
+    return;
+  }
+
+  // Playback
+  if(e.code==='Space'){e.preventDefault();togglePlay();return;}
+  if(e.code==='Home'){e.preventDefault();seekTo(0);return;}
+  if(e.code==='Period'){e.preventDefault();seekTo(_dur);return;}
+  if(e.code==='ArrowRight'){e.preventDefault();seekTo(currentPosition()+(e.shiftKey?10:2));return;}
+  if(e.code==='ArrowLeft') {e.preventDefault();seekTo(currentPosition()-(e.shiftKey?10:2));return;}
+
+  // Loop
+  if(e.key==='l'||e.key==='L'){toggleLoop();return;}
+  if(e.key==='['){const p=currentPosition();_loopStart=p;if(_loopEnd===null||_loopEnd<=p)_loopEnd=Math.min(_dur,p+5);updateLoopRegion();return;}
+  if(e.key===']'){const p=currentPosition();_loopEnd=p;if(_loopStart===null||_loopStart>=p)_loopStart=Math.max(0,p-5);updateLoopRegion();return;}
+
+  // Zoom
+  if(e.key==='+'||e.key==='='){zoomIn();return;}
+  if(e.key==='-'){zoomOut();return;}
+  if(e.key==='f'||e.key==='F'){zoomFit();return;}
+
+  // Track cycle
+  if(e.code==='Tab'){e.preventDefault();cycleTrack(e.shiftKey?-1:1);return;}
+
+  // Selected-track operations
+  const t=_selectedTrack&&tracks[_selectedTrack];
+  if(!t)return;
+  if(e.key==='m'||e.key==='M'){toggleMute(_selectedTrack);return;}
+  if(e.key==='s'||e.key==='S'){toggleSolo(_selectedTrack);return;}
+  if(e.key==='n'||e.key==='N'){normalizeTrack(_selectedTrack);return;}
+  if(e.key==='r'||e.key==='R'){resetTrack(_selectedTrack);return;}
+  if(e.key==='d'||e.key==='D'){if(!t.isDuplicate&&!t.isImport)duplicateTrack(_selectedTrack);return;}
+  if(e.code==='Delete'||e.code==='Backspace'){e.preventDefault();t.muteRanges=[];redrawAll();return;}
 });
 
 document.addEventListener('mousemove',e=>{
