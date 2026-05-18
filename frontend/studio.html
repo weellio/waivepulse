@@ -65,10 +65,13 @@ body{background:#0d0d0d;color:#e0e0e0;font-family:'Segoe UI',system-ui,sans-seri
   height:80px;border-bottom:1px solid #1a1a1a;
   display:flex;flex-direction:column;
   padding:5px 7px 3px;gap:2px;
+  position:relative;
 }
+.ctrl-strip.is-dup{background:#0c0c0c}
 .ctrl-row1{display:flex;align-items:center;gap:4px;flex-shrink:0;height:26px}
 .ctrl-row2{display:flex;align-items:flex-end;gap:2px;flex:1}
-.track-name{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;flex:1;white-space:nowrap}
+.track-name{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ctrl-strip.is-import .track-name{text-transform:none;letter-spacing:.2px}
 .tb{background:#1e1e1e;border:1px solid #2a2a2a;color:#888;width:22px;height:20px;border-radius:4px;cursor:pointer;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;transition:all .1s;flex-shrink:0}
 .tb:hover{background:#2a2a2a;color:#ddd}
 .tb.mute-on{background:#3a1f1f;border-color:#7f1d1d;color:#f87171}
@@ -134,6 +137,12 @@ canvas.waveform{
 #scroll-content::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:3px}
 #scroll-content::-webkit-scrollbar-corner{background:#111}
 
+/* ── Drop-to-import overlay ── */
+#drop-overlay{position:fixed;inset:0;border:3px dashed rgba(140,255,255,0.5);background:rgba(0,28,28,.55);pointer-events:none;z-index:300;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px}
+#drop-overlay.active{display:flex}
+#drop-overlay span{color:#8cffff;font-size:22px;font-weight:600;letter-spacing:.5px}
+#drop-overlay small{color:#2ab8b8;font-size:13px}
+
 /* ── Loading overlay ── */
 #overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(13,13,13,.97);z-index:200;gap:16px}
 #overlay.hidden{display:none}
@@ -176,6 +185,9 @@ canvas.waveform{
   <div class="t-divider"></div>
   <button id="export-btn" disabled onclick="exportMix()">⬇ Export Mix</button>
   <button id="zip-btn"    disabled onclick="downloadZip()">⬇ Stems</button>
+  <div class="t-divider"></div>
+  <button class="t-btn" style="font-size:10px;width:auto;padding:0 9px" title="Import audio track (or drag & drop)" onclick="document.getElementById('_importInput').click()">＋ Track</button>
+  <input type="file" id="_importInput" accept="audio/*" multiple style="display:none" onchange="handleImportFiles(this.files);this.value=''">
 </div>
 
 <div id="preset-bar">
@@ -190,7 +202,7 @@ canvas.waveform{
 <div id="main">
   <!-- Left: fixed control strips, scroll-synced via JS -->
   <div id="sidebar">
-    <div id="sidebar-ruler-spacer"></div>
+    <div id="sidebar-ruler-spacer" style="display:flex;align-items:center"><span style="font-size:9px;color:#2a2a2a;padding:0 7px;white-space:nowrap">⇧ drag = mute region</span></div>
     <div id="sidebar-tracks"></div>
   </div>
 
@@ -206,6 +218,10 @@ canvas.waveform{
 </div>
 
 <div class="knob-tip" id="knob-tip"></div>
+<div id="drop-overlay">
+  <span>Drop audio to import track</span>
+  <small>MP3 · WAV · FLAC · OGG</small>
+</div>
 
 <div id="overlay">
   <div class="spinner"></div>
@@ -234,6 +250,11 @@ let _startTime=0,_startOff=0,_rafId=null,_sseConn=null;
 let _zoom=1;
 let _compEnabled=false;
 let _loopStart=null,_loopEnd=null,_rulerDrag=null,_activePreset='full';
+let _rangeDrawing=null;   // {stemKey, startPos, currentPos} during shift+drag
+let _importCounter=0;
+let _dragDepth=0;         // tracks dragenter/dragleave nesting
+
+const IMPORT_COLOR='#e8c84a';
 
 const PRESETS={
   full:     {},
@@ -336,7 +357,9 @@ async function loadStems(stems){
         buffer:abuf,source:null,gainNode,
         muted:false,solo:false,
         volume:1,pan:0,eqB:0,eqM:0,eqT:0,revAmt:0,dlyAmt:0,
-        peaks:null,canvas:null,knobs:{},
+        offset:0,
+        isDuplicate:false,isImport:false,baseStem:stem,
+        peaks:null,canvas:null,knobs:{},muteRanges:[],
       };
       wireTrack(stem);
     }catch(err){console.warn(`Could not load stem ${stem}:`,err);}
@@ -395,17 +418,148 @@ function makeIR(ctx,dur=2.5,decay=2.0){
 
 function wireTrack(stem){
   const t=tracks[stem],x=_actx;
+  t.offsetNode=x.createDelay(0.051); t.offsetNode.delayTime.value=t.offset||0;
   t.panNode=x.createStereoPanner();
   t.eqBass=x.createBiquadFilter(); t.eqBass.type='lowshelf';  t.eqBass.frequency.value=200;
   t.eqMid=x.createBiquadFilter();  t.eqMid.type='peaking';    t.eqMid.frequency.value=1000; t.eqMid.Q.value=1.4;
   t.eqTreble=x.createBiquadFilter();t.eqTreble.type='highshelf';t.eqTreble.frequency.value=4000;
   t.reverbSend=x.createGain(); t.reverbSend.gain.value=0;
   t.delaySend=x.createGain();  t.delaySend.gain.value=0;
+  // src → offsetNode → gainNode → panNode → eqChain → masterBus
+  t.offsetNode.connect(t.gainNode);
   t.gainNode.connect(t.panNode);
   t.panNode.connect(t.eqBass); t.eqBass.connect(t.eqMid); t.eqMid.connect(t.eqTreble);
   t.eqTreble.connect(_masterBus);
   t.eqTreble.connect(t.reverbSend); t.reverbSend.connect(_reverbNode);
   t.eqTreble.connect(t.delaySend);  t.delaySend.connect(_delayInput);
+}
+
+// ── Track helpers ──────────────────────────────────────────────────────────
+function baseStemOf(key){const m=key.match(/^(.+?)_\d+$/);return m?m[1]:key;}
+function nextDupKey(base){let n=2;while(tracks[`${base}_${n}`])n++;return`${base}_${n}`;}
+
+// ── Add a single track's UI (sidebar strip + waveform row) ────────────────
+function addTrackToUI(stemKey){
+  const t=tracks[stemKey];
+  const base=t.baseStem||stemKey;
+  const color=t.isImport?IMPORT_COLOR:(STEM_COLORS[base]||'#888');
+  const sidebarTracks=document.getElementById('sidebar-tracks');
+  const scrollContent=document.getElementById('scroll-content');
+
+  // ── Control strip ──
+  const strip=document.createElement('div');
+  const isImport=t.isImport||false;
+  strip.className='ctrl-strip'+(t.isDuplicate?' is-dup':'')+(isImport?' is-import':'');
+  strip.dataset.stem=stemKey;
+
+  // Row 1
+  const r1=document.createElement('div'); r1.className='ctrl-row1';
+  const nameEl=document.createElement('span');
+  nameEl.className='track-name'; nameEl.style.color=color;
+  nameEl.textContent=isImport?(t.importName||stemKey):
+    t.isDuplicate?`${base} ×${stemKey.split('_')[1]}`:stemKey;
+  const mBtn=document.createElement('button');
+  mBtn.className='tb'; mBtn.textContent='M'; mBtn.title='Mute';
+  mBtn.id='m-'+stemKey; mBtn.onclick=()=>toggleMute(stemKey);
+  const sBtn=document.createElement('button');
+  sBtn.className='tb'; sBtn.textContent='S'; sBtn.title='Solo';
+  sBtn.id='s-'+stemKey; sBtn.onclick=()=>toggleSolo(stemKey);
+  const nBtn=document.createElement('button');
+  nBtn.className='tb tb-norm'; nBtn.textContent='NRM'; nBtn.title='Normalize';
+  nBtn.onclick=()=>normalizeTrack(stemKey);
+  const rBtn=document.createElement('button');
+  rBtn.className='tb tb-norm'; rBtn.textContent='RST'; rBtn.title='Reset knobs';
+  rBtn.style.color='#666'; rBtn.onclick=()=>resetTrack(stemKey);
+
+  if(isImport){
+    // Loop toggle + remove
+    const lBtn=document.createElement('button');
+    lBtn.className='tb'; lBtn.textContent='⟳'; lBtn.title='Loop this track';
+    lBtn.id='lp-'+stemKey;
+    lBtn.classList.toggle('active',!!t.loopTrack);
+    lBtn.onclick=()=>{
+      t.loopTrack=!t.loopTrack;
+      lBtn.classList.toggle('active',t.loopTrack);
+      if(t.source)t.source.loop=t.loopTrack;
+    };
+    const xBtn=document.createElement('button');
+    xBtn.className='tb'; xBtn.textContent='×'; xBtn.title='Remove track';
+    xBtn.style.color='#e05555'; xBtn.onclick=()=>removeTrack(stemKey);
+    r1.append(nameEl,mBtn,sBtn,nBtn,rBtn,lBtn,xBtn);
+  }else{
+    const dBtn=document.createElement('button');
+    if(t.isDuplicate){
+      dBtn.className='tb'; dBtn.textContent='×'; dBtn.title='Remove this duplicate';
+      dBtn.style.color='#e05555'; dBtn.onclick=()=>removeTrack(stemKey);
+    }else{
+      dBtn.className='tb tb-norm'; dBtn.textContent='DUP'; dBtn.title='Duplicate this track';
+      dBtn.style.color='#6af'; dBtn.onclick=()=>duplicateTrack(stemKey);
+    }
+    r1.append(nameEl,mBtn,sBtn,nBtn,rBtn,dBtn);
+  }
+
+  // Row 2: 8 knobs — VOL, PAN, BASS, MID, TREB, REV, DLY, OFS
+  const r2=document.createElement('div'); r2.className='ctrl-row2';
+  t.knobs.vol =new Knob(r2,{label:'VOL', min:0,   max:1.5, value:t.volume, def:1,  color, bipolar:false,
+    onChange:v=>{t.volume=v;applyGains();}});
+  t.knobs.pan =new Knob(r2,{label:'PAN', min:-1,  max:1,   value:t.pan,   def:0,  color, bipolar:true,
+    onChange:v=>{t.pan=v;t.panNode.pan.setTargetAtTime(v,_actx.currentTime,0.01);}});
+  t.knobs.bass=new Knob(r2,{label:'BASS',min:-12, max:12,  value:t.eqB,   def:0,  color, bipolar:true,
+    onChange:v=>{t.eqB=v;t.eqBass.gain.setTargetAtTime(v,_actx.currentTime,0.01);}});
+  t.knobs.mid =new Knob(r2,{label:'MID', min:-12, max:12,  value:t.eqM,   def:0,  color, bipolar:true,
+    onChange:v=>{t.eqM=v;t.eqMid.gain.setTargetAtTime(v,_actx.currentTime,0.01);}});
+  t.knobs.treb=new Knob(r2,{label:'TREB',min:-12, max:12,  value:t.eqT,   def:0,  color, bipolar:true,
+    onChange:v=>{t.eqT=v;t.eqTreble.gain.setTargetAtTime(v,_actx.currentTime,0.01);}});
+  t.knobs.rev =new Knob(r2,{label:'REV', min:0,   max:1,   value:t.revAmt,def:0,  color, bipolar:false,
+    onChange:v=>{t.revAmt=v;t.reverbSend.gain.setTargetAtTime(v,_actx.currentTime,0.01);}});
+  t.knobs.dly =new Knob(r2,{label:'DLY', min:0,   max:1,   value:t.dlyAmt,def:0,  color, bipolar:false,
+    onChange:v=>{t.dlyAmt=v;t.delaySend.gain.setTargetAtTime(v,_actx.currentTime,0.01);}});
+  t.knobs.ofs =new Knob(r2,{label:'OFS', min:0,   max:50,  value:t.offset*1000,def:0,color,bipolar:false,
+    onChange:v=>{t.offset=v/1000;if(t.offsetNode)t.offsetNode.delayTime.setTargetAtTime(v/1000,_actx.currentTime,0.005);}});
+
+  strip.append(r1,r2);
+
+  // Insert strip after last sibling with same baseStem, otherwise append
+  const strips=[...sidebarTracks.querySelectorAll('.ctrl-strip')];
+  const lastSib=strips.filter(s=>baseStemOf(s.dataset.stem)===base).pop();
+  if(lastSib)lastSib.after(strip); else sidebarTracks.appendChild(strip);
+
+  // ── Waveform row ──
+  const row=document.createElement('div');
+  row.className='track-row'; row.dataset.stem=stemKey;
+  if(t.isDuplicate)row.style.opacity='0.75';
+  row.addEventListener('mousedown',e=>{
+    if(e.button!==0)return;
+    const pos=(e.offsetX/getCanvasWidth())*_dur;
+    if(e.shiftKey){
+      e.preventDefault();
+      _rangeDrawing={stemKey,startPos:pos,currentPos:pos};
+    }else{
+      const idx=(tracks[stemKey]?.muteRanges||[]).findIndex(r=>pos>=r.start&&pos<=r.end);
+      if(idx>=0){tracks[stemKey].muteRanges.splice(idx,1);redrawAll();}
+      else seekTo(pos);
+    }
+  });
+  row.addEventListener('mousemove',e=>{
+    const pos=(e.offsetX/getCanvasWidth())*_dur;
+    const inR=(tracks[stemKey]?.muteRanges||[]).some(r=>pos>=r.start&&pos<=r.end);
+    row.style.cursor=e.shiftKey?'crosshair':inR?'pointer':'default';
+  });
+  const canvas=document.createElement('canvas');
+  canvas.className='waveform';
+  row.appendChild(canvas);
+
+  // Insert after last sibling row with same baseStem, otherwise before playhead
+  const rows=[...scrollContent.querySelectorAll('.track-row')];
+  const lastRow=rows.filter(r=>baseStemOf(r.dataset.stem)===base).pop();
+  const playhead=document.getElementById('playhead');
+  if(lastRow)lastRow.after(row); else scrollContent.insertBefore(row,playhead);
+  t.canvas=canvas;
+
+  requestAnimationFrame(()=>{
+    if(!t.peaks)t.peaks=computePeaks(t.buffer);
+    drawWaveform(canvas,t.peaks,color,false);
+  });
 }
 
 // ── Build UI ───────────────────────────────────────────────────────────────
@@ -415,81 +569,26 @@ function buildUI(){
   document.getElementById('export-btn').disabled=false;
   document.getElementById('zip-btn').disabled=false;
 
-  const sidebarTracks=document.getElementById('sidebar-tracks');
-  const scrollContent=document.getElementById('scroll-content');
-  sidebarTracks.innerHTML='';
-  scrollContent.querySelectorAll('.track-row').forEach(e=>e.remove());
+  document.getElementById('sidebar-tracks').innerHTML='';
+  document.getElementById('scroll-content').querySelectorAll('.track-row').forEach(e=>e.remove());
 
   for(const stem of STEM_ORDER){
     if(!tracks[stem])continue;
-    const t=tracks[stem];
-    const color=STEM_COLORS[stem];
-
-    // ── Control strip (sidebar) ──
-    const strip=document.createElement('div');
-    strip.className='ctrl-strip';
-
-    // Row 1: name + M + S + NRM
-    const r1=document.createElement('div'); r1.className='ctrl-row1';
-    const nameEl=document.createElement('span');
-    nameEl.className='track-name'; nameEl.textContent=stem; nameEl.style.color=color;
-    const mBtn=document.createElement('button');
-    mBtn.className='tb'; mBtn.textContent='M'; mBtn.title='Mute';
-    mBtn.id='m-'+stem; mBtn.onclick=()=>toggleMute(stem);
-    const sBtn=document.createElement('button');
-    sBtn.className='tb'; sBtn.textContent='S'; sBtn.title='Solo';
-    sBtn.id='s-'+stem; sBtn.onclick=()=>toggleSolo(stem);
-    const nBtn=document.createElement('button');
-    nBtn.className='tb tb-norm'; nBtn.textContent='NRM'; nBtn.title='Normalize — set volume to peak level';
-    nBtn.onclick=()=>normalizeTrack(stem);
-    const rBtn=document.createElement('button');
-    rBtn.className='tb tb-norm'; rBtn.textContent='RST'; rBtn.title='Reset all knobs to default';
-    rBtn.style.color='#666';
-    rBtn.onclick=()=>resetTrack(stem);
-    r1.append(nameEl,mBtn,sBtn,nBtn,rBtn);
-
-    // Row 2: 7 knobs — VOL, PAN, BASS, MID, TREB, REV, DLY
-    const r2=document.createElement('div'); r2.className='ctrl-row2';
-
-    t.knobs.vol =new Knob(r2,{label:'VOL', min:0,   max:1.5, value:1,  def:1,  color, bipolar:false,
-      onChange:v=>{t.volume=v;applyGains();}});
-    t.knobs.pan =new Knob(r2,{label:'PAN', min:-1,  max:1,   value:0,  def:0,  color, bipolar:true,
-      onChange:v=>{t.pan=v;t.panNode.pan.setTargetAtTime(v,_actx.currentTime,0.01);}});
-    t.knobs.bass=new Knob(r2,{label:'BASS',min:-12, max:12,  value:0,  def:0,  color, bipolar:true,
-      onChange:v=>{t.eqB=v;t.eqBass.gain.setTargetAtTime(v,_actx.currentTime,0.01);}});
-    t.knobs.mid =new Knob(r2,{label:'MID', min:-12, max:12,  value:0,  def:0,  color, bipolar:true,
-      onChange:v=>{t.eqM=v;t.eqMid.gain.setTargetAtTime(v,_actx.currentTime,0.01);}});
-    t.knobs.treb=new Knob(r2,{label:'TREB',min:-12, max:12,  value:0,  def:0,  color, bipolar:true,
-      onChange:v=>{t.eqT=v;t.eqTreble.gain.setTargetAtTime(v,_actx.currentTime,0.01);}});
-    t.knobs.rev =new Knob(r2,{label:'REV', min:0,   max:1,   value:0,  def:0,  color, bipolar:false,
-      onChange:v=>{t.revAmt=v;t.reverbSend.gain.setTargetAtTime(v,_actx.currentTime,0.01);}});
-    t.knobs.dly =new Knob(r2,{label:'DLY', min:0,   max:1,   value:0,  def:0,  color, bipolar:false,
-      onChange:v=>{t.dlyAmt=v;t.delaySend.gain.setTargetAtTime(v,_actx.currentTime,0.01);}});
-
-    strip.append(r1,r2);
-    sidebarTracks.appendChild(strip);
-
-    // ── Waveform row ──
-    const row=document.createElement('div');
-    row.className='track-row'; row.dataset.stem=stem;
-    row.addEventListener('click',onWaveClick);
-    const canvas=document.createElement('canvas');
-    canvas.className='waveform';
-    row.appendChild(canvas);
-    // insert before playhead
-    scrollContent.insertBefore(row,document.getElementById('playhead'));
-    t.canvas=canvas;
-
-    requestAnimationFrame(()=>{
-      t.peaks=computePeaks(t.buffer);
-      drawWaveform(canvas,t.peaks,color,false);
-    });
+    addTrackToUI(stem);
   }
 
   // Scroll sync: waveform area Y → sidebar
   const sc=document.getElementById('scroll-content');
   const st=document.getElementById('sidebar-tracks');
   sc.addEventListener('scroll',()=>{ st.scrollTop=sc.scrollTop; });
+
+  // Horizontal scroll when zoomed: convert vertical wheel → horizontal pan
+  sc.addEventListener('wheel',e=>{
+    if(_zoom<=1)return;
+    if(Math.abs(e.deltaX)>Math.abs(e.deltaY))return; // already a horizontal gesture
+    e.preventDefault();
+    sc.scrollLeft+=e.deltaY;
+  },{passive:false});
 
   // Ruler: click = seek, drag = set A-B loop region
   document.getElementById('ruler-inner').addEventListener('mousedown',e=>{
@@ -503,12 +602,47 @@ function buildUI(){
   startRAF();
 }
 
+// ── Duplicate / remove tracks ──────────────────────────────────────────────
+function duplicateTrack(stemKey){
+  const base=baseStemOf(stemKey);
+  const orig=tracks[base]||tracks[stemKey];
+  if(!orig)return;
+  const newKey=nextDupKey(base);
+  const gainNode=_actx.createGain();
+  tracks[newKey]={
+    buffer:orig.buffer,source:null,gainNode,
+    muted:false,solo:false,
+    volume:1,pan:0,eqB:0,eqM:0,eqT:0,revAmt:0,dlyAmt:0,
+    offset:0,
+    isDuplicate:true,isImport:false,baseStem:base,
+    peaks:orig.peaks,canvas:null,knobs:{},muteRanges:[],
+  };
+  wireTrack(newKey);
+  addTrackToUI(newKey);
+  applyZoom();
+}
+
+function removeTrack(stemKey){
+  const t=tracks[stemKey];
+  if(!t||(!t.isDuplicate&&!t.isImport))return;
+  if(t.source){try{t.source.stop();}catch{}t.source=null;}
+  try{
+    if(t.offsetNode)t.offsetNode.disconnect();
+    t.gainNode.disconnect();t.panNode.disconnect();
+    t.eqBass.disconnect();t.eqMid.disconnect();t.eqTreble.disconnect();
+    t.reverbSend.disconnect();t.delaySend.disconnect();
+  }catch{}
+  document.querySelector(`#sidebar-tracks .ctrl-strip[data-stem="${stemKey}"]`)?.remove();
+  document.querySelector(`#scroll-content .track-row[data-stem="${stemKey}"]`)?.remove();
+  delete tracks[stemKey];
+}
+
 // ── SVG Knob ───────────────────────────────────────────────────────────────
 class Knob{
   constructor(container,opts){
     this.min=opts.min??0; this.max=opts.max??1; this.val=opts.value??0; this.def=opts.def??this.val;
     this.color=opts.color??'#8cffff'; this.lbl=opts.label??''; this.bipolar=opts.bipolar??false;
-    this.size=32; this.onChange=opts.onChange??(() =>{});
+    this.size=opts.size??28; this.onChange=opts.onChange??(() =>{});
     this._drag=null; this._build(container);
   }
   _angle(v){return -135+((v-this.min)/(this.max-this.min))*270;}
@@ -567,6 +701,7 @@ class Knob{
   _disp(){
     if(this.lbl==='PAN'){if(Math.abs(this.val)<.01)return'C';return(this.val<0?'L':'R')+Math.abs(this.val*100).toFixed(0);}
     if(this.lbl==='VOL')return(this.val*100).toFixed(0)+'%';
+    if(this.lbl==='OFS')return this.val===0?'0 ms':this.val.toFixed(1)+' ms';
     if(['BASS','MID','TREB'].includes(this.lbl))return(this.val>=0?'+':'')+this.val.toFixed(1)+'dB';
     return(this.val*100).toFixed(0)+'%';
   }
@@ -612,9 +747,80 @@ function drawWaveform(canvas,peaks,color,dimmed){
 
 function redrawAll(){
   const sc=soloCount();
-  for(const[stem,t]of Object.entries(tracks)){
-    if(t.canvas&&t.peaks)
-      drawWaveform(t.canvas,t.peaks,STEM_COLORS[stem],t.muted||(sc>0&&!t.solo));
+  for(const[key,t]of Object.entries(tracks)){
+    if(t.canvas&&t.peaks){
+      drawWaveform(t.canvas,t.peaks,STEM_COLORS[baseStemOf(key)]||IMPORT_COLOR,t.muted||(sc>0&&!t.solo));
+      const ranges=[...(t.muteRanges||[])];
+      if(_rangeDrawing&&_rangeDrawing.stemKey===key)
+        ranges.push({start:Math.min(_rangeDrawing.startPos,_rangeDrawing.currentPos),end:Math.max(_rangeDrawing.startPos,_rangeDrawing.currentPos)});
+      drawMuteRanges(t.canvas,ranges,_dur);
+    }
+  }
+}
+
+function drawMuteRanges(canvas,ranges,dur){
+  if(!ranges||!ranges.length||!dur)return;
+  const dpr=window.devicePixelRatio||1;
+  const w=canvas.width/dpr,h=canvas.height/dpr;
+  const ctx=canvas.getContext('2d');
+  ctx.save();ctx.fillStyle='rgba(220,50,50,0.38)';
+  for(const r of ranges){
+    if(r.end<=r.start)continue;
+    ctx.fillRect((r.start/dur)*w,0,((r.end-r.start)/dur)*w,h);
+  }
+  ctx.restore();
+}
+
+function mergeRanges(ranges){
+  if(!ranges||ranges.length<=1)return ranges||[];
+  const sorted=[...ranges].sort((a,b)=>a.start-b.start);
+  const merged=[{...sorted[0]}];
+  for(let i=1;i<sorted.length;i++){
+    const last=merged[merged.length-1];
+    if(sorted[i].start<=last.end+0.05)last.end=Math.max(last.end,sorted[i].end);
+    else merged.push({...sorted[i]});
+  }
+  return merged;
+}
+
+function applyRangedGains(pos){
+  const sc=soloCount();
+  for(const[,t]of Object.entries(tracks)){
+    const inRange=!!(t.muteRanges&&t.muteRanges.some(r=>pos>=r.start&&pos<=r.end));
+    if(inRange===t._inMuteRange)continue;
+    t._inMuteRange=inRange;
+    let g=t.volume;
+    if(t.muted||(sc>0&&!t.solo)||inRange)g=0;
+    t.gainNode.gain.setTargetAtTime(g,_actx.currentTime,0.005);
+  }
+}
+
+async function handleImportFiles(files){
+  if(!files||!files.length)return;
+  if(!_actx){alert('Please load a song first before importing tracks.');return;}
+  for(const file of files){
+    try{
+      const ab=await file.arrayBuffer();
+      const abuf=await _actx.decodeAudioData(ab);
+      _importCounter++;
+      const key='import_'+_importCounter;
+      const gainNode=_actx.createGain();
+      tracks[key]={
+        buffer:abuf,source:null,gainNode,
+        muted:false,solo:false,
+        volume:1,pan:0,eqB:0,eqM:0,eqT:0,revAmt:0,dlyAmt:0,
+        offset:0,
+        isDuplicate:false,isImport:true,baseStem:key,
+        importName:file.name.replace(/\.[^.]+$/,''),loopTrack:false,
+        peaks:null,canvas:null,knobs:{},muteRanges:[],_inMuteRange:false,
+      };
+      wireTrack(key);
+      addTrackToUI(key);
+      applyZoom();
+    }catch(err){
+      console.warn('Could not import '+file.name+':',err);
+      alert('Could not import '+file.name+':\n'+err.message);
+    }
   }
 }
 
@@ -674,10 +880,14 @@ function startPlayback(){
   const offset=Math.max(0,Math.min(_dur,_startOff));
   for(const[,t]of Object.entries(tracks)){
     const src=_actx.createBufferSource();
-    src.buffer=t.buffer; src.connect(t.gainNode);
-    src.start(_actx.currentTime+0.05,offset);
+    src.buffer=t.buffer;
+    src.loop=!!(t.isImport&&t.loopTrack);
+    const srcOff=src.loop?(offset%t.buffer.duration):offset;
+    src.connect(t.offsetNode||t.gainNode);
+    src.start(_actx.currentTime+0.05,srcOff);
     src.onended=()=>{if(t.source===src)t.source=null;};
     t.source=src;
+    t._inMuteRange=false;
   }
   _playing=true;
   const btn=document.getElementById('play-btn');
@@ -727,6 +937,7 @@ function startRAF(){
     updatePlayhead(pos);
     document.getElementById('time-display').textContent=fmtTime(pos);
     autoScrollToPlayhead(pos);
+    applyRangedGains(pos);
   }
   _rafId=requestAnimationFrame(tick);
 }
@@ -750,13 +961,12 @@ function autoScrollToPlayhead(pos){
 function applyPreset(name){
   _activePreset=name;
   const muteSet=PRESETS[name]||{};
-  for(const stem of STEM_ORDER){
-    if(!tracks[stem])continue;
-    const t=tracks[stem];
-    t.muted=!!muteSet[stem];
+  for(const[key,t]of Object.entries(tracks)){
+    const base=baseStemOf(key);
+    t.muted=!!muteSet[base];
     t.solo=false;
-    const mb=document.getElementById('m-'+stem);
-    const sb=document.getElementById('s-'+stem);
+    const mb=document.getElementById('m-'+key);
+    const sb=document.getElementById('s-'+key);
     if(mb)mb.classList.toggle('mute-on',t.muted);
     if(sb)sb.classList.remove('solo-on');
   }
@@ -784,7 +994,7 @@ function applyGains(){
   const sc=soloCount();
   for(const[,t]of Object.entries(tracks)){
     let g=t.volume;
-    if(t.muted||(sc>0&&!t.solo))g=0;
+    if(t.muted||(sc>0&&!t.solo)||t._inMuteRange)g=0;
     t.gainNode.gain.setTargetAtTime(g,_actx?_actx.currentTime:0,0.015);
   }
   redrawAll();
@@ -847,6 +1057,11 @@ async function exportMix(){
     for(const[stem,t]of Object.entries(tracks)){
       let g=t.volume;if(t.muted||(sc>0&&!t.solo))g=0;if(g===0)continue;
       const gain=off.createGain();gain.gain.value=g;
+      const muteGain=off.createGain();muteGain.gain.setValueAtTime(1,0);
+      for(const r of(t.muteRanges||[])){
+        muteGain.gain.setValueAtTime(0,Math.max(0,r.start));
+        muteGain.gain.setValueAtTime(1,Math.min(_dur,r.end));
+      }
       const pan=off.createStereoPanner();pan.pan.value=t.pan;
       const eqB=off.createBiquadFilter();eqB.type='lowshelf';eqB.frequency.value=200;eqB.gain.value=t.eqB;
       const eqM=off.createBiquadFilter();eqM.type='peaking';eqM.frequency.value=1000;eqM.Q.value=1.4;eqM.gain.value=t.eqM;
@@ -854,7 +1069,9 @@ async function exportMix(){
       const revS=off.createGain();revS.gain.value=t.revAmt;
       const dlyS=off.createGain();dlyS.gain.value=t.dlyAmt;
       const src=off.createBufferSource();src.buffer=t.buffer;
-      src.connect(gain);gain.connect(pan);pan.connect(eqB);eqB.connect(eqM);eqM.connect(eqT);
+      src.loop=!!(t.isImport&&t.loopTrack);
+      const ofs=off.createDelay(0.051);ofs.delayTime.value=t.offset||0;
+      src.connect(ofs);ofs.connect(muteGain);muteGain.connect(gain);gain.connect(pan);pan.connect(eqB);eqB.connect(eqM);eqM.connect(eqT);
       eqT.connect(offBus);eqT.connect(revS);revS.connect(offRev);eqT.connect(dlyS);dlyS.connect(offDlyIn);
       src.start(0);
     }
@@ -932,30 +1149,67 @@ document.addEventListener('keydown',e=>{
 });
 
 document.addEventListener('mousemove',e=>{
-  if(!_rulerDrag)return;
-  const sc=document.getElementById('scroll-content');
-  const ruler=document.getElementById('ruler-inner');
-  const rect=ruler.getBoundingClientRect();
-  const absX=Math.max(0,Math.min(getCanvasWidth(),e.clientX-rect.left+sc.scrollLeft));
-  if(Math.abs(absX-_rulerDrag.startAbs)>5)_rulerDrag.moved=true;
-  if(_rulerDrag.moved){
-    const cw=getCanvasWidth();
-    _loopStart=(Math.min(_rulerDrag.startAbs,absX)/cw)*_dur;
-    _loopEnd=(Math.max(_rulerDrag.startAbs,absX)/cw)*_dur;
-    updateLoopRegion();
+  if(_rulerDrag){
+    const sc=document.getElementById('scroll-content');
+    const ruler=document.getElementById('ruler-inner');
+    const rect=ruler.getBoundingClientRect();
+    const absX=Math.max(0,Math.min(getCanvasWidth(),e.clientX-rect.left+sc.scrollLeft));
+    if(Math.abs(absX-_rulerDrag.startAbs)>5)_rulerDrag.moved=true;
+    if(_rulerDrag.moved){
+      const cw=getCanvasWidth();
+      _loopStart=(Math.min(_rulerDrag.startAbs,absX)/cw)*_dur;
+      _loopEnd=(Math.max(_rulerDrag.startAbs,absX)/cw)*_dur;
+      updateLoopRegion();
+    }
+  }
+  if(_rangeDrawing){
+    const row=document.querySelector(`#scroll-content .track-row[data-stem="${_rangeDrawing.stemKey}"]`);
+    if(row){
+      const rect=row.getBoundingClientRect();
+      const sc=document.getElementById('scroll-content');
+      const relX=e.clientX-rect.left;
+      _rangeDrawing.currentPos=Math.max(0,Math.min(_dur,(relX/getCanvasWidth())*_dur));
+      redrawAll();
+    }
   }
 });
 
 document.addEventListener('mouseup',e=>{
-  if(!_rulerDrag)return;
-  if(!_rulerDrag.moved){
-    const cw=getCanvasWidth();
-    seekTo((_rulerDrag.startAbs/cw)*_dur);
+  if(_rulerDrag){
+    if(!_rulerDrag.moved){
+      const cw=getCanvasWidth();
+      seekTo((_rulerDrag.startAbs/cw)*_dur);
+    }
+    _rulerDrag=null;
   }
-  _rulerDrag=null;
+  if(_rangeDrawing){
+    const {stemKey,startPos,currentPos}=_rangeDrawing;
+    _rangeDrawing=null;
+    const lo=Math.min(startPos,currentPos),hi=Math.max(startPos,currentPos);
+    if(hi-lo>0.1&&tracks[stemKey]){
+      tracks[stemKey].muteRanges.push({start:lo,end:hi});
+      tracks[stemKey].muteRanges=mergeRanges(tracks[stemKey].muteRanges);
+    }
+    redrawAll();
+  }
 });
 
 window.addEventListener('resize',()=>{ if(Object.keys(tracks).length)applyZoom(); });
+
+document.addEventListener('dragenter',e=>{
+  e.preventDefault();_dragDepth++;
+  document.getElementById('drop-overlay').classList.add('active');
+});
+document.addEventListener('dragleave',()=>{
+  if(--_dragDepth<=0){_dragDepth=0;document.getElementById('drop-overlay').classList.remove('active');}
+});
+document.addEventListener('dragover',e=>e.preventDefault());
+document.addEventListener('drop',e=>{
+  e.preventDefault();_dragDepth=0;
+  document.getElementById('drop-overlay').classList.remove('active');
+  const files=[...e.dataTransfer.files].filter(f=>f.type.startsWith('audio/')||/\.(mp3|wav|flac|ogg|m4a|aac)$/i.test(f.name));
+  if(files.length)handleImportFiles(files);
+});
 </script>
 </body>
 </html>

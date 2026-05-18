@@ -24,6 +24,10 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 - **Studio page** — separates any generated song into 6 stems (vocals, drums, bass, guitar, piano, other) with a DAW-style mixer, waveform display, mute/solo/volume per track, and stem zip export
 - **Studio stem presets** — one-click mix presets: Full Mix, Karaoke (vocals off), Acappella (instruments off), Drums Only, No Drums
 - **Studio A-B loop** — drag on the ruler to mark a loop region; playback repeats within that region when loop is enabled; ESC clears it
+- **Studio track duplication** — DUP button per track creates a layered copy with independent knobs; OFS knob (0–50 ms) on every track for ADT doubling effects
+- **Studio mute automation** — shift+drag on any waveform to draw red mute regions; live during playback and baked into exports; click a region to delete it
+- **Studio track import** — drag & drop or ＋ Track button adds any audio file (MP3/WAV/FLAC/OGG) as a full mixer track with loop toggle; layered into the export render
+- **AI content watermarking** — AudioSeal neural watermark (survives re-encoding) + C2PA provenance manifest embedded in every generated MP3 (requires `audioseal`, `torchaudio`, `c2pa`, `cryptography`)
 
 ---
 
@@ -41,6 +45,8 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 | Python | 3.10+ |
 | Model | HeartMuLa-oss-3B (~15 GB) + HeartCodec-oss (~6.2 GB) + HeartMuLaGen (~small) |
 | Framework | FastAPI + uvicorn (installed automatically by setup) |
+| BPM/Key | `librosa` — `pip install librosa` |
+| Watermarking | `audioseal torchaudio c2pa cryptography` — `pip install audioseal torchaudio c2pa cryptography` |
 
 ---
 
@@ -261,6 +267,28 @@ One-click buttons above the mixer apply common stem combinations:
 
 **Drag on the ruler** to mark a loop region — a cyan highlight shows the selected range. Enable the **⟳** loop button and playback will repeat within that region. **ESC** clears the loop region.
 
+### Mute Automation
+
+Draw mute regions directly on any waveform to silence a track for a specific section — acappella refrain, drum solo, instrumental bridge.
+
+- **Shift + drag** on a waveform — draws a red mute region for that track
+- **Click inside a mute region** — deletes that region
+- Regions from the same track are **automatically merged** if they overlap or sit within 50 ms of each other
+- Mute regions work live during playback and are baked into the **⬇ Export Mix**
+- Hint reminder in the sidebar header: `⇧ drag = mute region`
+
+### Track Import
+
+Bring in any audio file as an extra mixer track — a sample, a loop, a scratch vocal, anything.
+
+- **＋ Track** button in the transport bar — opens a file picker (MP3, WAV, FLAC, OGG, M4A, AAC)
+- **Drag and drop** one or more audio files onto the Studio window — a full-screen drop target appears
+- Imported tracks appear below the stem tracks with the same full knob set (VOL, PAN, EQ, REV, DLY, OFS)
+- **⟳ button** on imported tracks — toggles loop mode so a short sample repeats for the full song duration
+- **× button** — removes the imported track
+- Loop state is respected in Export Mix — looped imports will loop for the full render duration
+- Imported tracks get a distinct gold color in the waveform view so they're easy to spot
+
 ### Controls
 
 - **Mute (M)** — silence an individual track
@@ -269,9 +297,10 @@ One-click buttons above the mixer apply common stem combinations:
 - **NRM** — normalize track to peak level
 - **RST** — reset all knobs to default
 - **Click anywhere on a waveform / ruler** — seek to that position (drag on ruler to set A-B loop)
+- **Shift + drag on a waveform** — draw a mute region for that section
 - **Space** — play / pause
 - **Home** — jump to start
-- **⬇ Export Mix** — renders the current mute/solo/volume/EQ state to a WAV file you can save
+- **⬇ Export Mix** — renders the current mute/solo/volume/EQ/mute-automation state to a WAV file
 
 ### Notes
 

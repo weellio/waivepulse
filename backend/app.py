@@ -40,12 +40,22 @@ OUTPUTS_DIR    = Path(__file__).parent.parent / "outputs"
 FRONTEND_DIR   = Path(__file__).parent.parent / "frontend"
 ASSETS_DIR     = Path(__file__).parent.parent / "assets"
 HISTORY_FILE   = Path(__file__).parent.parent / "history.json"
+CREDS_DIR      = Path(__file__).parent.parent / ".credentials"
 OUTPUTS_DIR.mkdir(exist_ok=True)
 ASSETS_DIR.mkdir(exist_ok=True)
+CREDS_DIR.mkdir(exist_ok=True)
 
-_DEMUCS  = importlib.util.find_spec("demucs")  is not None
-_LIBROSA = importlib.util.find_spec("librosa") is not None
-_FFMPEG  = bool(shutil.which("ffmpeg"))
+_DEMUCS       = importlib.util.find_spec("demucs")       is not None
+_LIBROSA      = importlib.util.find_spec("librosa")      is not None
+_AUDIOSEAL    = importlib.util.find_spec("audioseal")    is not None
+_TORCHAUDIO   = importlib.util.find_spec("torchaudio")   is not None
+_C2PA         = importlib.util.find_spec("c2pa")         is not None
+_CRYPTOGRAPHY = importlib.util.find_spec("cryptography") is not None
+_FFMPEG       = bool(shutil.which("ffmpeg"))
+
+_audioseal_gen = None   # lazy-loaded AudioSeal generator
+_wp_cert_pem   = None   # cached WAIvePulse signing cert
+_wp_key_pem    = None   # cached WAIvePulse signing key
 
 app = FastAPI(title="WAIvePulse")
 app.mount("/outputs", StaticFiles(directory=str(OUTPUTS_DIR)), name="outputs")
@@ -164,6 +174,166 @@ def _detect_bpm_key(mp3_path: str) -> tuple:
         return None, None
 
 
+def _get_waivepulse_creds():
+    """Return (cert_pem_bytes, key_pem_bytes), generating a self-signed cert on first call."""
+    global _wp_cert_pem, _wp_key_pem
+    if _wp_cert_pem and _wp_key_pem:
+        return _wp_cert_pem, _wp_key_pem
+    cert_path = CREDS_DIR / "waivepulse_cert.pem"
+    key_path  = CREDS_DIR / "waivepulse_key.pem"
+    if cert_path.exists() and key_path.exists():
+        _wp_cert_pem = cert_path.read_bytes()
+        _wp_key_pem  = key_path.read_bytes()
+        return _wp_cert_pem, _wp_key_pem
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+    import datetime as _dt
+    key  = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "WAIvePulse"),
+        x509.NameAttribute(NameOID.COMMON_NAME, "WAIvePulse Content Credentials"),
+    ])
+    cert = (x509.CertificateBuilder()
+        .subject_name(name).issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(_dt.datetime.utcnow())
+        .not_valid_after(_dt.datetime.utcnow() + _dt.timedelta(days=3650))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .sign(key, hashes.SHA256()))
+    _wp_cert_pem = cert.public_bytes(serialization.Encoding.PEM)
+    _wp_key_pem  = key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    cert_path.write_bytes(_wp_cert_pem)
+    key_path.write_bytes(_wp_key_pem)
+    _real_stdout.write("[waivepulse] Generated WAIvePulse signing credentials.\n")
+    return _wp_cert_pem, _wp_key_pem
+
+
+def _apply_audioseal(mp3_path: str, job_id: str) -> bool:
+    """Embed AudioSeal neural watermark. Must run before ID3 write (re-encodes file)."""
+    global _audioseal_gen
+    if not (_AUDIOSEAL and _TORCHAUDIO and _FFMPEG):
+        return False
+    try:
+        import torch
+        import torchaudio
+        from audioseal import AudioSeal
+        import hashlib
+
+        if _audioseal_gen is None:
+            _real_stdout.write("[waivepulse] Loading AudioSeal model…\n")
+            _audioseal_gen = AudioSeal.load_generator("audioseal_wm_16bits")
+            _audioseal_gen.eval()
+
+        waveform, sr = torchaudio.load(mp3_path)
+
+        # Resample to 16 kHz for watermark generation
+        if sr != 16000:
+            down = torchaudio.transforms.Resample(sr, 16000)
+            wf16 = down(waveform)
+        else:
+            wf16 = waveform
+
+        # Deterministic 16-bit message derived from job_id
+        h   = hashlib.sha256(f"waivepulse:{job_id}".encode()).digest()
+        msg = torch.tensor(
+            [[int(b) for b in format(int.from_bytes(h[:2], "big"), "016b")]],
+            dtype=torch.float32,
+        )
+
+        with torch.no_grad():
+            wm16 = _audioseal_gen.get_watermark(wf16.unsqueeze(0), sample_rate=16000, message=msg)
+
+        # Upsample watermark back to original sample rate
+        if sr != 16000:
+            up   = torchaudio.transforms.Resample(16000, sr)
+            wm   = up(wm16.squeeze(0))
+        else:
+            wm = wm16.squeeze(0)
+
+        # Add watermark and clamp
+        min_len = min(waveform.shape[-1], wm.shape[-1])
+        result  = (waveform[..., :min_len] + wm[..., :min_len]).clamp(-1.0, 1.0)
+
+        # WAV → MP3 via ffmpeg (preserves original sample rate / quality)
+        tmp_wav = mp3_path + ".wm.wav"
+        tmp_mp3 = mp3_path + ".wm.mp3"
+        try:
+            torchaudio.save(tmp_wav, result, sr)
+            ret = subprocess.run(
+                ["ffmpeg", "-y", "-i", tmp_wav, "-q:a", "2", tmp_mp3],
+                capture_output=True,
+            )
+            if ret.returncode == 0:
+                shutil.move(tmp_mp3, mp3_path)
+                return True
+        finally:
+            for p in (tmp_wav, tmp_mp3):
+                if os.path.exists(p):
+                    os.unlink(p)
+        return False
+    except Exception as e:
+        _real_stderr.write(f"[waivepulse] AudioSeal failed: {e}\n")
+        return False
+
+
+def _apply_c2pa(mp3_path: str, title: str, tags: str, job_id: str) -> bool:
+    """Embed C2PA provenance manifest with a self-signed WAIvePulse certificate."""
+    if not (_C2PA and _CRYPTOGRAPHY):
+        return False
+    try:
+        import c2pa as c2pa_sdk
+        import io
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        cert_pem, key_pem = _get_waivepulse_creds()
+        private_key = serialization.load_pem_private_key(key_pem, password=None)
+
+        manifest = {
+            "claim_generator": "WAIvePulse/1.0",
+            "claim_generator_info": [{"name": "WAIvePulse", "version": "1.0"}],
+            "title": title,
+            "assertions": [
+                {
+                    "label": "c2pa.training-mining",
+                    "data": {"entries": {"c2pa.ai_generative_training": {"use": "notAllowed"}}},
+                },
+                {
+                    "label": "c2pa.ai.generatedInfo",
+                    "data": {
+                        "description": f"AI-generated music via WAIvePulse. Tags: {tags}",
+                        "modelUsed": "HeartMuLa 3B",
+                    },
+                },
+            ],
+        }
+
+        def sign_fn(data: bytes) -> bytes:
+            return private_key.sign(data, ec.ECDSA(hashes.SHA256()))
+
+        signer  = c2pa_sdk.create_signer(sign_fn, "es256", cert_pem.decode(), None)
+        builder = c2pa_sdk.Builder(manifest)
+
+        with open(mp3_path, "rb") as f_in:
+            out_buf = io.BytesIO()
+            builder.sign(signer, "audio/mpeg", f_in, out_buf)
+
+        with open(mp3_path, "wb") as f_out:
+            f_out.write(out_buf.getvalue())
+
+        return True
+    except Exception as e:
+        _real_stderr.write(f"[waivepulse] C2PA embedding failed: {e}\n")
+        return False
+
+
 def _save_history():
     try:
         data = {"jobs": jobs, "sep_jobs": sep_jobs}
@@ -266,15 +436,19 @@ def _run_generation(job_id, lyrics, tags, title, artist, max_ms, temperature, cf
             jobs[job_id]["status"]  = "cancelled"
             jobs[job_id]["message"] = "Cancelled"
         else:
+            audio_wm = _apply_audioseal(out_path, job_id)   # re-encodes — must be first
             _write_metadata(out_path, title, artist, tags, temperature, cfg_scale)
+            c2pa_ok  = _apply_c2pa(out_path, title, tags, job_id)
             bpm, key = _detect_bpm_key(out_path)
             filename = _output_filename(title, job_id)
-            jobs[job_id]["status"]    = "done"
-            jobs[job_id]["file"]      = f"/outputs/{filename}.mp3"
-            jobs[job_id]["file_size"] = os.path.getsize(out_path)
-            jobs[job_id]["message"]   = "Generation complete"
-            jobs[job_id]["bpm"]       = bpm
-            jobs[job_id]["key"]       = key
+            jobs[job_id]["status"]           = "done"
+            jobs[job_id]["file"]             = f"/outputs/{filename}.mp3"
+            jobs[job_id]["file_size"]        = os.path.getsize(out_path)
+            jobs[job_id]["message"]          = "Generation complete"
+            jobs[job_id]["bpm"]              = bpm
+            jobs[job_id]["key"]              = key
+            jobs[job_id]["watermarked_audio"]= audio_wm
+            jobs[job_id]["watermarked_c2pa"] = c2pa_ok
 
     except Exception as e:
         msg = str(e)
@@ -407,7 +581,12 @@ def _models_ready() -> dict:
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.get("/model-status")
 def model_status():
-    return _models_ready()
+    ms = _models_ready()
+    ms["watermark"] = {
+        "audioseal": _AUDIOSEAL and _TORCHAUDIO and _FFMPEG,
+        "c2pa":      _C2PA and _CRYPTOGRAPHY,
+    }
+    return ms
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -448,8 +627,10 @@ def generate(req: GenerateRequest):
         "temperature":     req.temperature,
         "cfg_scale":       req.cfg_scale,
         "created_at":      datetime.now().isoformat(),
-        "bpm":             None,
-        "key":             None,
+        "bpm":              None,
+        "key":              None,
+        "watermarked_audio":None,
+        "watermarked_c2pa": None,
     }
     cancel_flags[job_id] = threading.Event()
     _job_queue.put(("generate", job_id, {

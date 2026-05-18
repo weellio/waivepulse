@@ -2,6 +2,9 @@ outputs/
 lyrics/
 history.json
 .claude/
+.credentials/
+.waivepulse.bat
+.waivepulse.sh
 __pycache__/
 *.pyc
 *.pyo
