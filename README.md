@@ -1,5 +1,7 @@
 # WAIvePulse
 
+![License: MIT + Commons Clause](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue)
+
 ![WAIvePulse](assets/wave%20small.png)
 
 A local, fully offline AI music generation tool powered by **HeartMuLa 3B**. Give it lyrics and genre tags, get back a complete song with vocals as an MP3.
