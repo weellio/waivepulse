@@ -519,6 +519,7 @@ const vizFrames    = {};
 const vizState     = {};   // job_id → { t, pts } for stateful viz
 const audioNodes   = new WeakMap();
 const loadedLocalFiles = new Set();  // "name|size" keys to prevent duplicate loads
+const _localFileObjects = new Map(); // jobId → File, for Studio upload
 let _actx = null;
 
 // ── Tag grid ──────────────────────────────────────────────────────────────────
@@ -799,7 +800,9 @@ function jobCardHTML(jobId, title, tags, status, message, file, fileSize, create
       <div class="card-actions">
         <a class="btn-action" href="${file}" download>⬇ Download</a>
         ${!jobId.startsWith('local_') ? `<button class="btn-action" onclick="loadJobToForm('${jobId}')">↺ Use Settings</button>` : ''}
-        ${!jobId.startsWith('local_') ? `<a class="btn-action" href="/studio?job=${jobId}" target="_blank">🎛 Studio</a>` : ''}
+        ${!jobId.startsWith('local_')
+          ? `<a class="btn-action" href="/studio?job=${jobId}" target="_blank">🎛 Studio</a>`
+          : `<button class="btn-action" id="studio-btn-${jobId}" onclick="openStudioForLocal('${jobId}')">🎛 Studio</button>`}
       </div>
       <div class="job-meta" id="meta-${jobId}">
         ${sizeStr ? `<span>${sizeStr}</span>` : ''}
@@ -1006,6 +1009,7 @@ function loadFilesAsCards(files) {
 
     const blobUrl   = URL.createObjectURL(file);
     const jobId     = "local_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6);
+    _localFileObjects.set(jobId, file);
     const title     = file.name.replace(/\.[^.]+$/, "");
     const createdAt = new Date().toISOString();
 
@@ -1032,6 +1036,29 @@ function showToast(msg) {
   el.classList.add('show');
   clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+async function openStudioForLocal(jobId) {
+  const file = _localFileObjects.get(jobId);
+  if (!file) { alert('File reference lost — please reload the MP3 and try again.'); return; }
+  const btn = document.getElementById('studio-btn-' + jobId);
+  if (btn) { btn.textContent = '⏳ Uploading…'; btn.disabled = true; }
+  // Open tab immediately while we still have the user gesture — browsers block
+  // window.open() called after an await as a popup
+  const win = window.open('', '_blank');
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/upload', { method: 'POST', body: form });
+    if (!res.ok) { const e = await res.json().catch(()=>({detail:'Upload failed'})); throw new Error(e.detail||'Upload failed'); }
+    const { job_id } = await res.json();
+    win.location.href = `/studio?job=${job_id}`;
+    if (btn) { btn.textContent = '🎛 Studio'; btn.disabled = false; }
+  } catch(e) {
+    win.close();
+    alert('Could not open Studio: ' + e.message);
+    if (btn) { btn.textContent = '🎛 Studio'; btn.disabled = false; }
+  }
 }
 
 function loadLocalMP3(input) {

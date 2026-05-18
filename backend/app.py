@@ -24,7 +24,7 @@ try:
 except ImportError:
     _MUTAGEN = False
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile
 from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -785,6 +785,11 @@ def separate(job_id: str):
     if not source_path.exists():
         raise HTTPException(status_code=404, detail="Output file not found on disk")
 
+    # Return existing separation if one already completed or is in progress
+    for existing_id, sep in sep_jobs.items():
+        if sep.get("job_id") == job_id and sep.get("status") in ("done", "queued", "separating"):
+            return {"sep_id": existing_id}
+
     sep_id = str(uuid.uuid4())[:8]
     sep_jobs[sep_id] = {
         "status":     "queued",
@@ -898,6 +903,45 @@ def download_stems_zip(sep_id: str):
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{slug}_stems.zip"'},
     )
+
+
+@app.post("/upload")
+async def upload_audio(file: UploadFile = FastAPIFile(...)):
+    """Upload any audio file for Studio use — saves to outputs/ and creates a job record."""
+    original = Path(file.filename or "upload.mp3")
+    safe_stem = re.sub(r"[^\w\s-]", "", original.stem).strip()
+    safe_stem = re.sub(r"\s+", "_", safe_stem)[:48] or "upload"
+    suffix    = original.suffix.lower() or ".mp3"
+
+    job_id   = str(uuid.uuid4())[:8]
+    filename = f"{safe_stem}_{job_id}{suffix}"
+    out_path = OUTPUTS_DIR / filename
+
+    content = await file.read()
+    out_path.write_bytes(content)
+
+    bpm, key = _detect_bpm_key(str(out_path))
+
+    jobs[job_id] = {
+        "status":           "done",
+        "message":          "Uploaded file",
+        "file":             f"/outputs/{filename}",
+        "file_size":        len(content),
+        "title":            safe_stem.replace("_", " "),
+        "artist":           "",
+        "tags":             "",
+        "lyrics":           "",
+        "max_duration_sec": None,
+        "temperature":      None,
+        "cfg_scale":        None,
+        "created_at":       datetime.now().isoformat(),
+        "bpm":              bpm,
+        "key":              key,
+        "watermarked_audio":False,
+        "watermarked_c2pa": False,
+    }
+    _save_history()
+    return {"job_id": job_id}
 
 
 @app.get("/demucs-status")
