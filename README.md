@@ -34,6 +34,7 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 - **Studio MASTER preset** — one-click mastering treatment: duplicates drums at 12 ms ADT offset, boosts sub/treble per stem, adds reverb presence, enables the exciter, and boosts master sub + air EQ
 - **Studio track selection + DAW shortcuts** — click any track to select it (cyan border); keyboard shortcuts then operate on that track (M/S/N/R/D); Tab/Shift+Tab cycles tracks; full shortcut reference via the **?** button or H key
 - **Studio help modal** — **?** button (top-right) or **H** key opens a full in-app reference covering every knob, button, and keyboard shortcut
+- **Karaoke mode** — fullscreen visualizer with synced lyrics; Whisper transcribes the vocals stem, LCS-aligns to the original lyrics, displays a 5-word sliding window with the active word highlighted; vocals toggle for sing-along vs instrumental; requires `faster-whisper`
 - **AI content watermarking** — AudioSeal neural watermark (survives re-encoding) + C2PA provenance manifest embedded in every generated MP3 (requires `audioseal`, `torchaudio`, `c2pa`, `cryptography`)
 
 ---
@@ -301,6 +302,27 @@ Bring in any audio file as an extra mixer track — a sample, a loop, a scratch 
 - **× button** — removes the imported track
 - Loop state is respected in Export Mix — looped imports will loop for the full render duration
 - Imported tracks get a distinct gold color in the waveform view so they're easy to spot
+
+### Karaoke Mode
+
+Click **🎤 Karaoke** in the transport bar (enabled once separation is done) to open a fullscreen performance page.
+
+| Feature | Description |
+|---|---|
+| 5-word lyric window | Active word highlighted in amber; two words on each side shown dimmer and smaller — same sliding window style as professional karaoke |
+| Lyrics sync | Whisper transcribes the vocals stem on-demand; LCS algorithm aligns Whisper's output to your original lyrics to correct misheard words |
+| Vocals toggle | **V** key or button — mutes/unmutes the vocals stem in real time. Karaoke mode = vocals off, sing-along mode = vocals on |
+| Visual styles | 4 styles: Galaxy, Aurora, Bars, Scope — press **N** to cycle |
+| Auto-transcribe | **AUTO TX** toggle in Studio transport — when on, Whisper runs automatically in the background right after separation finishes so Karaoke opens instantly |
+| Keyboard | **Space** play/pause · **V** vocals toggle · **N** next style · **←/→** seek ±5s · **Esc** back to Studio |
+
+**Setup:** requires `faster-whisper` — already included in `requirements.txt`, installed automatically by the setup script.
+
+```
+pip install faster-whisper
+```
+
+If `faster-whisper` is not installed, Karaoke mode still works — it just plays the song with the visualizer and no lyric sync.
 
 ### Controls
 

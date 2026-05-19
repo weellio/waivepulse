@@ -22,6 +22,9 @@ numpy>=1.24.0
 # Stem separation — Studio page (optional — safe to remove if you don't need it)
 demucs>=4.0.0
 
+# Lyric transcription — Karaoke mode (optional — safe to remove if you don't need it)
+faster-whisper>=1.0.0
+
 # AI content watermarking — PAWS Act / C2PA compliance (optional)
 # AudioSeal: neural audio watermark, survives re-encoding
 audioseal>=0.1.0

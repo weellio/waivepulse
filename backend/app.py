@@ -45,13 +45,14 @@ OUTPUTS_DIR.mkdir(exist_ok=True)
 ASSETS_DIR.mkdir(exist_ok=True)
 CREDS_DIR.mkdir(exist_ok=True)
 
-_DEMUCS       = importlib.util.find_spec("demucs")       is not None
-_LIBROSA      = importlib.util.find_spec("librosa")      is not None
-_AUDIOSEAL    = importlib.util.find_spec("audioseal")    is not None
-_TORCHAUDIO   = importlib.util.find_spec("torchaudio")   is not None
-_C2PA         = importlib.util.find_spec("c2pa")         is not None
-_CRYPTOGRAPHY = importlib.util.find_spec("cryptography") is not None
-_FFMPEG       = bool(shutil.which("ffmpeg"))
+_DEMUCS         = importlib.util.find_spec("demucs")         is not None
+_LIBROSA        = importlib.util.find_spec("librosa")        is not None
+_AUDIOSEAL      = importlib.util.find_spec("audioseal")      is not None
+_TORCHAUDIO     = importlib.util.find_spec("torchaudio")     is not None
+_C2PA           = importlib.util.find_spec("c2pa")           is not None
+_CRYPTOGRAPHY   = importlib.util.find_spec("cryptography")   is not None
+_FFMPEG         = bool(shutil.which("ffmpeg"))
+_FASTER_WHISPER = importlib.util.find_spec("faster_whisper") is not None
 
 _audioseal_gen = None   # lazy-loaded AudioSeal generator
 _wp_cert_pem   = None   # cached WAIvePulse signing cert
@@ -72,6 +73,7 @@ cancel_flags: dict = {}   # job_id → threading.Event
 
 sep_jobs: dict = {}       # sep_id → sep dict
 sep_logs: dict = {}       # sep_id → list[str]
+transcribe_jobs: dict = {}  # sep_id → {status, words, message}
 
 # ── Job queue (single FIFO worker) ────────────────────────────────────────────
 _job_queue = queue.Queue()
@@ -213,6 +215,121 @@ def _get_waivepulse_creds():
     key_path.write_bytes(_wp_key_pem)
     _real_stdout.write("[waivepulse] Generated WAIvePulse signing credentials.\n")
     return _wp_cert_pem, _wp_key_pem
+
+
+def _normalize_word(w: str) -> str:
+    w = w.lower()
+    w = w.replace('’', "'").replace('‘', "'").replace('ʼ', "'")
+    return re.sub(r"[^\w']", "", w)
+
+def _extract_lyric_words(lyrics_text: str) -> list:
+    words = []
+    for line in lyrics_text.split('\n'):
+        line = line.strip()
+        if not line or re.match(r'^\[.*\]$', line):
+            continue
+        words.extend(w for w in line.split() if w)
+    return words
+
+def _lcs_align(lyric_words: list, transcript_words: list) -> list:
+    n, m = len(lyric_words), len(transcript_words)
+    nl = [_normalize_word(w) for w in lyric_words]
+    nt = [_normalize_word(w['word']) for w in transcript_words]
+    dp = [[0] * (m + 1) for _ in range(n + 1)]
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            dp[i][j] = dp[i-1][j-1] + 1 if nl[i-1] == nt[j-1] else max(dp[i-1][j], dp[i][j-1])
+    alignment = [None] * n
+    i, j = n, m
+    while i > 0 and j > 0:
+        if nl[i-1] == nt[j-1]:
+            alignment[i-1] = j - 1; i -= 1; j -= 1
+        elif dp[i-1][j] >= dp[i][j-1]:
+            i -= 1
+        else:
+            j -= 1
+    return alignment
+
+def _build_word_timing(lyric_words: list, alignment: list, transcript_words: list) -> list:
+    n = len(alignment)
+    result = []
+    for i, j in enumerate(alignment):
+        if j is not None:
+            tw = transcript_words[j]
+            result.append({'word': lyric_words[i], 'start': tw['start'], 'end': tw['end']})
+        else:
+            result.append({'word': lyric_words[i], 'start': None, 'end': None})
+    for i in range(n):
+        if result[i]['start'] is not None:
+            continue
+        prev_i = next((k for k in range(i-1, -1, -1) if result[k]['start'] is not None), None)
+        next_i = next((k for k in range(i+1, n)      if result[k]['start'] is not None), None)
+        if prev_i is not None and next_i is not None:
+            t0 = result[prev_i]['end'] or result[prev_i]['start']
+            t1 = result[next_i]['start']
+            if t1 <= t0: t0 = result[prev_i]['start']
+            gap = next_i - prev_i
+            pos = i - prev_i
+            dur = max(0, t1 - t0) / gap
+            result[i]['start'] = round(t0 + dur * pos, 3)
+            result[i]['end']   = round(t0 + dur * (pos + 1), 3)
+        elif prev_i is not None:
+            result[i]['start'] = round(result[prev_i]['end'] or result[prev_i]['start'], 3)
+            result[i]['end']   = round(result[i]['start'] + 0.25, 3)
+        elif next_i is not None:
+            result[i]['start'] = round(max(0.0, result[next_i]['start'] - 0.25), 3)
+            result[i]['end']   = round(result[next_i]['start'], 3)
+        else:
+            result[i]['start'] = 0.0
+            result[i]['end']   = 0.25
+    return result
+
+def _run_transcription(sep_id: str):
+    transcribe_jobs[sep_id] = {'status': 'transcribing', 'words': None, 'message': 'Running Whisper on vocals stem…'}
+    try:
+        sep = sep_jobs.get(sep_id)
+        if not sep:
+            raise ValueError('Separation not found')
+        job_id = sep.get('job_id')
+        lyrics = jobs.get(job_id, {}).get('lyrics', '') if job_id else ''
+
+        out_dir = OUTPUTS_DIR / f'sep_{sep_id}'
+        ext = 'mp3' if _FFMPEG else 'wav'
+        candidates = list(out_dir.rglob(f'vocals.{ext}')) or list(out_dir.rglob('vocals.wav'))
+        if not candidates:
+            raise FileNotFoundError('Vocals stem not found — run separation first')
+
+        from faster_whisper import WhisperModel
+        _real_stdout.write(f'[waivepulse] Loading Whisper base model…\n')
+        model = WhisperModel('base', device='cpu', compute_type='int8')
+        _real_stdout.write(f'[waivepulse] Transcribing vocals for sep {sep_id}…\n')
+        segments, _ = model.transcribe(str(candidates[0]), word_timestamps=True)
+
+        transcript_words = []
+        for seg in segments:
+            for w in (seg.words or []):
+                wrd = w.word.strip()
+                if wrd:
+                    transcript_words.append({'word': wrd, 'start': round(w.start, 3), 'end': round(w.end, 3)})
+
+        _real_stdout.write(f'[waivepulse] Whisper found {len(transcript_words)} words\n')
+
+        if lyrics and transcript_words:
+            lyric_words = _extract_lyric_words(lyrics)
+            alignment   = _lcs_align(lyric_words, transcript_words)
+            matched     = sum(1 for a in alignment if a is not None)
+            _real_stdout.write(f'[waivepulse] LCS matched {matched}/{len(lyric_words)} words\n')
+            words = _build_word_timing(lyric_words, alignment, transcript_words)
+        else:
+            words = [{'word': w['word'], 'start': w['start'], 'end': w['end']} for w in transcript_words]
+
+        transcribe_jobs[sep_id] = {'status': 'done', 'words': words, 'message': f'{len(words)} words aligned'}
+        sep_jobs[sep_id]['words'] = words
+        _save_history()
+        _real_stdout.write(f'[waivepulse] Transcription done for sep {sep_id}: {len(words)} words\n')
+    except Exception as e:
+        transcribe_jobs[sep_id] = {'status': 'error', 'words': None, 'message': str(e)}
+        _real_stderr.write(f'[waivepulse] Transcription error for {sep_id}: {e}\n')
 
 
 def _apply_audioseal(mp3_path: str, job_id: str) -> bool:
@@ -947,6 +1064,50 @@ async def upload_audio(file: UploadFile = FastAPIFile(...)):
 @app.get("/demucs-status")
 def demucs_status():
     return {"available": _DEMUCS, "ffmpeg": _FFMPEG}
+
+
+@app.get("/whisper-status")
+def whisper_status():
+    return {"available": _FASTER_WHISPER}
+
+
+@app.post("/transcribe/{sep_id}")
+def start_transcription(sep_id: str):
+    if not _FASTER_WHISPER:
+        raise HTTPException(status_code=503, detail="faster-whisper not installed. Run: pip install faster-whisper")
+    if sep_id not in sep_jobs and not _recover_sep(sep_id):
+        raise HTTPException(status_code=404, detail="Separation not found")
+    if sep_jobs[sep_id].get("status") != "done":
+        raise HTTPException(status_code=400, detail="Separation must complete before transcribing")
+    # Return cached result from sep_jobs (persisted across restarts)
+    if sep_jobs[sep_id].get("words"):
+        return {"status": "done", "words": sep_jobs[sep_id]["words"]}
+    existing = transcribe_jobs.get(sep_id, {})
+    if existing.get("status") == "transcribing":
+        return {"status": "transcribing"}
+    if existing.get("status") == "done":
+        return {"status": "done", "words": existing["words"]}
+    threading.Thread(target=_run_transcription, args=(sep_id,), daemon=True, name=f"transcribe-{sep_id}").start()
+    return {"status": "transcribing"}
+
+
+@app.get("/transcribe/status/{sep_id}")
+def transcription_status(sep_id: str):
+    # Persisted words survive server restarts
+    if sep_jobs.get(sep_id, {}).get("words"):
+        return {"status": "done", "words": sep_jobs[sep_id]["words"]}
+    job = transcribe_jobs.get(sep_id)
+    if not job:
+        return {"status": "none"}
+    return job
+
+
+@app.get("/karaoke", response_class=HTMLResponse)
+def karaoke_page():
+    html_path = FRONTEND_DIR / "karaoke.html"
+    if html_path.exists():
+        return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h1>Karaoke page not found</h1>", status_code=404)
 
 
 if __name__ == "__main__":

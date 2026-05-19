@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WAIvePulse Karaoke</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#000;color:#fff;font-family:'Segoe UI',system-ui,sans-serif;width:100vw;height:100vh;overflow:hidden;cursor:none}
+body.show-cursor{cursor:default}
+
+/* Visualizer */
+#viz{position:fixed;inset:0;width:100%;height:100%;z-index:0}
+
+/* Top scrim — helps lyrics pop */
+#scrim-top{position:fixed;top:0;left:0;right:0;height:220px;background:linear-gradient(to bottom,rgba(0,0,0,0.72) 0%,transparent 100%);z-index:1;pointer-events:none}
+
+/* Title */
+#title-bar{position:fixed;top:16px;left:24px;font-size:13px;color:rgba(255,255,255,0.45);z-index:3;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45vw;letter-spacing:.3px}
+
+/* 5-word lyric window */
+#lyrics{position:fixed;top:52px;left:50%;transform:translateX(-50%);display:flex;align-items:baseline;gap:18px;z-index:2;white-space:nowrap;pointer-events:none}
+.kw{font-weight:900;color:#fff;opacity:0;transition:opacity .08s;pointer-events:none;user-select:none;text-shadow:0 2px 16px rgba(0,0,0,0.9)}
+#kw0,#kw4{font-size:30px}
+#kw1,#kw3{font-size:46px}
+#kw2{font-size:70px;color:#ffd84a;text-shadow:0 0 40px rgba(255,216,74,0.85),0 2px 16px rgba(0,0,0,0.9)}
+
+/* Status overlay */
+#status{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;z-index:20;background:rgba(0,0,0,0.88)}
+#status.hidden{display:none}
+#status-msg{font-size:18px;color:#8cffff;text-align:center;max-width:500px}
+#status-sub{font-size:13px;color:#555;text-align:center}
+.spinner{width:38px;height:38px;border:3px solid #1a1a1a;border-top:3px solid #8cffff;border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Controls bar */
+#controls{position:fixed;bottom:0;left:0;right:0;padding:20px 24px 24px;background:linear-gradient(to top,rgba(0,0,0,0.9) 0%,transparent 100%);display:flex;align-items:center;gap:10px;z-index:5;transition:opacity .4s}
+#controls.hidden{opacity:0;pointer-events:none}
+.c-btn{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);color:#ccc;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:background .15s,border-color .15s;white-space:nowrap;flex-shrink:0;letter-spacing:.3px}
+.c-btn:hover{background:rgba(255,255,255,0.18);color:#fff}
+.c-btn.active{background:rgba(140,255,255,0.15);border-color:rgba(140,255,255,0.4);color:#8cffff}
+#progress-wrap{flex:1;padding:8px 0;cursor:pointer}
+#progress-bar{height:3px;background:rgba(255,255,255,0.12);border-radius:2px;position:relative}
+#progress-fill{height:100%;background:#8cffff;border-radius:2px;width:0%;transition:width .08s}
+#time-disp{font-size:11px;color:#666;font-family:'Courier New',monospace;white-space:nowrap;min-width:88px;text-align:right}
+
+/* Preset name flash */
+#preset-name{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);font-size:12px;color:rgba(140,255,255,0.6);letter-spacing:.5px;pointer-events:none;opacity:0;transition:opacity .4s;z-index:6;white-space:nowrap}
+
+/* Help hint */
+#hint{position:fixed;bottom:80px;right:24px;font-size:11px;color:rgba(255,255,255,0.2);pointer-events:none;z-index:6;line-height:1.8}
+</style>
+</head>
+<body>
+
+<canvas id="viz"></canvas>
+<div id="scrim-top"></div>
+<div id="title-bar">Loading…</div>
+
+<div id="lyrics">
+  <span class="kw" id="kw0"></span>
+  <span class="kw" id="kw1"></span>
+  <span class="kw" id="kw2"></span>
+  <span class="kw" id="kw3"></span>
+  <span class="kw" id="kw4"></span>
+</div>
+
+<div id="status">
+  <div class="spinner"></div>
+  <div id="status-msg">Loading…</div>
+  <div id="status-sub"></div>
+</div>
+
+<div id="controls" class="hidden">
+  <button class="c-btn" id="back-btn">← Studio</button>
+  <button class="c-btn" id="play-btn" onclick="togglePlay()" style="min-width:36px">▶</button>
+  <div id="progress-wrap" onclick="seekClick(event)">
+    <div id="progress-bar"><div id="progress-fill"></div></div>
+  </div>
+  <div id="time-disp">0:00 / 0:00</div>
+  <button class="c-btn" id="vocals-btn" onclick="toggleVocals()">🎤 Vocals ON</button>
+  <button class="c-btn" onclick="nextPreset()" title="Cycle visual style (N)">🎨 Style</button>
+</div>
+
+<div id="preset-name"></div>
+<div id="hint">Space play/pause &nbsp;·&nbsp; V vocals &nbsp;·&nbsp; N style &nbsp;·&nbsp; Esc back</div>
+
+<script>
+// ── Params ───────────────────────────────────────────────────────────────────
+const _params = new URLSearchParams(location.search);
+const _sepId  = _params.get('sep');
+
+// ── State ────────────────────────────────────────────────────────────────────
+let _actx=null,_playing=false,_dur=0;
+let _startTime=0,_startOff=0;
+let _stems={},_sources={},_vocalsGain=null,_analyser=null,_vocalsOn=true;
+let _words=[],_lastWordIdx=-1;
+let _vizType=0,_vizPhase=0,_hideTimer=null;
+
+const VIZ_NAMES=['Galaxy','Aurora','Bars','Scope'];
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function fmtTime(s){const m=Math.floor(s/60);return m+':'+((''+Math.floor(s%60)).padStart(2,'0'));}
+function setStatus(msg,sub=''){document.getElementById('status-msg').textContent=msg;document.getElementById('status-sub').textContent=sub;}
+function hideStatus(){document.getElementById('status').classList.add('hidden');}
+function currentPos(){return _playing?_startOff+(_actx.currentTime-_startTime):_startOff;}
+
+// ── Controls auto-hide ───────────────────────────────────────────────────────
+document.addEventListener('mousemove',()=>{
+  document.body.classList.add('show-cursor');
+  document.getElementById('controls').classList.remove('hidden');
+  document.getElementById('hint').style.opacity='1';
+  clearTimeout(_hideTimer);
+  _hideTimer=setTimeout(()=>{
+    document.getElementById('controls').classList.add('hidden');
+    document.getElementById('hint').style.opacity='0';
+    document.body.classList.remove('show-cursor');
+  },3500);
+});
+
+// ── Audio engine ─────────────────────────────────────────────────────────────
+async function loadStems(stemUrls){
+  _actx=new AudioContext();
+  const master=_actx.createGain();
+  _analyser=_actx.createAnalyser();
+  _analyser.fftSize=2048;
+  master.connect(_analyser);
+  _analyser.connect(_actx.destination);
+
+  const names=Object.keys(stemUrls);
+  for(let i=0;i<names.length;i++){
+    const name=names[i];
+    setStatus('Loading stems…',`${i+1} / ${names.length}: ${name}`);
+    try{
+      const ab=await(await fetch(stemUrls[name])).arrayBuffer();
+      const buf=await _actx.decodeAudioData(ab);
+      const g=_actx.createGain();
+      g.connect(master);
+      _stems[name]={buffer:buf,gainNode:g};
+      if(!_dur)_dur=buf.duration;
+      if(name==='vocals')_vocalsGain=g;
+    }catch(e){console.warn('stem load failed:',name,e);}
+  }
+}
+
+function startPlayback(){
+  if(!_actx||!Object.keys(_stems).length)return;
+  if(_actx.state==='suspended')_actx.resume();
+  _startTime=_actx.currentTime;
+  const off=Math.max(0,Math.min(_dur,_startOff));
+  for(const[name,t]of Object.entries(_stems)){
+    const src=_actx.createBufferSource();
+    src.buffer=t.buffer;
+    src.connect(t.gainNode);
+    src.start(_actx.currentTime+0.05,off);
+    src.onended=()=>{if(_sources[name]===src)_sources[name]=null;};
+    _sources[name]=src;
+  }
+  _playing=true;
+  document.getElementById('play-btn').textContent='⏸';
+}
+
+function stopSources(){
+  for(const s of Object.values(_sources)){try{s?.stop();}catch{}}
+  _sources={};
+}
+
+function pausePlayback(){
+  _startOff=currentPos();
+  stopSources();
+  _playing=false;
+  document.getElementById('play-btn').textContent='▶';
+}
+
+function togglePlay(){_playing?pausePlayback():startPlayback();}
+
+function seekTo(pos){
+  const was=_playing;
+  if(was)stopSources();
+  _startOff=Math.max(0,Math.min(_dur,pos));
+  _startTime=_actx?.currentTime||0;
+  _lastWordIdx=-1;
+  if(was)startPlayback();
+}
+
+function seekClick(e){
+  const bar=document.getElementById('progress-bar');
+  seekTo((e.offsetX/bar.clientWidth)*_dur);
+}
+
+function toggleVocals(){
+  if(!_vocalsGain||!_actx)return;
+  _vocalsOn=!_vocalsOn;
+  _vocalsGain.gain.setTargetAtTime(_vocalsOn?1:0,_actx.currentTime,0.05);
+  const btn=document.getElementById('vocals-btn');
+  btn.textContent=_vocalsOn?'🎤 Vocals ON':'🎤 Vocals OFF';
+  btn.classList.toggle('active',!_vocalsOn);
+}
+
+// ── Lyrics ───────────────────────────────────────────────────────────────────
+function findWordIdx(pos){
+  let lo=0,hi=_words.length-1;
+  while(lo<=hi){
+    const mid=(lo+hi)>>1;
+    if(_words[mid].end<pos)lo=mid+1;
+    else if(_words[mid].start>pos)hi=mid-1;
+    else return mid;
+  }
+  return Math.min(lo,_words.length-1);
+}
+
+function updateLyrics(pos){
+  if(!_words.length)return;
+  const idx=findWordIdx(pos);
+  if(idx===_lastWordIdx)return;
+  _lastWordIdx=idx;
+  const OPA=[0.22,0.55,1.0,0.55,0.22];
+  for(let si=0;si<5;si++){
+    const wi=idx-2+si;
+    const el=document.getElementById('kw'+si);
+    if(wi>=0&&wi<_words.length){
+      el.textContent=_words[wi].word;
+      el.style.opacity=OPA[si];
+    }else{
+      el.textContent='';
+      el.style.opacity=0;
+    }
+  }
+}
+
+// ── Visualizer ───────────────────────────────────────────────────────────────
+const canvas=document.getElementById('viz');
+const ctx=canvas.getContext('2d');
+
+function resizeCanvas(){canvas.width=window.innerWidth;canvas.height=window.innerHeight;}
+window.addEventListener('resize',resizeCanvas);
+resizeCanvas();
+
+function nextPreset(){
+  _vizType=(_vizType+1)%VIZ_NAMES.length;
+  const el=document.getElementById('preset-name');
+  el.textContent=VIZ_NAMES[_vizType];
+  el.style.opacity='1';
+  setTimeout(()=>el.style.opacity='0',1800);
+}
+
+function renderFrame(){
+  requestAnimationFrame(renderFrame);
+  const W=canvas.width,H=canvas.height;
+  _vizPhase+=0.004;
+
+  if(!_analyser){
+    ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+    return;
+  }
+  const freq=new Uint8Array(_analyser.frequencyBinCount);
+  _analyser.getByteFrequencyData(freq);
+
+  // Fade trail
+  ctx.fillStyle='rgba(0,0,0,0.16)';
+  ctx.fillRect(0,0,W,H);
+
+  if(_vizType===0)      drawGalaxy(W,H,freq);
+  else if(_vizType===1) drawAurora(W,H,freq);
+  else if(_vizType===2) drawBars(W,H,freq);
+  else                  drawScope(W,H);
+}
+
+function drawGalaxy(W,H,freq){
+  const cx=W/2,cy=H/2,n=120;
+  ctx.save();
+  for(let i=0;i<n;i++){
+    const amp=freq[i*2]/255;
+    const angle=((i/n)*Math.PI*2)+_vizPhase*1.8;
+    const r=50+amp*Math.min(W,H)*0.38;
+    const x=cx+Math.cos(angle)*r,y=cy+Math.sin(angle)*r;
+    const hue=(i/n*360+_vizPhase*25)%360;
+    ctx.strokeStyle=`hsla(${hue},100%,${48+amp*44}%,${0.25+amp*0.75})`;
+    ctx.lineWidth=1+amp*2.5;
+    ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(x,y);ctx.stroke();
+    if(amp>0.6){
+      ctx.fillStyle=`hsla(${hue},100%,80%,${amp*0.5})`;
+      ctx.beginPath();ctx.arc(x,y,amp*4,0,Math.PI*2);ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+function drawAurora(W,H,freq){
+  const bands=7;
+  for(let b=0;b<bands;b++){
+    const amp=freq[Math.floor(b*freq.length/bands)]/255;
+    const hue=(b/bands*240+_vizPhase*18+160)%360;
+    ctx.beginPath();
+    for(let x=0;x<=W;x+=3){
+      const t=x/W;
+      const y=H*(0.28+b*0.07)
+        +Math.sin(t*7+_vizPhase*(1+b*0.25))*H*(0.035+amp*0.07)
+        +Math.sin(t*3.5-_vizPhase*(0.6+b*0.18))*H*(0.018+amp*0.04);
+      x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle=`hsla(${hue},80%,62%,${0.12+amp*0.55})`;
+    ctx.lineWidth=2+amp*5;
+    ctx.stroke();
+  }
+}
+
+function drawBars(W,H,freq){
+  const n=96,bw=W/n;
+  for(let i=0;i<n;i++){
+    const amp=freq[Math.floor(i*freq.length/n)]/255;
+    const h=amp*H*0.82;
+    const hue=(i/n*160+200)%360;
+    const grad=ctx.createLinearGradient(0,H,0,H-h);
+    grad.addColorStop(0,`hsla(${hue},100%,52%,0.85)`);
+    grad.addColorStop(1,`hsla(${hue+50},100%,78%,0.4)`);
+    ctx.fillStyle=grad;
+    ctx.fillRect(i*bw+1,H-h,bw-2,h);
+  }
+}
+
+function drawScope(W,H){
+  const tbuf=new Uint8Array(_analyser.fftSize);
+  _analyser.getByteTimeDomainData(tbuf);
+  ctx.strokeStyle='rgba(140,255,255,0.75)';
+  ctx.lineWidth=2;
+  ctx.shadowColor='rgba(140,255,255,0.4)';
+  ctx.shadowBlur=6;
+  ctx.beginPath();
+  for(let i=0;i<tbuf.length;i++){
+    const x=i/tbuf.length*W;
+    const y=((tbuf[i]/128)-1)*H*0.38+H/2;
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur=0;
+}
+
+// ── RAF loop ─────────────────────────────────────────────────────────────────
+function rafLoop(){
+  requestAnimationFrame(rafLoop);
+  if(!_actx||!_playing)return;
+  const pos=currentPos();
+  if(pos>=_dur){pausePlayback();return;}
+  updateLyrics(pos);
+  document.getElementById('progress-fill').style.width=(_dur?pos/_dur*100:0)+'%';
+  document.getElementById('time-disp').textContent=fmtTime(pos)+' / '+fmtTime(_dur);
+}
+
+// ── Keyboard ─────────────────────────────────────────────────────────────────
+document.addEventListener('keydown',e=>{
+  if(e.key===' '){e.preventDefault();togglePlay();}
+  if(e.key==='Escape')goBack();
+  if(e.key==='v'||e.key==='V')toggleVocals();
+  if(e.key==='n'||e.key==='N')nextPreset();
+  if(e.key==='ArrowLeft')seekTo(Math.max(0,currentPos()-5));
+  if(e.key==='ArrowRight')seekTo(Math.min(_dur,currentPos()+5));
+});
+
+function goBack(){
+  const base='/studio?sep='+_sepId;
+  window.location.href=base;
+}
+
+// ── Transcription polling ────────────────────────────────────────────────────
+async function waitForTranscription(){
+  for(;;){
+    const d=await(await fetch('/transcribe/status/'+_sepId)).json();
+    if(d.status==='done'){_words=d.words||[];return;}
+    if(d.status==='error'){console.warn('Transcription failed:',d.message);return;}
+    setStatus('Transcribing lyrics…','This takes 30–60 seconds — Whisper is reading the vocals stem');
+    await new Promise(r=>setTimeout(r,2500));
+  }
+}
+
+// ── Main init ────────────────────────────────────────────────────────────────
+async function init(){
+  if(!_sepId){setStatus('Missing ?sep= parameter','Open Karaoke from the Studio page');return;}
+
+  document.getElementById('back-btn').onclick=goBack;
+
+  try{
+    setStatus('Loading separation…');
+    const sepRes=await fetch('/separate/status/'+_sepId);
+    if(!sepRes.ok)throw new Error('Separation not found ('+sepRes.status+')');
+    const sep=await sepRes.json();
+    if(sep.status!=='done')throw new Error('Separation not ready: '+sep.status);
+
+    // Get title from job
+    const jobId=sep.job_id;
+    let title='WAIvePulse';
+    if(jobId){
+      const jr=await fetch('/status/'+jobId);
+      if(jr.ok){const jd=await jr.json();title=jd.title||title;}
+    }
+    document.getElementById('title-bar').textContent=title;
+    document.title='Karaoke — '+title;
+
+    // Load audio
+    await loadStems(sep.stems);
+
+    // Check transcription
+    const txd=await(await fetch('/transcribe/status/'+_sepId)).json();
+    if(txd.status==='done'){
+      _words=txd.words||[];
+    }else if(txd.status==='transcribing'){
+      setStatus('Transcribing lyrics…','This takes 30–60 seconds');
+      await waitForTranscription();
+    }else{
+      // Check if whisper available; if so start it
+      const ws=await(await fetch('/whisper-status')).json();
+      if(ws.available){
+        setStatus('Starting transcription…','Whisper will read the vocals stem');
+        const tr=await fetch('/transcribe/'+_sepId,{method:'POST'});
+        if(tr.ok){await waitForTranscription();}
+      }
+      // No whisper — karaoke plays without timed lyrics
+    }
+
+    hideStatus();
+    document.getElementById('controls').classList.remove('hidden');
+    startPlayback();
+
+  }catch(e){
+    setStatus('Error loading karaoke',e.message);
+    console.error(e);
+  }
+}
+
+renderFrame();
+rafLoop();
+init();
+</script>
+</body>
+</html>
