@@ -1519,6 +1519,30 @@ async function maybeAutoTranscribe(){
 
 function openKaraoke(){
   if(!_sepId)return;
+  const stemNames=['vocals','drums','bass','guitar','piano','other'];
+  const soloActive=Object.values(tracks).some(t=>t.solo&&!t.isDuplicate&&!t.isImport);
+  const stemState={};
+  for(const name of stemNames){
+    const t=tracks[name];
+    if(!t)continue;
+    stemState[name]={
+      volume:t.volume,pan:t.pan,
+      eqS:t.eqS||0,eqB:t.eqB||0,eqM:t.eqM||0,eqT:t.eqT||0,
+      revAmt:t.revAmt||0,dlyAmt:t.dlyAmt||0,offset:t.offset||0,
+      muted:t.muted||(soloActive&&!t.solo),
+      muteRanges:t.muteRanges||[],
+    };
+  }
+  localStorage.setItem('waivepulse_mixer',JSON.stringify({
+    stems:stemState,
+    master:{
+      volume:_masterBus?_masterBus.gain.value:1,
+      subEQ:_masterSubEQ?_masterSubEQ.gain.value:0,
+      airEQ:_masterAirEQ?_masterAirEQ.gain.value:0,
+      exciter:_exciterEnabled,
+      comp:_compEnabled,
+    },
+  }));
   window.open(`/karaoke?sep=${_sepId}`,'_blank');
 }
 
