@@ -214,6 +214,11 @@ kbd{display:inline-block;background:#1c1c1c;border:1px solid #383838;border-bott
   <button class="t-btn" id="comp-btn"    style="font-size:10px;width:auto;padding:0 8px" title="Master limiter" onclick="toggleCompressor()">LMT OFF</button>
   <button class="t-btn" id="exciter-btn" style="font-size:10px;width:auto;padding:0 8px" title="Harmonic exciter — adds air and presence" onclick="toggleExciter()">EXC</button>
   <button class="t-btn" id="master-btn"  style="font-size:10px;width:auto;padding:0 9px;color:#c8a832;border-color:#6b5200" title="Apply mastering preset to all stems" onclick="applyMasterPreset()">MASTER</button>
+  <button class="t-btn" style="font-size:10px;width:auto;padding:0 8px;color:#888" title="Reset all knobs on every track to defaults" onclick="resetAllTracks()">RST ALL</button>
+  <div class="t-divider"></div>
+  <span style="font-size:10px;color:#555;white-space:nowrap">VOL</span>
+  <input type="range" id="master-vol" min="0" max="150" value="100" style="width:72px;accent-color:#8cffff;cursor:pointer;vertical-align:middle" title="Master volume (0–150%)" oninput="setMasterVolume(this.value)">
+  <span id="master-vol-label" style="font-size:10px;color:#8cffff;min-width:30px;font-family:'Courier New',monospace;text-align:right">100%</span>
   <div class="t-divider"></div>
   <button id="export-btn" disabled onclick="exportMix()">⬇ Export Mix</button>
   <button id="zip-btn"    disabled onclick="downloadZip()">⬇ Stems</button>
@@ -359,9 +364,11 @@ kbd{display:inline-block;background:#1c1c1c;border:1px solid #383838;border-bott
           <tr><td><b>MASTER button</b></td><td>One-click mastering preset. Duplicates drums at 12ms offset (ADT thickening), boosts sub-bass and treble air per stem, adds reverb presence to instruments, enables the harmonic exciter, and boosts the master sub and air EQ. Use this as a starting point, then tweak individual knobs.</td></tr>
           <tr><td><b>EXC (Exciter)</b></td><td>Harmonic exciter on the master bus. High-passes the signal at 3kHz, applies soft saturation to only the high frequencies, then mixes it back at 18% wet. Adds overtone shimmer and "air" that AI audio typically lacks — makes it sound more alive and present without affecting the low end.</td></tr>
           <tr><td><b>LMT (Limiter)</b></td><td>Master bus limiter/compressor. Tames loud peaks and adds a sense of loudness glue. Settings: −18dB threshold, 4:1 ratio, fast attack. Toggle on for a more radio-ready sound.</td></tr>
+          <tr><td><b>VOL slider</b></td><td>Master output volume — scales the entire mix from 0% (silence) to 150% (boost). Affects both live playback and Export Mix. Use it to bring down a mix that's too hot before exporting, or to match levels when A/B comparing. Default is 100%.</td></tr>
+          <tr><td><b>RST ALL button</b></td><td>Resets every knob on every track to its default value in one click — VOL back to 100%, PAN to center, all EQ flat, REV/DLY/OFS to zero. Useful for starting fresh after experimenting. Individual tracks also have their own RST button, and pressing <kbd>R</kbd> resets the selected track.</td></tr>
           <tr><td><b>DUP button</b></td><td>Duplicate any stem as its own independent track. Set OFS to 10–20ms on the copy for ADT doubling. Try panning the two copies slightly apart (e.g. L20 and R20) for a wide stereo image.</td></tr>
         </tbody></table>
-        <p class="help-p" style="margin-top:8px">Tip: All mastering settings — master EQ, exciter, per-track knobs — are fully baked into <b>Export Mix</b>.</p>
+        <p class="help-p" style="margin-top:8px">Tip: All mastering settings — master EQ, exciter, master volume, per-track knobs — are fully baked into <b>Export Mix</b>.</p>
       </div>
 
       <div class="help-section">
@@ -1372,6 +1379,10 @@ function toggleCompressor(){
   document.getElementById('comp-btn').textContent=_compEnabled?'LMT ON':'LMT OFF';
   document.getElementById('comp-btn').classList.toggle('active',_compEnabled);
 }
+function setMasterVolume(v){
+  if(_masterBus)_masterBus.gain.setTargetAtTime(v/100,_actx.currentTime,0.01);
+  document.getElementById('master-vol-label').textContent=v+'%';
+}
 
 function normalizeTrack(stem){
   const t=tracks[stem];
@@ -1385,6 +1396,9 @@ function resetTrack(stem){
   const t=tracks[stem];
   Object.values(t.knobs).forEach(k=>k.set(k.def));
 }
+function resetAllTracks(){
+  Object.keys(tracks).forEach(resetTrack);
+}
 
 // ── Export Mix ────────────────────────────────────────────────────────────
 async function exportMix(){
@@ -1395,7 +1409,7 @@ async function exportMix(){
     const first=Object.values(tracks)[0].buffer;
     const sr=first.sampleRate,len=Math.ceil(_dur*sr);
     const off=new OfflineAudioContext(2,len,sr);
-    const offBus=off.createGain();
+    const offBus=off.createGain();offBus.gain.value=_masterBus?_masterBus.gain.value:1;
     const offRev=off.createConvolver();offRev.buffer=makeIR(off);
     const offRevRtn=off.createGain();offRevRtn.gain.value=0.85;
     offRev.connect(offRevRtn);offRevRtn.connect(offBus);

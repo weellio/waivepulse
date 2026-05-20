@@ -32,6 +32,8 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 - **Studio per-track SUB knob** — 60 Hz lowshelf shelf per track; AI music often lacks sub-bass — boost this on drums and bass stems to add physical rumble and body
 - **Studio master harmonic exciter** — EXC button on the master bus; high-passes at 3 kHz, applies soft saturation, mixes back at 18% wet; adds overtone shimmer and "air" AI audio typically lacks
 - **Studio MASTER preset** — one-click mastering treatment: duplicates drums at 12 ms ADT offset, boosts sub/treble per stem, adds reverb presence, enables the exciter, and boosts master sub + air EQ
+- **Studio master volume** — VOL slider in the transport bar scales the entire mix output from 0–150%; affects both live playback and Export Mix; default 100%
+- **Studio RST ALL** — resets every knob on every track to defaults in one click; individual RST button per track still available
 - **Studio track selection + DAW shortcuts** — click any track to select it (cyan border); keyboard shortcuts then operate on that track (M/S/N/R/D); Tab/Shift+Tab cycles tracks; full shortcut reference via the **?** button or H key
 - **Studio help modal** — **?** button (top-right) or **H** key opens a full in-app reference covering every knob, button, and keyboard shortcut
 - **Karaoke mode** — fullscreen visualizer with synced lyrics; Whisper transcribes the vocals stem, LCS-aligns to the original lyrics, displays a 5-word sliding window with the active word highlighted; vocals toggle for sing-along vs instrumental; requires `faster-whisper`
@@ -340,6 +342,8 @@ If `faster-whisper` is not installed, Karaoke mode still works — it just plays
 - **EXC** — toggle master bus harmonic exciter (adds overtone shimmer to high frequencies only)
 - **LMT** — toggle master bus limiter/compressor (loudness glue, tames peaks)
 - **MASTER** — one-click mastering preset applied to all stems
+- **VOL slider** — master output volume (0–150%); scales the full mix; baked into Export Mix
+- **RST ALL** — reset every knob on every track to defaults in one click
 - **? / H** — open the in-app help reference
 - **Space** — play / pause
 - **Home** — stop and return to start
