@@ -762,12 +762,16 @@ function addTrackToUI(stemKey){
       e.preventDefault();
       _rangeDrawing={stemKey,startPos:pos,currentPos:pos};
     }else if(t?.isImport&&!t.loopTrack){
-      const st=t.startTime||0,end=st+(t.buffer?.duration||0);
-      if(pos>=st&&pos<=end){
-        e.preventDefault();
-        _trackPosDrag={stemKey,songX0:e.clientX,startTime0:st};
-        row.style.cursor='grabbing';
-      }else{seekTo(pos);}
+      const muteIdx=(t?.muteRanges||[]).findIndex(r=>pos>=r.start&&pos<=r.end);
+      if(muteIdx>=0){t.muteRanges.splice(muteIdx,1);redrawAll();}
+      else{
+        const st=t.startTime||0,end=st+(t.buffer?.duration||0);
+        if(pos>=st&&pos<=end){
+          e.preventDefault();
+          _trackPosDrag={stemKey,songX0:e.clientX,startTime0:st};
+          row.style.cursor='grabbing';
+        }else{seekTo(pos);}
+      }
     }else{
       const idx=(t?.muteRanges||[]).findIndex(r=>pos>=r.start&&pos<=r.end);
       if(idx>=0){t.muteRanges.splice(idx,1);redrawAll();}
@@ -778,8 +782,9 @@ function addTrackToUI(stemKey){
     const t=tracks[stemKey];
     const pos=(e.offsetX/getCanvasWidth())*_dur;
     if(t?.isImport&&!t.loopTrack){
+      const inR=(t?.muteRanges||[]).some(r=>pos>=r.start&&pos<=r.end);
       const st=t.startTime||0,end=st+(t.buffer?.duration||0);
-      row.style.cursor=e.shiftKey?'crosshair':(pos>=st&&pos<=end)?'grab':'default';
+      row.style.cursor=e.shiftKey?'crosshair':inR?'pointer':(pos>=st&&pos<=end)?'grab':'default';
     }else{
       const inR=(t?.muteRanges||[]).some(r=>pos>=r.start&&pos<=r.end);
       row.style.cursor=e.shiftKey?'crosshair':inR?'pointer':'default';
