@@ -24,7 +24,7 @@ try:
 except ImportError:
     _MUTAGEN = False
 
-from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile
+from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Query
 from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -284,8 +284,11 @@ def _build_word_timing(lyric_words: list, alignment: list, transcript_words: lis
             result[i]['end']   = 0.25
     return result
 
-def _run_transcription(sep_id: str):
-    transcribe_jobs[sep_id] = {'status': 'transcribing', 'words': None, 'message': 'Running Whisper on vocals stem…'}
+WHISPER_MODELS = ('tiny', 'base', 'small', 'medium', 'large-v2', 'large-v3')
+
+def _run_transcription(sep_id: str, model_name: str = 'base'):
+    label = f'Whisper {model_name}'
+    transcribe_jobs[sep_id] = {'status': 'transcribing', 'words': None, 'message': f'Running {label} on vocals stem…'}
     try:
         sep = sep_jobs.get(sep_id)
         if not sep:
@@ -300,10 +303,17 @@ def _run_transcription(sep_id: str):
             raise FileNotFoundError('Vocals stem not found — run separation first')
 
         from faster_whisper import WhisperModel
-        _real_stdout.write(f'[waivepulse] Loading Whisper base model…\n')
-        model = WhisperModel('base', device='cpu', compute_type='int8')
+        _real_stdout.write(f'[waivepulse] Loading {label} model…\n')
+        model = WhisperModel(model_name, device='cpu', compute_type='int8')
         _real_stdout.write(f'[waivepulse] Transcribing vocals for sep {sep_id}…\n')
-        segments, _ = model.transcribe(str(candidates[0]), word_timestamps=True)
+        segments, _ = model.transcribe(
+            str(candidates[0]),
+            word_timestamps=True,
+            vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 400},
+            beam_size=5,
+            temperature=0.0,
+        )
 
         transcript_words = []
         for seg in segments:
@@ -312,21 +322,28 @@ def _run_transcription(sep_id: str):
                 if wrd:
                     transcript_words.append({'word': wrd, 'start': round(w.start, 3), 'end': round(w.end, 3)})
 
-        _real_stdout.write(f'[waivepulse] Whisper found {len(transcript_words)} words\n')
+        _real_stdout.write(f'[waivepulse] {label} found {len(transcript_words)} words\n')
 
+        match_pct = None
         if lyrics and transcript_words:
             lyric_words = _extract_lyric_words(lyrics)
             alignment   = _lcs_align(lyric_words, transcript_words)
             matched     = sum(1 for a in alignment if a is not None)
-            _real_stdout.write(f'[waivepulse] LCS matched {matched}/{len(lyric_words)} words\n')
+            match_pct   = round(matched / len(lyric_words) * 100, 1) if lyric_words else 100.0
+            _real_stdout.write(f'[waivepulse] LCS matched {matched}/{len(lyric_words)} words ({match_pct}%)\n')
             words = _build_word_timing(lyric_words, alignment, transcript_words)
         else:
             words = [{'word': w['word'], 'start': w['start'], 'end': w['end']} for w in transcript_words]
 
-        transcribe_jobs[sep_id] = {'status': 'done', 'words': words, 'message': f'{len(words)} words aligned'}
-        sep_jobs[sep_id]['words'] = words
+        msg = f'{len(words)} words'
+        if match_pct is not None:
+            msg += f', {match_pct}% matched'
+        transcribe_jobs[sep_id] = {'status': 'done', 'words': words, 'message': msg, 'match_pct': match_pct}
+        sep_jobs[sep_id]['words']     = words
+        sep_jobs[sep_id]['match_pct'] = match_pct
+        sep_jobs[sep_id]['tx_model']  = model_name
         _save_history()
-        _real_stdout.write(f'[waivepulse] Transcription done for sep {sep_id}: {len(words)} words\n')
+        _real_stdout.write(f'[waivepulse] Transcription done for sep {sep_id}: {msg}\n')
     except Exception as e:
         transcribe_jobs[sep_id] = {'status': 'error', 'words': None, 'message': str(e)}
         _real_stderr.write(f'[waivepulse] Transcription error for {sep_id}: {e}\n')
@@ -1072,30 +1089,46 @@ def whisper_status():
 
 
 @app.post("/transcribe/{sep_id}")
-def start_transcription(sep_id: str):
+def start_transcription(
+    sep_id: str,
+    force: bool = Query(False, description="Clear cached words and re-run"),
+    model: str  = Query("base",  description="Whisper model: tiny/base/small/medium/large-v2/large-v3"),
+):
     if not _FASTER_WHISPER:
         raise HTTPException(status_code=503, detail="faster-whisper not installed. Run: pip install faster-whisper")
     if sep_id not in sep_jobs and not _recover_sep(sep_id):
         raise HTTPException(status_code=404, detail="Separation not found")
     if sep_jobs[sep_id].get("status") != "done":
         raise HTTPException(status_code=400, detail="Separation must complete before transcribing")
+    if model not in WHISPER_MODELS:
+        raise HTTPException(status_code=400, detail=f"Unknown model. Choose from: {', '.join(WHISPER_MODELS)}")
+    if force:
+        sep_jobs[sep_id].pop("words",     None)
+        sep_jobs[sep_id].pop("match_pct", None)
+        sep_jobs[sep_id].pop("tx_model",  None)
+        transcribe_jobs.pop(sep_id, None)
+        _save_history()
     # Return cached result from sep_jobs (persisted across restarts)
     if sep_jobs[sep_id].get("words"):
-        return {"status": "done", "words": sep_jobs[sep_id]["words"]}
+        return {"status": "done", "words": sep_jobs[sep_id]["words"],
+                "match_pct": sep_jobs[sep_id].get("match_pct"),
+                "tx_model":  sep_jobs[sep_id].get("tx_model")}
     existing = transcribe_jobs.get(sep_id, {})
     if existing.get("status") == "transcribing":
         return {"status": "transcribing"}
     if existing.get("status") == "done":
-        return {"status": "done", "words": existing["words"]}
-    threading.Thread(target=_run_transcription, args=(sep_id,), daemon=True, name=f"transcribe-{sep_id}").start()
+        return {"status": "done", "words": existing["words"], "match_pct": existing.get("match_pct")}
+    threading.Thread(target=_run_transcription, args=(sep_id, model), daemon=True, name=f"transcribe-{sep_id}").start()
     return {"status": "transcribing"}
 
 
 @app.get("/transcribe/status/{sep_id}")
 def transcription_status(sep_id: str):
     # Persisted words survive server restarts
-    if sep_jobs.get(sep_id, {}).get("words"):
-        return {"status": "done", "words": sep_jobs[sep_id]["words"]}
+    sep = sep_jobs.get(sep_id, {})
+    if sep.get("words"):
+        return {"status": "done", "words": sep["words"],
+                "match_pct": sep.get("match_pct"), "tx_model": sep.get("tx_model")}
     job = transcribe_jobs.get(sep_id)
     if not job:
         return {"status": "none"}

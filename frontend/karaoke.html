@@ -89,6 +89,7 @@ body.show-cursor{cursor:default}
     <label for="vol-slider">🔊</label>
     <input id="vol-slider" type="range" min="0" max="1" step="0.02" value="1" oninput="setVolume(this.value)">
   </div>
+  <button class="c-btn" id="resync-btn" style="display:none" onclick="retranscribe()" title="Re-run transcription with a better model">🔄 Re-sync</button>
   <button class="c-btn" id="vocals-btn" onclick="toggleVocals()">🎤 Vocals ON</button>
   <button class="c-btn" onclick="nextPreset()" title="Cycle visual style (N)">🎨 Style</button>
 </div>
@@ -105,7 +106,7 @@ const _sepId  = _params.get('sep');
 let _actx=null,_playing=false,_dur=0;
 let _startTime=0,_startOff=0;
 let _stems={},_sources={},_vocalsGain=null,_masterGain=null,_analyser=null,_vocalsOn=true;
-let _words=[],_lastWordIdx=-1;
+let _words=[],_lastWordIdx=-1,_matchPct=null;
 let _presetIdx=0,_vizPhase=0,_hideTimer=null;
 let _maskRot=0,_patRot=0,_bassSmooth=0,_midsSmooth=0,_hiSmooth=0;
 let _beatFlash=0,_beatAvg=0,_patCache={};
@@ -240,6 +241,45 @@ function toggleVocals(){
   const btn=document.getElementById('vocals-btn');
   btn.textContent=_vocalsOn?'🎤 Vocals ON':'🎤 Vocals OFF';
   btn.classList.toggle('active',!_vocalsOn);
+}
+
+function _updateResyncBtn(){
+  const btn=document.getElementById('resync-btn');
+  if(!btn)return;
+  btn.style.display=_words.length?'':'none';
+  if(_matchPct===null){btn.textContent='🔄 Re-sync';return;}
+  const ok=_matchPct>=90;
+  btn.textContent=`🔄 ${_matchPct}%`;
+  btn.style.color=ok?'':'#ff7c7c';
+  btn.style.borderColor=ok?'':'#7c2020';
+  btn.title=ok
+    ?`Lyrics matched ${_matchPct}% — click to re-run with a larger model`
+    :`Only ${_matchPct}% of lyrics matched — click Re-sync for better accuracy`;
+}
+
+async function retranscribe(){
+  const btn=document.getElementById('resync-btn');
+  btn.textContent='⏳ Syncing…';btn.disabled=true;
+  // Pick a better model than whatever was used before
+  const model=_matchPct!==null&&_matchPct<85?'small':'small';
+  try{
+    const r=await fetch(`/transcribe/${_sepId}?force=true&model=${model}`,{method:'POST'});
+    if(!r.ok)throw new Error(await r.text());
+    // Poll until done
+    for(;;){
+      await new Promise(res=>setTimeout(res,2500));
+      const d=await(await fetch('/transcribe/status/'+_sepId)).json();
+      if(d.status==='done'){
+        _matchPct=d.match_pct??null;
+        _words=padLyricTail(d.words||[]);
+        _lastWordIdx=-1;
+        _updateResyncBtn();
+        break;
+      }
+      if(d.status==='error'){btn.textContent='❌ Failed';btn.disabled=false;return;}
+    }
+  }catch(e){console.error(e);btn.textContent='❌ Error';}
+  btn.disabled=false;
 }
 
 // ── Lyrics ───────────────────────────────────────────────────────────────────
@@ -809,7 +849,7 @@ function goBack(){
 async function waitForTranscription(){
   for(;;){
     const d=await(await fetch('/transcribe/status/'+_sepId)).json();
-    if(d.status==='done'){_words=padLyricTail(d.words||[]);return;}
+    if(d.status==='done'){_matchPct=d.match_pct??null;_words=padLyricTail(d.words||[]);return;}
     if(d.status==='error'){console.warn('Transcription failed:',d.message);return;}
     setStatus('Transcribing lyrics…','This takes 30–60 seconds — Whisper is reading the vocals stem');
     await new Promise(r=>setTimeout(r,2500));
@@ -845,6 +885,7 @@ async function init(){
     // Check transcription
     const txd=await(await fetch('/transcribe/status/'+_sepId)).json();
     if(txd.status==='done'){
+      _matchPct=txd.match_pct??null;
       _words=padLyricTail(txd.words||[]);
     }else if(txd.status==='transcribing'){
       setStatus('Transcribing lyrics…','This takes 30–60 seconds');
@@ -862,6 +903,7 @@ async function init(){
 
     hideStatus();
     document.getElementById('controls').classList.remove('hidden');
+    _updateResyncBtn();
     startPlayback();
 
   }catch(e){
