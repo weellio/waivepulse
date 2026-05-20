@@ -369,7 +369,7 @@ async function retranscribe(){
       const d=await(await fetch('/transcribe/status/'+_sepId)).json();
       if(d.status==='done'){
         _matchPct=d.match_pct??null;
-        _words=padLyricTail(d.words||[]);
+        _words=padLyrics(d.words||[]);
         _lastWordIdx=-1;
         _updateResyncBtn();
         break;
@@ -381,6 +381,13 @@ async function retranscribe(){
 }
 
 // ── Lyrics ───────────────────────────────────────────────────────────────────
+function padLyricHead(words){
+  if(!words.length)return words;
+  const first=words[0];
+  const head=[];
+  for(let i=3;i>=1;i--)head.push({word:'',start:Math.max(0,first.start-i*1.1),end:Math.max(0.1,first.start-i*1.1+0.5)});
+  return [...head,...words];
+}
 function padLyricTail(words){
   if(!words.length)return words;
   const last=words[words.length-1];
@@ -388,6 +395,7 @@ function padLyricTail(words){
   for(let i=1;i<=5;i++)out.push({word:'',start:last.end+i*1.1-0.5,end:last.end+i*1.1+0.5});
   return out;
 }
+function padLyrics(words){return padLyricHead(padLyricTail(words));}
 function findWordIdx(pos){
   let lo=0,hi=_words.length-1;
   while(lo<=hi){
@@ -947,7 +955,7 @@ function goBack(){
 async function waitForTranscription(){
   for(;;){
     const d=await(await fetch('/transcribe/status/'+_sepId)).json();
-    if(d.status==='done'){_matchPct=d.match_pct??null;_words=padLyricTail(d.words||[]);return;}
+    if(d.status==='done'){_matchPct=d.match_pct??null;_words=padLyrics(d.words||[]);return;}
     if(d.status==='error'){console.warn('Transcription failed:',d.message);return;}
     setStatus('Transcribing lyrics…','This takes 30–60 seconds — Whisper is reading the vocals stem');
     await new Promise(r=>setTimeout(r,2500));
@@ -984,7 +992,7 @@ async function init(){
     const txd=await(await fetch('/transcribe/status/'+_sepId)).json();
     if(txd.status==='done'){
       _matchPct=txd.match_pct??null;
-      _words=padLyricTail(txd.words||[]);
+      _words=padLyrics(txd.words||[]);
     }else if(txd.status==='transcribing'){
       setStatus('Transcribing lyrics…','This takes 30–60 seconds');
       await waitForTranscription();
