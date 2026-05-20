@@ -768,7 +768,7 @@ function addTrackToUI(stemKey){
         const st=t.startTime||0,end=st+(t.buffer?.duration||0);
         if(pos>=st&&pos<=end){
           e.preventDefault();
-          _trackPosDrag={stemKey,songX0:e.clientX,startTime0:st};
+          _trackPosDrag={stemKey,songX0:e.clientX,startTime0:st,muteRanges0:(t.muteRanges||[]).map(r=>({...r}))};
           row.style.cursor='grabbing';
         }else{seekTo(pos);}
       }
@@ -1639,13 +1639,16 @@ document.addEventListener('mousemove',e=>{
     }
   }
   if(_trackPosDrag){
-    const {stemKey,songX0,startTime0}=_trackPosDrag;
+    const {stemKey,songX0,startTime0,muteRanges0}=_trackPosDrag;
     const t=tracks[stemKey];
     if(t){
       const dx=e.clientX-songX0;
       const dt=(dx/getCanvasWidth())*_dur;
       const bufDur=t.buffer?.duration||0;
-      t.startTime=Math.max(0,Math.min(_dur-bufDur,startTime0+dt));
+      const newStart=Math.max(0,Math.min(_dur-bufDur,startTime0+dt));
+      const clampedDt=newStart-startTime0;
+      t.startTime=newStart;
+      if(muteRanges0.length)t.muteRanges=muteRanges0.map(r=>({start:r.start+clampedDt,end:r.end+clampedDt}));
       redrawAll();
     }
   }
