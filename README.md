@@ -313,10 +313,14 @@ Click **🎤 Karaoke** in the transport bar (enabled once separation is done) to
 |---|---|
 | 5-word lyric window | Active word highlighted in amber; two words on each side shown dimmer and smaller — same sliding window style as professional karaoke |
 | Lyrics sync | Whisper transcribes the vocals stem on-demand; LCS algorithm aligns Whisper's output to your original lyrics to correct misheard words |
+| Studio mix passthrough | Karaoke carries your full studio mixer settings — per-track volume, pan, EQ, reverb, delay, offset, mute regions, and the master bus chain (EQ, exciter, limiter, master volume) are all active on the karaoke page. What you hear in the studio is what plays during recording. |
 | Vocals toggle | **V** key or button — mutes/unmutes the vocals stem in real time. Karaoke mode = vocals off, sing-along mode = vocals on |
-| Visual styles | 4 styles: Galaxy, Aurora, Bars, Scope — press **N** to cycle |
+| Intro handling | Lyrics stay hidden during instrumental intros and slide into view naturally about 3 seconds before the first word is sung |
+| Visual styles | 20+ styles including Galaxy, Aurora, Bars, Scope, Hypertube, Kaleidoscope, Bubbles, Lasers, and more — press **N** to cycle |
 | Auto-transcribe | **AUTO TX** toggle in Studio transport — when on, Whisper runs automatically in the background right after separation finishes so Karaoke opens instantly |
 | Keyboard | **Space** play/pause · **V** vocals toggle · **N** next style · **←/→** seek ±5s · **Esc** back to Studio |
+
+**Screen recording use case:** dial in your mix in the Studio, then open Karaoke and record your screen. The result is a lyric video with a synced sliding word display and a fully customized mix, ready to upload directly to YouTube with no additional tools required.
 
 **Setup:** requires `faster-whisper` — already included in `requirements.txt`, installed automatically by the setup script.
 
