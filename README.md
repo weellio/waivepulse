@@ -307,6 +307,8 @@ Bring in any audio file as an extra mixer track — a sample, a loop, a scratch 
 
 ### Karaoke Mode
 
+![WAIvePulse Karaoke](assets/karaoke.jpg)
+
 Click **🎤 Karaoke** in the transport bar (enabled once separation is done) to open a fullscreen performance page.
 
 | Feature | Description |
