@@ -361,7 +361,7 @@ kbd{display:inline-block;background:#1c1c1c;border:1px solid #383838;border-bott
         <div class="help-section-title">✨ Mastering Tools</div>
         <p class="help-p">AI-generated music often sounds thinner and flatter than professionally recorded music. These tools help close that gap.</p>
         <table class="help-table"><tbody>
-          <tr><td><b>MASTER button</b></td><td>One-click mastering preset. Duplicates drums at 12ms offset (ADT thickening), boosts sub-bass and treble air per stem, adds reverb presence to instruments, enables the harmonic exciter, and boosts the master sub and air EQ. Use this as a starting point, then tweak individual knobs.</td></tr>
+          <tr><td><b>MASTER button</b></td><td>One-click mastering preset. Duplicates drums at 12ms offset (ADT thickening), applies conservative per-stem EQ (sub and bass boost on drums/bass, treble air on vocals/piano, a slight mid scoop on vocals to compensate), adds reverb presence to instruments, enables the harmonic exciter at a low wet level, boosts the master sub and air EQ modestly, and enables the limiter to catch peaks. Use this as a starting point, then tweak individual knobs.</td></tr>
           <tr><td><b>EXC (Exciter)</b></td><td>Harmonic exciter on the master bus. High-passes the signal at 3kHz, applies soft saturation to only the high frequencies, then mixes it back at 18% wet. Adds overtone shimmer and "air" that AI audio typically lacks — makes it sound more alive and present without affecting the low end.</td></tr>
           <tr><td><b>LMT (Limiter)</b></td><td>Master bus limiter/compressor. Tames loud peaks and adds a sense of loudness glue. Settings: −18dB threshold, 4:1 ratio, fast attack. Toggle on for a more radio-ready sound.</td></tr>
           <tr><td><b>VOL slider</b></td><td>Master output volume — scales the entire mix from 0% (silence) to 150% (boost). Affects both live playback and Export Mix. Use it to bring down a mix that's too hot before exporting, or to match levels when A/B comparing. Default is 100%.</td></tr>
@@ -1349,9 +1349,9 @@ function applyMasterPreset(){
   }
   // Per-stem EQ + reverb tuning
   const cfg={
-    drums:  {sub:3,  bass:2,                    rev:0.10},
-    bass:   {sub:6,  bass:3                              },
-    vocals: {               mid:2,  treb:3,      rev:0.08},
+    drums:  {sub:2,  bass:1,                    rev:0.10},
+    bass:   {sub:3,  bass:1.5                            },
+    vocals: {               mid:-1, treb:2,      rev:0.08},
     guitar: {               mid:1,               rev:0.22},
     piano:  {                       treb:1,      rev:0.18},
     other:  {                                    rev:0.10},
@@ -1364,13 +1364,22 @@ function applyMasterPreset(){
     if(s.treb!=null)t.knobs.treb?.set(s.treb);
     if(s.rev !=null)t.knobs.rev?.set(s.rev);
   }
-  // Master bus boost
-  _masterSubEQ.gain.setTargetAtTime(4,_actx.currentTime,0.05);
-  _masterAirEQ.gain.setTargetAtTime(3,_actx.currentTime,0.05);
+  // Master bus
+  _masterSubEQ.gain.setTargetAtTime(2,_actx.currentTime,0.05);
+  _masterAirEQ.gain.setTargetAtTime(2,_actx.currentTime,0.05);
   _exciterEnabled=true;
-  _exciterWet.gain.setTargetAtTime(0.18,_actx.currentTime,0.05);
+  _exciterWet.gain.setTargetAtTime(0.10,_actx.currentTime,0.05);
   const eb=document.getElementById('exciter-btn');
   if(eb){eb.classList.add('active');eb.textContent='EXC ON';}
+  // Enable limiter to catch peaks from the boosted signal
+  if(!_compEnabled){
+    _compEnabled=true;
+    const now=_actx.currentTime;
+    _compDryGain.gain.setTargetAtTime(0,now,0.02);
+    _compWetGain.gain.setTargetAtTime(1,now,0.02);
+    const cb=document.getElementById('comp-btn');
+    if(cb){cb.textContent='LMT ON';cb.classList.add('active');}
+  }
   // Flash the master button to confirm
   const mb=document.getElementById('master-btn');
   if(mb){mb.style.color='#8cffff';mb.style.borderColor='#1ab8b8';setTimeout(()=>{mb.style.color='';mb.style.borderColor='';},800);}
