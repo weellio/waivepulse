@@ -211,7 +211,8 @@ kbd{display:inline-block;background:#1c1c1c;border:1px solid #383838;border-bott
   <button class="t-btn" title="Zoom out" onclick="zoomOut()">−</button>
   <button class="t-btn" style="font-size:10px;width:auto;padding:0 7px" title="Fit" onclick="zoomFit()">FIT</button>
   <div class="t-divider"></div>
-  <button class="t-btn" id="comp-btn"    style="font-size:10px;width:auto;padding:0 8px" title="Master limiter" onclick="toggleCompressor()">LMT OFF</button>
+  <button class="t-btn" id="comp-btn"    style="font-size:10px;width:auto;padding:0 8px" title="Master limiter — tames peaks, adds loudness glue (mutually exclusive with CLP)" onclick="toggleCompressor()">LMT OFF</button>
+  <button class="t-btn" id="clip-btn"    style="font-size:10px;width:auto;padding:0 8px" title="Master soft clipper — catches transient peaks while preserving punch (mutually exclusive with LMT)" onclick="toggleClipper()">CLP</button>
   <button class="t-btn" id="exciter-btn" style="font-size:10px;width:auto;padding:0 8px" title="Harmonic exciter — adds air and presence" onclick="toggleExciter()">EXC</button>
   <button class="t-btn" id="master-btn"  style="font-size:10px;width:auto;padding:0 9px;color:#c8a832;border-color:#6b5200" title="Apply mastering preset to all stems" onclick="applyMasterPreset()">MASTER</button>
   <button class="t-btn" style="font-size:10px;width:auto;padding:0 8px;color:#888" title="Reset all knobs on every track to defaults" onclick="resetAllTracks()">RST ALL</button>
@@ -363,12 +364,13 @@ kbd{display:inline-block;background:#1c1c1c;border:1px solid #383838;border-bott
         <table class="help-table"><tbody>
           <tr><td><b>MASTER button</b></td><td>One-click mastering preset. Duplicates drums at 12ms offset (ADT thickening), applies conservative per-stem EQ (sub and bass boost on drums/bass, treble air on vocals/piano, a slight mid scoop on vocals to compensate), adds reverb presence to instruments, enables the harmonic exciter at a low wet level, boosts the master sub and air EQ modestly, and enables the limiter to catch peaks. Use this as a starting point, then tweak individual knobs.</td></tr>
           <tr><td><b>EXC (Exciter)</b></td><td>Harmonic exciter on the master bus. High-passes the signal at 3kHz, applies soft saturation to only the high frequencies, then mixes it back at 18% wet. Adds overtone shimmer and "air" that AI audio typically lacks — makes it sound more alive and present without affecting the low end.</td></tr>
-          <tr><td><b>LMT (Limiter)</b></td><td>Master bus limiter/compressor. Tames loud peaks and adds a sense of loudness glue. Settings: −18dB threshold, 4:1 ratio, fast attack. Toggle on for a more radio-ready sound.</td></tr>
+          <tr><td><b>LMT (Limiter)</b></td><td>Master bus limiter/compressor. Tames loud peaks and adds a sense of loudness glue. Settings: −18dB threshold, 4:1 ratio, fast attack. Toggle on for a more radio-ready sound. <b>Mutually exclusive with CLP.</b></td></tr>
+          <tr><td><b>CLP (Clipper)</b></td><td>Master bus soft clipper. Catches transient peaks at a −0.5 dBFS ceiling using a tanh-bent waveshaper (4× oversampled) while leaving everything below the knee untouched. Preserves drum/transient punch where a limiter would duck them — often the better choice for AI-generated music that needs loudness without losing impact. <b>Mutually exclusive with LMT.</b></td></tr>
           <tr><td><b>VOL slider</b></td><td>Master output volume — scales the entire mix from 0% (silence) to 150% (boost). Affects both live playback and Export Mix. Use it to bring down a mix that's too hot before exporting, or to match levels when A/B comparing. Default is 100%.</td></tr>
           <tr><td><b>RST ALL button</b></td><td>Resets every knob on every track to its default value in one click — VOL back to 100%, PAN to center, all EQ flat, REV/DLY/OFS to zero. Useful for starting fresh after experimenting. Individual tracks also have their own RST button, and pressing <kbd>R</kbd> resets the selected track.</td></tr>
           <tr><td><b>DUP button</b></td><td>Duplicate any stem as its own independent track. Set OFS to 10–20ms on the copy for ADT doubling. Try panning the two copies slightly apart (e.g. L20 and R20) for a wide stereo image.</td></tr>
         </tbody></table>
-        <p class="help-p" style="margin-top:8px">Tip: All mastering settings — master EQ, exciter, master volume, per-track knobs — are fully baked into <b>Export Mix</b>.</p>
+        <p class="help-p" style="margin-top:8px">Tip: All mastering settings — master EQ, exciter, limiter, clipper, master volume, per-track knobs — are fully baked into <b>Export Mix</b>. What you hear is what you get.</p>
       </div>
 
       <div class="help-section">
@@ -468,6 +470,7 @@ const PRESETS={
 
 // Global FX
 let _masterBus,_masterComp,_compDryGain,_compWetGain;
+let _masterClip,_clipWetGain,_clipEnabled=false;
 let _reverbNode,_reverbReturn,_reverbIRData=null;
 let _delayInput,_delayNode,_delayFeedback,_delayReturn;
 
@@ -600,9 +603,12 @@ function setupGlobalFX(){
   _exciterHP =_actx.createBiquadFilter();  _exciterHP.type='highpass';    _exciterHP.frequency.value=3000;
   _exciterSat=_actx.createWaveShaper();    _exciterSat.curve=makeSatCurve(200); _exciterSat.oversample='4x';
   _exciterWet=_actx.createGain();          _exciterWet.gain.value=0;
+  _masterClip=_actx.createWaveShaper();    _masterClip.curve=makeClipperCurve(); _masterClip.oversample='4x';
+  _clipWetGain=_actx.createGain();         _clipWetGain.gain.value=0;
   _masterBus.connect(_masterSubEQ); _masterSubEQ.connect(_masterAirEQ);
   _masterAirEQ.connect(_compDryGain);   _compDryGain.connect(_actx.destination);
   _masterAirEQ.connect(_masterComp);    _masterComp.connect(_compWetGain); _compWetGain.connect(_actx.destination);
+  _masterAirEQ.connect(_masterClip);    _masterClip.connect(_clipWetGain); _clipWetGain.connect(_actx.destination);
   _masterAirEQ.connect(_exciterHP);     _exciterHP.connect(_exciterSat);   _exciterSat.connect(_exciterWet); _exciterWet.connect(_actx.destination);
 
   _reverbNode=_actx.createConvolver(); _reverbNode.buffer=makeIR(_actx);
@@ -621,6 +627,16 @@ function setupGlobalFX(){
 function makeSatCurve(k){
   const n=256,c=new Float32Array(n);
   for(let i=0;i<n;i++){const x=(i*2/n)-1;c[i]=((Math.PI+k)*x)/(Math.PI+k*Math.abs(x));}
+  return c;
+}
+
+function makeClipperCurve(threshold=0.6,ceiling=0.94){
+  const n=4096,c=new Float32Array(n),range=ceiling-threshold;
+  for(let i=0;i<n;i++){
+    const x=(i*2/(n-1))-1,ax=Math.abs(x);
+    if(ax<=threshold){c[i]=x;}
+    else{c[i]=Math.sign(x)*(threshold+range*Math.tanh((ax-threshold)/range));}
+  }
   return c;
 }
 
@@ -1371,14 +1387,21 @@ function applyMasterPreset(){
   _exciterWet.gain.setTargetAtTime(0.10,_actx.currentTime,0.05);
   const eb=document.getElementById('exciter-btn');
   if(eb){eb.classList.add('active');eb.textContent='EXC ON';}
-  // Enable limiter to catch peaks from the boosted signal
-  if(!_compEnabled){
-    _compEnabled=true;
+  // Enable clipper to catch peaks (preserves transient punch better than the limiter)
+  if(!_clipEnabled){
+    _clipEnabled=true;
     const now=_actx.currentTime;
+    // Disable limiter if it was on (LMT and CLP are mutually exclusive)
+    if(_compEnabled){
+      _compEnabled=false;
+      _compWetGain.gain.setTargetAtTime(0,now,0.02);
+      const cb=document.getElementById('comp-btn');
+      if(cb){cb.textContent='LMT OFF';cb.classList.remove('active');}
+    }
     _compDryGain.gain.setTargetAtTime(0,now,0.02);
-    _compWetGain.gain.setTargetAtTime(1,now,0.02);
-    const cb=document.getElementById('comp-btn');
-    if(cb){cb.textContent='LMT ON';cb.classList.add('active');}
+    _clipWetGain.gain.setTargetAtTime(1,now,0.02);
+    const clb=document.getElementById('clip-btn');
+    if(clb){clb.textContent='CLP ON';clb.classList.add('active');}
   }
   // Flash the master button to confirm
   const mb=document.getElementById('master-btn');
@@ -1388,10 +1411,31 @@ function applyMasterPreset(){
 function toggleCompressor(){
   _compEnabled=!_compEnabled;
   const now=_actx?_actx.currentTime:0;
-  _compDryGain.gain.setTargetAtTime(_compEnabled?0:1,now,0.02);
+  if(_compEnabled&&_clipEnabled){
+    _clipEnabled=false;
+    _clipWetGain.gain.setTargetAtTime(0,now,0.02);
+    const clb=document.getElementById('clip-btn');
+    clb.textContent='CLP';clb.classList.remove('active');
+  }
+  _compDryGain.gain.setTargetAtTime(_compEnabled||_clipEnabled?0:1,now,0.02);
   _compWetGain.gain.setTargetAtTime(_compEnabled?1:0,now,0.02);
   document.getElementById('comp-btn').textContent=_compEnabled?'LMT ON':'LMT OFF';
   document.getElementById('comp-btn').classList.toggle('active',_compEnabled);
+}
+function toggleClipper(){
+  _clipEnabled=!_clipEnabled;
+  const now=_actx?_actx.currentTime:0;
+  if(_clipEnabled&&_compEnabled){
+    _compEnabled=false;
+    _compWetGain.gain.setTargetAtTime(0,now,0.02);
+    const cb=document.getElementById('comp-btn');
+    cb.textContent='LMT OFF';cb.classList.remove('active');
+  }
+  _compDryGain.gain.setTargetAtTime(_clipEnabled||_compEnabled?0:1,now,0.02);
+  _clipWetGain.gain.setTargetAtTime(_clipEnabled?1:0,now,0.02);
+  const clb=document.getElementById('clip-btn');
+  clb.textContent=_clipEnabled?'CLP ON':'CLP';
+  clb.classList.toggle('active',_clipEnabled);
 }
 function setMasterVolume(v){
   if(_masterBus)_masterBus.gain.setTargetAtTime(v/100,_actx.currentTime,0.01);
@@ -1433,10 +1477,22 @@ async function exportMix(){
     const offDlyRtn=off.createGain();offDlyRtn.gain.value=0.8;
     offDlyIn.connect(offDly);offDly.connect(offDlyFB);offDlyFB.connect(offDly);
     offDly.connect(offDlyRtn);offDlyRtn.connect(offBus);
-    // Master EQ + exciter chain
+    // Master EQ → [LMT] → [CLP] → destination; exciter sums in parallel
     const offSubEQ=off.createBiquadFilter();offSubEQ.type='lowshelf'; offSubEQ.frequency.value=60;    offSubEQ.gain.value=_masterSubEQ.gain.value;
     const offAirEQ=off.createBiquadFilter();offAirEQ.type='highshelf';offAirEQ.frequency.value=10000; offAirEQ.gain.value=_masterAirEQ.gain.value;
-    offBus.connect(offSubEQ);offSubEQ.connect(offAirEQ);offAirEQ.connect(off.destination);
+    offBus.connect(offSubEQ);offSubEQ.connect(offAirEQ);
+    let offMasterOut=offAirEQ;
+    if(_compEnabled){
+      const offComp=off.createDynamicsCompressor();
+      offComp.threshold.value=-18;offComp.knee.value=12;
+      offComp.ratio.value=4;offComp.attack.value=0.005;offComp.release.value=0.15;
+      offMasterOut.connect(offComp);offMasterOut=offComp;
+    }
+    if(_clipEnabled){
+      const offClip=off.createWaveShaper();offClip.curve=makeClipperCurve();offClip.oversample='4x';
+      offMasterOut.connect(offClip);offMasterOut=offClip;
+    }
+    offMasterOut.connect(off.destination);
     if(_exciterEnabled){
       const offExcHP=off.createBiquadFilter();offExcHP.type='highpass';offExcHP.frequency.value=3000;
       const offExcSat=off.createWaveShaper();offExcSat.curve=makeSatCurve(200);offExcSat.oversample='4x';
@@ -1550,6 +1606,7 @@ function openKaraoke(){
       airEQ:_masterAirEQ?_masterAirEQ.gain.value:0,
       exciter:_exciterEnabled,
       comp:_compEnabled,
+      clip:_clipEnabled,
     },
   }));
   window.open(`/karaoke?sep=${_sepId}`,'_blank');

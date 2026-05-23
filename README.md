@@ -31,7 +31,8 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 - **Studio track import** — drag & drop or ＋ Track button adds any audio file (MP3/WAV/FLAC/OGG) as a full mixer track; drag the clip block left/right on the timeline to set its start position; loop toggle repeats short clips for the full song
 - **Studio per-track SUB knob** — 60 Hz lowshelf shelf per track; AI music often lacks sub-bass — boost this on drums and bass stems to add physical rumble and body
 - **Studio master harmonic exciter** — EXC button on the master bus; high-passes at 3 kHz, applies soft saturation, mixes back at 18% wet; adds overtone shimmer and "air" AI audio typically lacks
-- **Studio MASTER preset** — one-click mastering treatment: duplicates drums at 12 ms ADT offset, boosts sub/treble per stem, adds reverb presence, enables the exciter, and boosts master sub + air EQ
+- **Studio master soft clipper** — CLP button on the master bus; tanh-bent waveshaper with a −0.5 dBFS ceiling, knee at ≈−4.4 dBFS, 4× oversampled; catches transient peaks without ducking them the way a limiter does — preserves drum punch while preventing overs. Mutually exclusive with LMT (only one can be active at a time)
+- **Studio MASTER preset** — one-click mastering treatment: duplicates drums at 12 ms ADT offset, boosts sub/treble per stem, adds reverb presence, enables the exciter and the soft clipper, and boosts master sub + air EQ
 - **Studio master volume** — VOL slider in the transport bar scales the entire mix output from 0–150%; affects both live playback and Export Mix; default 100%
 - **Studio RST ALL** — resets every knob on every track to defaults in one click; individual RST button per track still available
 - **Studio track selection + DAW shortcuts** — click any track to select it (cyan border); keyboard shortcuts then operate on that track (M/S/N/R/D); Tab/Shift+Tab cycles tracks; full shortcut reference via the **?** button or H key
@@ -315,7 +316,7 @@ Click **🎤 Karaoke** in the transport bar (enabled once separation is done) to
 |---|---|
 | 5-word lyric window | Active word highlighted in amber; two words on each side shown dimmer and smaller — same sliding window style as professional karaoke |
 | Lyrics sync | Whisper transcribes the vocals stem on-demand; LCS algorithm aligns Whisper's output to your original lyrics to correct misheard words |
-| Studio mix passthrough | Karaoke carries your full studio mixer settings — per-track volume, pan, EQ, reverb, delay, offset, mute regions, and the master bus chain (EQ, exciter, limiter, master volume) are all active on the karaoke page. What you hear in the studio is what plays during recording. |
+| Studio mix passthrough | Karaoke carries your full studio mixer settings — per-track volume, pan, EQ, reverb, delay, offset, mute regions, and the master bus chain (EQ, exciter, limiter, clipper, master volume) are all active on the karaoke page. What you hear in the studio is what plays during recording. |
 | Vocals toggle | **V** key or button — mutes/unmutes the vocals stem in real time. Karaoke mode = vocals off, sing-along mode = vocals on |
 | Intro handling | Lyrics stay hidden during instrumental intros and slide into view naturally about 3 seconds before the first word is sung |
 | Visual styles | 20+ styles including Galaxy, Aurora, Bars, Scope, Hypertube, Kaleidoscope, Bubbles, Lasers, and more — press **N** to cycle |
@@ -346,7 +347,8 @@ If `faster-whisper` is not installed, Karaoke mode still works — it just plays
 - **Shift + drag on a waveform** — draw a mute region for that section
 - **Drag an imported clip block** — reposition where in the song it plays (grab cursor appears on hover)
 - **EXC** — toggle master bus harmonic exciter (adds overtone shimmer to high frequencies only)
-- **LMT** — toggle master bus limiter/compressor (loudness glue, tames peaks)
+- **LMT** — toggle master bus limiter/compressor (loudness glue, tames peaks). Mutually exclusive with CLP
+- **CLP** — toggle master bus soft clipper (catches transient peaks at −0.5 dBFS, preserves drum punch better than the limiter). Mutually exclusive with LMT
 - **MASTER** — one-click mastering preset applied to all stems
 - **VOL slider** — master output volume (0–150%); scales the full mix; baked into Export Mix
 - **RST ALL** — reset every knob on every track to defaults in one click
@@ -357,11 +359,42 @@ If `faster-whisper` is not installed, Karaoke mode still works — it just plays
 
 **Full keyboard shortcut reference:** press **?** or **H** inside the Studio to open the built-in help panel.
 
+### Master bus chain
+
+The signal path on the master bus, in order:
+
+```
+Track sends → Master Bus → Sub EQ (60 Hz lowshelf) → Air EQ (10 kHz highshelf) → [LMT or CLP] → Master Volume → Output
+                                                                               ↘ Exciter (parallel)  ↗
+```
+
+**LMT vs CLP — pick one, not both.** They sit at the same point in the chain and target the same problem (peaks), but solve it differently:
+
+| | LMT (Limiter) | CLP (Clipper) |
+|---|---|---|
+| Method | DynamicsCompressor, −18 dB threshold, 4:1 ratio, fast attack | tanh-bent waveshaper, knee at ≈−4.4 dBFS, ceiling at −0.5 dBFS, 4× oversampled |
+| What it does to transients | Ducks them (envelope follower clamps gain when input exceeds threshold) | Bends them at the ceiling (instant, sample-by-sample) |
+| Sound | Glued, "radio-ready," can feel squashed | Punchy, transients survive, can introduce mild harmonic distortion if pushed hard |
+| Best for | Vocal-forward mixes, ballads, anything where average loudness matters more than transient detail | Drum-forward mixes, anything where kick/snare snap matters; AI-generated music that already feels limp |
+| Use it when | You want loudness glue and don't mind softer drums | You want loudness without losing impact (usually the better default for AI music) |
+
+Clicking either button automatically disables the other.
+
+### Export Mix — what's baked in
+
+Everything you hear in the Studio is rendered into the exported WAV — including the limiter and clipper. The full list:
+
+- Per-track: volume, pan, SUB/Bass/Mid/Treb EQ, reverb send, delay send, offset (OFS), mute regions, looped imports, clip start position
+- Master bus: Sub EQ, Air EQ, exciter, **limiter (LMT)**, **clipper (CLP)**, master volume
+
+Solo and mute states are honored. Imported tracks that are short and have loop enabled will loop for the full render duration.
+
 ### Notes
 
 - Separation and generation share the same job queue — only one runs at a time to avoid VRAM conflicts
 - The stems are cached: clicking Studio again on the same song loads instantly
 - The `?sep=` URL parameter lets you bookmark or share a direct link to a finished separation
+- The **MASTER preset** now enables the **clipper** (CLP), not the limiter — clippers preserve transient punch better on AI-generated material. Click LMT manually if you prefer the glued limiter sound
 
 ---
 
