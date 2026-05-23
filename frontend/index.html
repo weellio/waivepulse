@@ -365,7 +365,11 @@ Every day the fire burns"></textarea>
     </div>
 
     <div>
-      <label>Style Tags</label>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <label style="margin-bottom:0">Style Tags</label>
+        <button type="button" onclick="randomizeTags()" style="background:#0a1e1e;border:1px solid #1a5a5a;color:#8cffff;padding:2px 10px;border-radius:12px;cursor:pointer;font-size:0.7rem;font-weight:600" title="Pick random tags from each category">Randomize</button>
+        <button type="button" onclick="clearTags()" style="background:none;border:1px solid #2a2a38;color:#555;padding:2px 10px;border-radius:12px;cursor:pointer;font-size:0.7rem" title="Clear all selected tags">Clear</button>
+      </div>
       <div class="tag-grid-tip">8 categories — <strong>Genre is required</strong>, others are recommended or optional. Pick <strong>one tag per category</strong>; stacking multiple same-category tags blurs the style.</div>
       <div class="tags-grid" id="tagGrid"></div>
       <div class="custom-tags">
@@ -555,6 +559,25 @@ function buildTagGrid() {
     section.appendChild(header);
     section.appendChild(body);
     grid.appendChild(section);
+  });
+}
+
+function clearTags() {
+  selectedTags.clear();
+  document.getElementById('customTags').value = '';
+  document.querySelectorAll('.tag-btn.active').forEach(b => b.classList.remove('active'));
+}
+
+function randomizeTags() {
+  clearTags();
+  const chances = { required: 1, recommended: 0.75, optional: 0.4 };
+  TAG_CATEGORIES.forEach(cat => {
+    const roll = Math.random();
+    if (roll > (chances[cat.importance] ?? 0.4)) return;
+    const tag = cat.tags[Math.floor(Math.random() * cat.tags.length)];
+    selectedTags.add(tag);
+    const btn = [...document.querySelectorAll('.tag-btn')].find(b => b.textContent === tag);
+    if (btn) btn.classList.add('active');
   });
 }
 
