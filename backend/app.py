@@ -1083,6 +1083,84 @@ def demucs_status():
     return {"available": _DEMUCS, "ffmpeg": _FFMPEG}
 
 
+@app.get("/ollama-status")
+def ollama_status():
+    """Check whether Ollama is reachable on localhost:11434 and list installed models."""
+    import urllib.request
+    try:
+        with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=2) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        models = [m.get("name") for m in data.get("models", []) if m.get("name")]
+        return {"available": True, "models": models}
+    except Exception:
+        return {"available": False, "models": []}
+
+
+class LyricsRequest(BaseModel):
+    theme: str = ""
+    structure: str = "Verse-Chorus-Verse-Chorus-Bridge-Chorus"
+    tone: str = ""
+    rhyme: str = ""
+    style: str = ""
+    model: str = "llama3.1:8b"
+    temperature: float = 0.9
+
+
+def _build_lyrics_prompt(req: LyricsRequest) -> str:
+    parts = [
+        "You are a professional songwriter. Write song lyrics in the structure requested.",
+        "",
+        "Rules:",
+        "- Use ONLY these section markers, each on its own line: [Intro], [Verse], [Prechorus], [Chorus], [Bridge], [Outro]",
+        "- Do NOT number sections. Write [Verse] not [Verse 1]. Repeat the same marker if the section repeats.",
+        "- Keep lines roughly 5-9 syllables so they fit a melody.",
+        "- Use vivid concrete imagery. Avoid cliches like 'time stood still', 'broken hearts', 'crazy little thing'.",
+        "- Repeat the [Chorus] verbatim each time it appears.",
+        "- Output ONLY the lyrics. No title, no commentary, no explanation before or after.",
+    ]
+    if req.theme:     parts.append(f"\nTheme / topic: {req.theme}")
+    if req.structure: parts.append(f"Structure: {req.structure}")
+    if req.tone:      parts.append(f"Tone / mood: {req.tone}")
+    if req.rhyme:     parts.append(f"Rhyme scheme: {req.rhyme}")
+    if req.style:     parts.append(f"Style reference: {req.style}")
+    parts.append("\nLyrics:")
+    return "\n".join(parts)
+
+
+@app.post("/lyrics/suggest")
+def suggest_lyrics(req: LyricsRequest):
+    """Generate lyrics via local Ollama. Requires Ollama running on localhost:11434."""
+    import urllib.request, urllib.error
+    body = json.dumps({
+        "model":   req.model,
+        "prompt":  _build_lyrics_prompt(req),
+        "stream":  False,
+        "options": {"temperature": req.temperature, "top_p": 0.9},
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        "http://localhost:11434/api/generate",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=300) as r:
+            data = json.loads(r.read().decode("utf-8"))
+    except urllib.error.URLError as e:
+        raise HTTPException(status_code=503, detail=f"Ollama not reachable on localhost:11434. Is it running? ({e.reason})")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lyric generation failed: {e}")
+    return {"lyrics": (data.get("response") or "").strip(), "model": req.model}
+
+
+@app.get("/lyrics", response_class=HTMLResponse)
+def lyrics_page():
+    html_path = FRONTEND_DIR / "lyrics.html"
+    if html_path.exists():
+        return html_path.read_text(encoding="utf-8")
+    raise HTTPException(status_code=404, detail="lyrics.html not found")
+
+
 @app.get("/whisper-status")
 def whisper_status():
     return {"available": _FASTER_WHISPER}

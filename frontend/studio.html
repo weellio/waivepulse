@@ -13,6 +13,10 @@ body{background:#0d0d0d;color:#e0e0e0;font-family:'Segoe UI',system-ui,sans-seri
 #topbar{display:flex;align-items:center;gap:10px;padding:7px 16px;background:#161616;border-bottom:1px solid #2a2a2a;flex-shrink:0}
 #topbar h1{font-size:15px;font-weight:600;color:#8cffff;letter-spacing:.5px;white-space:nowrap}
 #topbar .sep{color:#333}
+.topnav{display:flex;gap:2px;margin-left:6px}
+.topnav a{color:#888;text-decoration:none;padding:4px 9px;border-radius:4px;font-size:12px;font-weight:500;transition:all .12s}
+.topnav a:hover{color:#ccc;background:rgba(140,255,255,.05)}
+.topnav a.active{color:#8cffff;background:rgba(140,255,255,.10)}
 #song-title{font-size:13px;color:#aaa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 #audio-info{font-size:10px;color:#444;white-space:nowrap;font-family:'Courier New',monospace}
 #back-btn{background:none;border:1px solid #333;color:#aaa;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:12px;transition:border-color .15s,color .15s;white-space:nowrap}
@@ -204,7 +208,12 @@ kbd{display:inline-block;background:#1c1c1c;border:1px solid #383838;border-bott
 
 <div id="topbar">
   <img src="/assets/wave small.png" alt="WAIvePulse" style="height:28px;width:auto;display:block">
-  <h1>WAIvePulse Studio</h1>
+  <h1>WAIvePulse</h1>
+  <nav class="topnav">
+    <a href="/">Generate</a>
+    <a href="/lyrics">Lyrics</a>
+    <a href="#" class="active" style="cursor:default">Studio</a>
+  </nav>
   <span class="sep">|</span>
   <span id="song-title">Loading…</span>
   <span id="audio-info"></span>
