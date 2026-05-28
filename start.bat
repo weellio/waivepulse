@@ -13,13 +13,13 @@ call "%CONF%"
 
 echo Starting WAIvePulse...
 
-:: Free port 7860 if already in use
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":7860 " ^| findstr "LISTENING"') do (
-    echo Stopping existing server on port 7860...
+:: Free port 7861 if already in use
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":7861 " ^| findstr "LISTENING"') do (
+    echo Stopping existing server on port 7861...
     taskkill /F /PID %%a >nul 2>&1
 )
 
-echo Open http://localhost:7860 in your browser
+echo Open http://localhost:7861 in your browser
 cd /d "%SCRIPT_DIR%backend"
-"%PYTHON_EXE%" -m uvicorn app:app --host 127.0.0.1 --port 7860
+"%PYTHON_EXE%" -m uvicorn app:app --host 127.0.0.1 --port 7861
 pause

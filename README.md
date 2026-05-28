@@ -17,7 +17,7 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 
 - Takes structured lyrics (with `[Verse]`, `[Chorus]`, etc. section markers) and a list of style/genre tags
 - Generates a complete song with full vocals, instrumentation, and structure as an MP3
-- Serves a dark-themed web UI on `http://localhost:7860`
+- Serves a dark-themed web UI on `http://localhost:7861`
 - Queues jobs in order — submit new requests while one is generating, they run one at a time
 - Shows real-time generation progress (language model phase + codec phase) with live log output
 - Persists job history across server restarts
@@ -105,9 +105,9 @@ bash start.sh
 start.bat
 ```
 
-Then open **http://localhost:7860** in any browser.
+Then open **http://localhost:7861** in any browser.
 
-The launchers automatically kill any old server process on port 7860 before starting.
+The launchers automatically kill any old server process on port 7861 before starting.
 
 ---
 
@@ -549,15 +549,15 @@ Deletes the job record and the corresponding MP3 file on disk.
 ## Troubleshooting
 
 ### Port already in use
-The launchers automatically kill any existing process on port 7860 before starting. If you still see the error, run manually:
+The launchers automatically kill any existing process on port 7861 before starting. If you still see the error, run manually:
 
 Linux:
 ```bash
-fuser -k 7860/tcp
+fuser -k 7861/tcp
 ```
 Windows:
 ```batch
-for /f "tokens=5" %a in ('netstat -ano ^| findstr ":7860 " ^| findstr "LISTENING"') do taskkill /F /PID %a
+for /f "tokens=5" %a in ('netstat -ano ^| findstr ":7861 " ^| findstr "LISTENING"') do taskkill /F /PID %a
 ```
 
 ### "Models missing" badge

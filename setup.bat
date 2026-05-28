@@ -124,6 +124,6 @@ echo ================================================
 echo   Setup complete!
 echo.
 echo   To launch WAIvePulse: run start.bat
-echo   Then open: http://localhost:7860
+echo   Then open: http://localhost:7861
 echo ================================================
 pause
