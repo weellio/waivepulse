@@ -99,6 +99,50 @@
   .status-line.error { color: #e07a7a; font-style: normal; }
   .status-line.ok { color: #4ad88d; font-style: normal; }
 
+  /* Generating-state animations */
+  .pulse-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: currentColor; margin-right: 8px; vertical-align: middle;
+    animation: pulse 1.05s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: .35; transform: scale(.78); }
+    50%      { opacity: 1;   transform: scale(1.15); }
+  }
+  .progress-bar {
+    height: 3px; background: #1a1a24; border-radius: 2px; overflow: hidden;
+    position: relative; display: none;
+  }
+  .progress-bar.show { display: block; }
+  .progress-bar::after {
+    content: ''; position: absolute; top: 0; left: -32%;
+    width: 32%; height: 100%;
+    background: linear-gradient(90deg, transparent 0%, #8cffff 50%, transparent 100%);
+    animation: progress-slide 1.4s cubic-bezier(.45,.05,.55,.95) infinite;
+  }
+  @keyframes progress-slide {
+    0%   { left: -32%; }
+    100% { left: 100%; }
+  }
+  #output.streaming {
+    border-color: #4a8a8a;
+    box-shadow: 0 0 0 1px rgba(140,255,255,.18), inset 0 0 24px rgba(140,255,255,.03);
+    animation: glow 1.6s ease-in-out infinite;
+  }
+  @keyframes glow {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(140,255,255,.10), inset 0 0 24px rgba(140,255,255,.02); }
+    50%      { box-shadow: 0 0 0 1px rgba(140,255,255,.28), inset 0 0 32px rgba(140,255,255,.06); }
+  }
+  #btnGen.generating {
+    background: linear-gradient(90deg, #6ad8d8 0%, #8cffff 50%, #6ad8d8 100%);
+    background-size: 200% 100%;
+    animation: btn-shimmer 1.8s linear infinite;
+  }
+  @keyframes btn-shimmer {
+    0%   { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+  }
+
   #copyToast {
     position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
     background: #1a2a2a; color: #8cffff; padding: 10px 18px; border-radius: 6px;
@@ -233,6 +277,7 @@
     </div>
 
     <button id="btnGen" onclick="generateLyrics()">Generate Lyrics</button>
+    <div class="progress-bar" id="progressBar"></div>
     <div class="status-line" id="status"></div>
 
     <div class="help-note">
@@ -364,11 +409,20 @@ async function checkOllama() {
   }
 }
 
+function _setGenerating(on) {
+  const btn  = document.getElementById('btnGen');
+  const bar  = document.getElementById('progressBar');
+  const out  = document.getElementById('output');
+  btn.disabled = on;
+  btn.classList.toggle('generating', on);
+  btn.innerHTML = on ? '<span class="pulse-dot"></span>Generating…' : 'Generate Lyrics';
+  bar.classList.toggle('show', on);
+  out.classList.toggle('streaming', on);
+}
+
 async function generateLyrics() {
-  const btn = document.getElementById('btnGen');
   const status = document.getElementById('status');
-  const out = document.getElementById('output');
-  const customTone = ''; // could add later
+  const out    = document.getElementById('output');
   const body = {
     theme:     document.getElementById('theme').value.trim(),
     structure: document.getElementById('structure').value,
@@ -383,11 +437,15 @@ async function generateLyrics() {
     status.textContent = 'Add a theme/topic or a style reference first.';
     return;
   }
-  btn.disabled = true; btn.textContent = '⏳ Generating…';
+  _setGenerating(true);
   status.className = 'status-line';
-  status.textContent = `Running ${body.model} locally — this can take 10–60 seconds.`;
+  status.textContent = `Loading ${body.model}… first tokens will appear in a moment.`;
+  out.value = '';
+
+  let tokenCount = 0;
+  const startedAt = performance.now();
   try {
-    const r = await fetch('/lyrics/suggest', {
+    const r = await fetch('/lyrics/suggest/stream', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(body),
@@ -396,15 +454,45 @@ async function generateLyrics() {
       const e = await r.json().catch(()=>({detail:'Request failed'}));
       throw new Error(e.detail || `HTTP ${r.status}`);
     }
-    const d = await r.json();
-    out.value = d.lyrics || '(no output)';
+    const reader  = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const raw of lines) {
+        if (!raw.startsWith('data: ')) continue;
+        const payload = raw.slice(6);
+        if (payload === '__done__') { reader.cancel(); break; }
+        let parsed;
+        try { parsed = JSON.parse(payload); } catch { continue; }
+        if (parsed && typeof parsed === 'object' && parsed.__error__) {
+          throw new Error(parsed.__error__);
+        }
+        if (typeof parsed === 'string') {
+          out.value += parsed;
+          out.scrollTop = out.scrollHeight;
+          tokenCount++;
+          if (tokenCount === 1) {
+            status.className = 'status-line';
+            status.textContent = `Streaming from ${body.model}…`;
+          }
+        }
+      }
+    }
+    const elapsed = ((performance.now() - startedAt) / 1000).toFixed(1);
     status.className = 'status-line ok';
-    status.textContent = `Done — generated with ${d.model}.`;
+    status.textContent = out.value.trim()
+      ? `Done in ${elapsed}s — ${tokenCount} tokens from ${body.model}.`
+      : '(no output — try a different theme or model)';
   } catch (e) {
     status.className = 'status-line error';
     status.textContent = 'Error: ' + e.message;
   } finally {
-    btn.disabled = false; btn.textContent = 'Generate Lyrics';
+    _setGenerating(false);
   }
 }
 

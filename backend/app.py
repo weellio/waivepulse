@@ -1163,6 +1163,49 @@ def suggest_lyrics(req: LyricsRequest):
     return {"lyrics": (data.get("response") or "").strip(), "model": req.model}
 
 
+@app.post("/lyrics/suggest/stream")
+def suggest_lyrics_stream(req: LyricsRequest):
+    """Streaming variant — relays each Ollama token as an SSE event."""
+    import urllib.request, urllib.error
+
+    def event_stream():
+        body = json.dumps({
+            "model":      req.model,
+            "prompt":     _build_lyrics_prompt(req),
+            "stream":     True,
+            "options":    {"temperature": req.temperature, "top_p": 0.9},
+            "keep_alive": 0,
+        }).encode("utf-8")
+        request = urllib.request.Request(
+            "http://localhost:11434/api/generate",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=300) as r:
+                for raw in r:
+                    if not raw.strip():
+                        continue
+                    try:
+                        chunk = json.loads(raw.decode("utf-8"))
+                    except Exception:
+                        continue
+                    tok = chunk.get("response", "")
+                    if tok:
+                        yield f"data: {json.dumps(tok)}\n\n"
+                    if chunk.get("done"):
+                        yield "data: __done__\n\n"
+                        return
+        except urllib.error.URLError as e:
+            err = f"Ollama not reachable on localhost:11434 ({e.reason})"
+            yield f"data: {json.dumps({'__error__': err})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'__error__': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 @app.get("/lyrics", response_class=HTMLResponse)
 def lyrics_page():
     html_path = FRONTEND_DIR / "lyrics.html"
