@@ -587,7 +587,13 @@ def _run_generation(job_id, lyrics, tags, title, artist, max_ms, temperature, cf
     except Exception as e:
         msg = str(e)
         if "out of memory" in msg.lower():
-            msg += "\n\nYour GPU sucks — upgrade or get a better computer."
+            msg += (
+                "\n\nCommon causes on a 12 GB card:"
+                "\n  1. Ollama is still holding a lyric model in VRAM. Run: ollama stop <model-name>"
+                "\n  2. A previous generation crashed without releasing memory — restart this server."
+                "\n  3. Another GPU app is open (browser with WebGL, video player, second model)."
+                "\nIf none of the above: your GPU is genuinely too small for HeartMuLa 3B (~12 GB required)."
+            )
         jobs[job_id]["status"]  = "error"
         jobs[job_id]["message"] = msg
         _real_stderr.write(f"[waivepulse] Generation error for {job_id}: {e}\n")
@@ -1132,10 +1138,14 @@ def suggest_lyrics(req: LyricsRequest):
     """Generate lyrics via local Ollama. Requires Ollama running on localhost:11434."""
     import urllib.request, urllib.error
     body = json.dumps({
-        "model":   req.model,
-        "prompt":  _build_lyrics_prompt(req),
-        "stream":  False,
-        "options": {"temperature": req.temperature, "top_p": 0.9},
+        "model":      req.model,
+        "prompt":     _build_lyrics_prompt(req),
+        "stream":     False,
+        "options":    {"temperature": req.temperature, "top_p": 0.9},
+        # Unload the model from VRAM the moment the response is returned.
+        # Prevents Ollama from holding ~5 GB while the user moves on to a
+        # HeartMuLa generation job (12 GB card = OOM otherwise).
+        "keep_alive": 0,
     }).encode("utf-8")
     request = urllib.request.Request(
         "http://localhost:11434/api/generate",
