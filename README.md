@@ -511,8 +511,14 @@ waivepulse/
 
 The backend is a plain REST API — you can call it from curl, Python, or any HTTP client.
 
-### `GET /`
-Returns the frontend HTML.
+### Page routes
+
+| Route | Serves |
+|---|---|
+| `GET /` | `frontend/index.html` — Generate page |
+| `GET /studio` | `frontend/studio.html` — Stem mixer (needs `?job=<id>` or `?sep=<id>`) |
+| `GET /karaoke` | `frontend/karaoke.html` — Fullscreen visualizer (needs `?sep=<id>`) |
+| `GET /lyrics` | `frontend/lyrics.html` — Lyric Helper |
 
 ### `GET /model-status`
 ```json
@@ -527,6 +533,14 @@ Returns the frontend HTML.
 }
 ```
 `ready: false` with `incomplete_files > 0` means models are still downloading.
+
+### Service-availability checks
+
+| Route | Purpose |
+|---|---|
+| `GET /demucs-status` | `{available, ffmpeg}` — Studio stem separation requires both |
+| `GET /whisper-status` | `{available}` — Karaoke lyric sync requires this |
+| `GET /ollama-status` | `{available, models[]}` — Lyric Helper auto-detects from this |
 
 ### `POST /generate`
 ```json
@@ -592,6 +606,33 @@ Returns all jobs in reverse chronological order. Includes full job data (lyrics,
 
 ### `DELETE /history/{job_id}`
 Deletes the job record and the corresponding MP3 file on disk.
+
+### `POST /upload`
+Multipart file upload (`file` field) for external audio. Saves to `outputs/`, runs BPM/key detection, creates a `done` history record indistinguishable from a generated song, and returns `{"job_id": "abc12345"}`. Used by the **▶ Load MP3** / drag-drop flow when the user clicks 🎛 Studio on a locally-loaded card. Accepts MP3, WAV, FLAC, OGG, M4A, AAC.
+
+### Stem separation (Studio)
+
+| Route | Purpose |
+|---|---|
+| `POST /separate/{job_id}` | Queue Demucs separation for a finished song. Returns `{"sep_id": "..."}` |
+| `GET /separate/status/{sep_id}` | `{status, message, stems, title}` — status is `queued` → `separating` → `done` / `error` |
+| `GET /separate/progress/{sep_id}` | SSE stream of Demucs log lines, ends with `__done__` |
+| `GET /stems/{sep_id}/{filename}` | Direct stem audio (vocals/drums/bass/guitar/piano/other; MP3 if ffmpeg, else WAV) |
+| `GET /stems/{sep_id}/zip` | All six stems as a single ZIP — used by Studio's **⬇ Stems** button |
+
+### Lyric transcription (Karaoke)
+
+| Route | Purpose |
+|---|---|
+| `POST /transcribe/{sep_id}` | Run faster-whisper on the vocals stem; aligns to original lyrics via LCS. Query params: `force=true` (re-run), `model=base` (tiny/base/small/medium/large-v2/large-v3) |
+| `GET /transcribe/status/{sep_id}` | `{status, words, match_pct, tx_model}` — status is `none` / `transcribing` / `done` |
+
+### Lyric generation (Ollama)
+
+| Route | Purpose |
+|---|---|
+| `POST /lyrics/suggest` | Non-streaming — request body: `{theme, structure, tone, rhyme, style, model, temperature}`. Returns `{lyrics, model}` after the full generation completes. Sends `keep_alive: 0` to Ollama so the model unloads from VRAM immediately |
+| `POST /lyrics/suggest/stream` | Streaming — same body. Relays each Ollama token as an SSE `data:` event, ends with `__done__`. Used by the Lyric Helper page for the word-by-word live output |
 
 ---
 
