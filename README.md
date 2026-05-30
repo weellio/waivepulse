@@ -4,127 +4,170 @@
 
 ![WAIvePulse](assets/wave%20small.png)
 
-A local, fully offline AI music generation tool powered by **HeartMuLa 3B**. Give it lyrics and genre tags, get back a complete song with vocals as an MP3.
+Write a song. Generate it. Mix it. Perform it. On your own GPU.
 
-Runs on your own machine. No cloud, no subscription, no usage limits.
+WAIvePulse is a local AI music studio that runs four connected tools in one browser. You write lyrics (or have Llama write them for you), describe the style you want with tags, and the **HeartMuLa 3B** model generates a complete song with vocals as an MP3. You then open that song in a browser DAW that separates it into six stems, gives you a per-track mixer with mastering chain and Visual EQ, and a karaoke performance mode synced to your original lyrics.
 
-> **Supported platforms: Windows and Linux only.**
-> macOS is not supported — this tool requires an NVIDIA GPU with CUDA, which no modern Mac provides.
-
----
-
-## What It Does
-
-- Takes structured lyrics (with `[Verse]`, `[Chorus]`, etc. section markers) and a list of style/genre tags
-- Generates a complete song with full vocals, instrumentation, and structure as an MP3
-- Serves a dark-themed web UI on `http://localhost:7861`
-- Queues jobs in order — submit new requests while one is generating, they run one at a time
-- Shows real-time generation progress (language model phase + codec phase) with live log output
-- Persists job history across server restarts
-- 7 audio visualizer styles with fullscreen mode (great on a TV)
-- **BPM + key detection** — each completed song card shows the detected tempo and musical key (requires `librosa`)
-- **Studio page** — separates any generated song into 6 stems (vocals, drums, bass, guitar, piano, other) with a DAW-style mixer, waveform display, mute/solo/volume per track, and stem zip export
-- **Studio stem presets** — one-click mix presets: Full Mix, Karaoke (vocals off), Acappella (instruments off), Drums Only, No Drums
-- **Studio A-B loop** — drag on the ruler to mark a loop region; playback repeats within that region when loop is enabled; ESC clears it
-- **Studio track duplication** — DUP button per track creates a layered copy with independent knobs; OFS knob (0–50 ms) on every track for ADT doubling effects
-- **Studio mute automation** — shift+drag on any waveform to draw red mute regions; live during playback and baked into exports; click a region to delete it
-- **Studio track import** — drag & drop or ＋ Track button adds any audio file (MP3/WAV/FLAC/OGG) as a full mixer track; drag the clip block left/right on the timeline to set its start position; loop toggle repeats short clips for the full song
-- **Studio per-track SUB knob** — 60 Hz lowshelf shelf per track; AI music often lacks sub-bass — boost this on drums and bass stems to add physical rumble and body
-- **Studio per-track Visual EQ** — EQ button on every track opens a modal with a live spectrum analyzer and a draggable curve. Each of the 4 bands (SUB / BASS / MID / TREB) appears as a colored point on the curve — drag vertically to set gain, scroll the wheel for fine adjustment. Changes sync live with the mixer-strip knobs. Esc to close
-- **Lyric Helper page** (`/lyrics`) — local Ollama-backed lyric writing tool. Enter a theme, structure (V·C·V·C·B·C, etc.), tone, optional rhyme scheme and style reference; lyrics **stream in word-by-word** in the output panel as Ollama generates them, complete with pulsing dot, shimmering button, and animated progress bar so the UI clearly looks alive during the first 1–3 seconds of model load. Output is pre-formatted with `[Verse]`/`[Chorus]` markers that HeartMuLa expects. If Ollama isn't installed, the page shows an inline install guide (winget, curl, download link) and a `ollama pull llama3.1:8b` command. The **Send to Generator** button drops the result into the main page's lyrics box. Requires [Ollama](https://ollama.com) running locally — nothing is sent to the cloud
-- **Top navigation bar** linking the Generate, Lyrics, and Studio pages — visible on every page so the tools are discoverable from anywhere
-- **Studio master harmonic exciter** — EXC button on the master bus; high-passes at 3 kHz, applies soft saturation, mixes back at 18% wet; adds overtone shimmer and "air" AI audio typically lacks
-- **Studio master soft clipper** — CLP button on the master bus; tanh-bent waveshaper with a −0.5 dBFS ceiling, knee at ≈−4.4 dBFS, 4× oversampled; catches transient peaks without ducking them the way a limiter does — preserves drum punch while preventing overs. Mutually exclusive with LMT (only one can be active at a time)
-- **Studio MASTER preset** — one-click mastering treatment: duplicates drums at 12 ms ADT offset, boosts sub/treble per stem, adds reverb presence, enables the exciter and the soft clipper, and boosts master sub + air EQ
-- **Studio master volume** — VOL slider in the transport bar scales the entire mix output from 0–150%; affects both live playback and Export Mix; default 100%
-- **Studio RST ALL** — resets every knob on every track to defaults in one click; individual RST button per track still available
-- **Studio track selection + DAW shortcuts** — click any track to select it (cyan border); keyboard shortcuts then operate on that track (M/S/N/R/D); Tab/Shift+Tab cycles tracks; full shortcut reference via the **?** button or H key
-- **Studio help modal** — **?** button (top-right) or **H** key opens a full in-app reference covering every knob, button, and keyboard shortcut
-- **Karaoke mode** — fullscreen visualizer with synced lyrics; Whisper transcribes the vocals stem, LCS-aligns to the original lyrics, displays a 5-word sliding window with the active word highlighted; vocals toggle for sing-along vs instrumental; requires `faster-whisper`
-- **AI content watermarking** — AudioSeal neural watermark (survives re-encoding) + C2PA provenance manifest embedded in every generated MP3 (requires `audioseal`, `torchaudio`, `c2pa`, `cryptography`)
-
----
+No cloud. No subscription. No API keys. No usage caps.
 
 ![WAIvePulse](assets/wavepulse.jpg)
 
+[Watch a song made end-to-end in WAIvePulse](https://www.youtube.com/watch?v=gKttuxGeLkw) (lyric video, generated and mixed in this app).
+
+> **Platform:** Windows 10/11 or Linux. macOS has no NVIDIA CUDA support, so HeartMuLa cannot run there.
 
 ---
 
-## Demo
+## The workflow
 
-▶ [Sing-along demo made with WAIvePulse](https://www.youtube.com/watch?v=gKttuxGeLkw) — AI-generated song with lyrics displayed on screen
+Four pages, one flow. Each page does one job. The top navigation bar links them all.
+
+### 1. Write lyrics with Ollama
+
+![Lyric Helper](assets/lyrics.jpg)
+
+Open the Lyrics page. Pick a theme, song structure, tone, and optional rhyme scheme. Llama 3.1 (running locally via [Ollama](https://ollama.com)) streams lyrics into the output box word by word, pre-formatted with the `[Verse]`/`[Chorus]` markers HeartMuLa requires. Click "Send to Generator" and you land on the Generate page with the lyrics already filled in.
+
+- Live token streaming, so you watch the song form in real time and can abort early if it goes wrong
+- Auto-detects Ollama. If it's missing, the page shows an install card with the winget command, the Linux curl one-liner, and a download link
+- Passes `keep_alive: 0` so the lyric model unloads from VRAM the moment generation ends. Lyrics, then generate, on a 12 GB card with no contention
+- Pulsing dot, shimmering button, indeterminate progress bar, and glowing output panel so the UI stays alive during the 1 to 3 second model-load wait before the first token
+
+[Detail section below](#lyric-helper-in-depth)
+
+### 2. Generate the song with HeartMuLa
+
+The main page. Paste lyrics, pick tags from an organised grid (Genre, Timbre, Mood, Instrument, Region, Scene, Topic), set duration and creativity, click Generate. Jobs queue in order. Each card shows the language-model token-generation phase and the audio-codec decode phase as separate progress bars with live log output.
+
+- Multi-job FIFO queue with per-job cancel
+- BPM and key auto-detection on completion (chips like `♩ 128 BPM` and `♬ A minor`)
+- Seven audio visualizer styles with fullscreen mode
+- ID3 metadata baked into every MP3 with title, artist, tags, temperature, CFG scale
+- AudioSeal neural watermark and C2PA provenance manifest embedded when the libs are installed
+- Tag presets saved to browser localStorage so your favourite combos stay one click away
+- Drop external MP3s onto the history panel to play them, or to send them into Studio for stem separation
+
+[Detail section below](#generate-page-in-depth)
+
+### 3. Mix in Studio
+
+![Studio](assets/studio.jpg)
+
+Click the Studio button on any finished song card. Demucs splits the song into six stems (vocals, drums, bass, guitar, piano, other) on your GPU, then drops you into a DAW-style mixer with waveform display, per-track knobs, A-B loop, mute automation, track import, and a full master bus chain.
+
+- **Visual EQ on every track:** click the EQ button to open a modal with a live spectrum analyzer and a draggable four-band curve, all backed by the actual biquad-filter responses
+- **Master soft clipper (CLP) or limiter (LMT)**, mutually exclusive. The clipper preserves transient punch on AI music that otherwise sounds limp; the limiter glues for a louder, ballad-friendly sound
+- **Harmonic exciter (EXC):** parallel 3 kHz high-pass into a soft saturator at 18% wet, for air and shimmer AI vocals lack
+- **MASTER preset:** one click applies a starter mastering chain (drum ADT thickening, per-stem EQ, exciter, clipper, master sub and air EQ boost)
+- **Mute automation:** shift-drag any waveform to draw red mute regions, baked into Export Mix
+- **Track import:** drag any audio file onto the page and it becomes a full mixer track with its own knob set and loop toggle
+- **Export Mix** renders a lossless WAV with every knob, EQ band, mute region, and master-chain stage baked in. What you hear is what you get
+
+External songs work too. Drop an MP3 into the history panel, click Studio, and Demucs runs on it the same way. The full Studio feature set is available on imports.
+
+[Detail section below](#studio-in-depth)
+
+### 4. Perform in Karaoke
+
+![Karaoke](assets/karaoke.jpg)
+
+After separation, click the Karaoke button. faster-whisper transcribes the vocals stem on demand, an LCS algorithm aligns the transcript to your original lyrics (correcting misheard words), and a fullscreen performance page opens with a five-word sliding lyric window, 20+ visualizer styles, and your Studio mix carried over intact.
+
+Record your screen during playback and you have a lyric video with synced words and a tuned mix, ready to upload to YouTube without external tools.
+
+[Detail section below](#karaoke-in-depth)
 
 ---
 
-## Requirements
+## Why WAIvePulse
+
+| | WAIvePulse | Cloud song generators (Suno, Udio) | Pro DAWs (Logic, Ableton) |
+|---|---|---|---|
+| Runs offline | Yes | No | Yes |
+| Open source | Yes | No | No |
+| Generates songs from lyrics | Yes | Yes | No |
+| Browser-based stem mixer | Yes | No (or extra fee) | N/A (native) |
+| Karaoke or lyric video output | Yes | No | No (manual) |
+| Subscription | None | Monthly | Monthly or one-time |
+| Usage cap | None | Tokens or credits | None |
+| Your lyrics or audio leave your computer | Never | Always | Never |
+
+For a solo producer with a 12 GB+ NVIDIA GPU, the trade is a one-time install plus a 21 GB model download in exchange for permanent freedom from cloud lock-in.
+
+---
+
+## System requirements
 
 | Component | Requirement |
 |---|---|
-| OS | Windows 10/11 or Linux (macOS not supported) |
-| GPU | NVIDIA GPU with ~10 GB VRAM minimum (CUDA required) |
+| OS | Windows 10/11 or Linux |
+| GPU | NVIDIA with ~12 GB VRAM (CUDA required) |
 | Python | 3.10+ |
-| Model | HeartMuLa-oss-3B (~15 GB) + HeartCodec-oss (~6.2 GB) + HeartMuLaGen (~small) |
-| Framework | FastAPI + uvicorn (installed automatically by setup) |
-| BPM/Key | `librosa` — `pip install librosa` |
-| Watermarking | `audioseal torchaudio c2pa cryptography` — `pip install audioseal torchaudio c2pa cryptography` |
+| Disk | ~25 GB (HeartMuLa + HeartCodec weights) plus working space |
+| Optional | `librosa` (BPM and key chips), `audioseal` + `c2pa` + `cryptography` (watermarking), `faster-whisper` (Karaoke lyric sync), `demucs` (Studio stem separation), `ffmpeg` (MP3 stem output), Ollama (lyric writing) |
+
+`setup.sh`/`setup.bat` installs the required Python packages and downloads the model weights. You do not need to install any of these by hand.
 
 ---
 
-## Quick Start
+## Quick start
 
-### 1. First-time setup (run once)
-
-**Linux:**
-```bash
-bash setup.sh
-```
+### First-time setup (run once)
 
 **Windows:**
+
 ```batch
 setup.bat
 ```
 
-The setup script does everything automatically:
-- Installs Python, ffmpeg, and git (if not already present)
-- Checks your NVIDIA GPU and CUDA version
-- Creates a Python virtual environment
-- Installs PyTorch (with the right CUDA build), heartlib, and all other dependencies
-- Downloads the HeartMuLa model weights (~21 GB — this takes a while)
-
-No manual steps. When it finishes, you're ready to launch.
-
-> **Default install locations** — models and the venv go under `~/HeartMuLa/` (Linux) or `%USERPROFILE%\HeartMuLa\` (Windows). To use a different location, set `WAIVEPULSE_VENV` and `WAIVEPULSE_CKPT` environment variables before running setup.
-
-### 2. Launch (every time)
-
 **Linux:**
+
 ```bash
-bash start.sh
+bash setup.sh
 ```
 
+The script installs Python, ffmpeg, and git if missing; checks your NVIDIA and CUDA versions; creates a Python virtual environment; installs PyTorch with the right CUDA build, heartlib, and dependencies; then downloads the HeartMuLa weights (~21 GB).
+
+The default install location is `~/HeartMuLa/` (Linux) or `%USERPROFILE%\HeartMuLa\` (Windows). To install somewhere else, set `WAIVEPULSE_VENV` and `WAIVEPULSE_CKPT` before running setup.
+
+### Launch (every time)
+
 **Windows:**
+
 ```batch
 start.bat
 ```
 
-Then open **http://localhost:7861** in any browser.
+**Linux:**
 
-The launchers automatically kill any old server process on port 7861 before starting.
+```bash
+bash start.sh
+```
+
+Open **http://localhost:7861** in any browser. The launcher kills any old server process on port 7861 before starting.
 
 ---
 
-## Using the Web UI
+## Reference
 
-### 1. Song Title
-Optional label — used as the filename and display name in the history panel.
+What follows documents each page in detail, plus the file structure, API surface, technical implementation, configuration, and troubleshooting. Skip to the section you need.
 
-### 2. Artist
-Optional. Embedded directly into the MP3 as the ID3 Artist tag. If left blank, defaults to "WAIvePulse".
+---
 
-### 3. Lyrics
-Write your lyrics using section markers. HeartMuLa is trained on this format and produces much better results with proper structure.
+## Generate page (in depth)
 
-**Supported markers:**
+### Song title
+
+Optional label. Used as the filename and the display name in the history panel.
+
+### Artist
+
+Optional. Embedded into the MP3 as the ID3 Artist tag. Leave blank and it defaults to `WAIvePulse`.
+
+### Lyrics
+
+HeartMuLa was trained on lyrics with section markers, and it produces better songs when you use them. Supported markers:
+
 ```
 [Intro]
 [Verse]
@@ -134,7 +177,8 @@ Write your lyrics using section markers. HeartMuLa is trained on this format and
 [Outro]
 ```
 
-**Minimal working example:**
+Minimal working example:
+
 ```
 [Verse]
 The city lights shine bright tonight
@@ -145,84 +189,85 @@ Feel the rhythm, feel the beat
 Dancing through the crowded street
 ```
 
-Use the template links (**pop · rock · ballad · hip-hop**) above the lyrics box to load a full example you can edit.
+Use the template links (pop, rock, ballad, hip-hop) above the lyrics box to load a full example you can edit.
 
-### 4. Genre & Style Tags
+### Tags
 
-Tags are how you communicate the sound you want. HeartMuLa was trained with **8 distinct tag categories** — each one shapes a different dimension of the output. The UI organizes them into collapsible sections so you can pick deliberately rather than guess.
+Tags tell HeartMuLa what the song should sound like. HeartMuLa was trained with eight tag categories, each shaping a different dimension of the output. The UI groups them in collapsible sections so you pick deliberately.
 
-**The most important rule: one tag per category.** The model was trained on examples where each category had a single value. Stacking multiple tags from the same category (e.g. `pop,rock,jazz`) causes the model to average them into something muddier than any one would produce alone. More tags is not better — cleaner is better.
+**The rule that matters most: one tag per category.** The model was trained on examples where each category had a single value. Stacking multiple tags in one category (e.g. `pop,rock,jazz`) averages them into something muddier than any one would produce alone.
 
 | Category | Importance | What it shapes |
 |---|---|---|
-| **Genre** | Required | The core musical style. Always pick one. |
-| **Timbre** | Recommended | The tone and texture of the sound — bright vs dark, warm vs harsh, smooth vs gritty. |
-| **Gender** | Recommended | Whether the vocalist sounds male, female, or mixed. Also use `no vocals` for instrumentals. |
-| **Mood** | Recommended | The emotional color — nostalgic, epic, melancholic, playful, etc. |
-| **Instrument** | Recommended | A featured instrument the model will try to put front and center. |
-| **Scene** | Optional | A setting or context that influences the atmosphere — coffee shop, stadium, late night, etc. |
-| **Region** | Optional | A cultural flavor — `british` pulls toward melodic rock, `latin` adds rhythmic warmth, `nordic` tends cold and sparse. |
-| **Topic** | Optional | The lyrical subject. Reinforces what you wrote in the lyrics box. |
+| Genre | Required | The core musical style. Always pick one. |
+| Timbre | Recommended | Tone and texture. Bright vs dark, warm vs harsh, smooth vs gritty. |
+| Gender | Recommended | Vocalist sounds male, female, or mixed. Also `no vocals` for instrumentals. |
+| Mood | Recommended | Emotional colour. Nostalgic, epic, melancholic, playful, etc. |
+| Instrument | Recommended | A featured instrument the model will try to push to the front. |
+| Scene | Optional | A setting that shapes atmosphere. Coffee shop, stadium, late night. |
+| Region | Optional | Cultural flavour. `british` pulls toward melodic rock, `latin` adds rhythmic warmth. |
+| Topic | Optional | Lyrical subject. Reinforces what you wrote in the lyrics box. |
 
-**Good combo:** `rock,dark,male vocals,nostalgic,electric guitar,british` — clear, one per category, covers the most influential dimensions.
+A clean combo: `rock,dark,male vocals,nostalgic,electric guitar,british`. One per category, covers the most influential dimensions.
 
-**Avoid:** `pop,rock,jazz` (three Genre tags produce muddy averaging), or `happy,melancholic,dark` (conflicting Mood tags).
+Avoid: `pop,rock,jazz` (three Genre tags) or `happy,melancholic,dark` (conflicting Mood tags).
 
-**Blending two artists:** The model doesn't know artist names, but you can describe what makes each distinctive across different categories. To blend Linkin Park and The Beatles, for example: Genre `rock`, Timbre `dark`, Region `british` (the key Beatles lever), Mood `nostalgic`, Instrument `electric guitar`. The characteristics come from different categories so they don't conflict.
+Blending two artists: the model doesn't know artist names, so describe what makes each distinctive across different categories. To blend Linkin Park and The Beatles, try Genre `rock`, Timbre `dark`, Region `british` (the key Beatles lever), Mood `nostalgic`, Instrument `electric guitar`. Each tag pulls from a separate category, so they reinforce each other instead of fighting.
 
-You can also type freeform tags in the custom field below the grid — comma-separated. Use this for anything not covered by the presets, or for sub-genre descriptors like `nu-metal`, `anthemic`, or `chamber pop`.
+Type freeform tags in the custom field below the grid (comma-separated) for sub-genre descriptors like `nu-metal`, `anthemic`, or `chamber pop`.
 
-### 5. Tag Presets
+### Tag presets
 
-Click **+ Save current** next to "Tag Presets" to save your active tag selection under a name. Saved presets appear as chips — click a chip to apply it, × to delete it. Presets are stored in browser localStorage and persist across sessions.
+Click "+ Save current" next to "Tag Presets" to save your active tag selection under a name. Saved presets appear as chips. Click a chip to apply it, click × to delete it. Presets live in browser localStorage and persist across sessions.
 
-### 6. Advanced Settings (click to expand)
+### Advanced settings
 
 | Setting | Default | Range | Description |
 |---|---|---|---|
-| Max Duration | 5:00 | 0:30 – 5:00 | Upper limit on song length. The model may stop earlier at a natural end. |
-| Temperature | 1.0 | 0.5 – 2.0 | Higher = more creative/unpredictable. Lower = more conservative/structured. |
-| CFG Scale | 1.5 | 1.0 – 5.0 | How strictly the output follows your tags. Higher = stronger style adherence. |
+| Max Duration | 5:00 | 0:30 to 5:00 | Upper limit on song length. The model may stop earlier at a natural end. |
+| Temperature | 1.0 | 0.5 to 2.0 | Higher = more creative and unpredictable. Lower = more conservative and structured. |
+| CFG Scale | 1.5 | 1.0 to 5.0 | How strictly the output follows your tags. Higher = stronger style adherence. |
 
-### 7. Generate
-Hit **Generate Song**. The button re-enables immediately so you can queue another request. Only one job runs at a time — others wait in the queue.
+### Generate
 
-While generating, each job card shows:
+Click "Generate Song". The button re-enables right away so you can queue another request. The worker runs one job at a time; the rest wait.
 
-- **Language model** progress bar — token generation (phase 1)
-- **Audio codec** progress bar — waveform decode (phase 2)
-- **Live log** — raw output from the model, scrolling in real time
+Each job card shows two progress bars during generation:
 
-**Amber pulsing dot** = generating. **Green dot** = done, audio player appears.
+- **Language model**: token generation (phase 1)
+- **Audio codec**: waveform decode (phase 2)
 
-### 8. Completed cards
+Plus a live log scrolling raw output from the model. Amber pulsing dot = generating, green dot = done.
 
-Each finished card has:
+### Completed cards
 
-- **Audio player** with 7 visualizer styles — click the style button to cycle, or **double-click the visualizer** (or click ⛶) to go **fullscreen**
-- **⬇ Download** — saves the MP3 directly to disk
-- **↺ Use Settings** — loads this song's lyrics, tags, and artist back into the form so you can regenerate or tweak
-- **🎛 Studio** — opens the stem separation Studio page for this song
-- **Duration and file size** shown in the card
-- **BPM and key** displayed as chips on the card (e.g. `♩ 128 BPM`, `♬ A minor`) — requires `librosa`
-- **ID3 metadata** embedded in the file (readable by any media player or DAW)
+Each finished card has an audio player with seven visualizer styles (click the style button to cycle, or double-click the visualizer to go fullscreen), plus:
 
-**Visualizer styles:**
+- **Download:** save the MP3 to disk
+- **Use Settings:** load this song's lyrics, tags, and artist back into the form for a re-roll
+- **Studio:** open the stem-separation Studio for this song
+- **Karaoke:** open the karaoke performance page once separation has finished
+- **Cancel:** for queued or generating jobs only
+- Duration, file size, BPM, and key chips
+
+Visualizer styles:
 
 | Style | Description |
-| --- | --- |
-| ◉ Ring | Circular frequency bars around a glowing core |
-| ▐ Bars | Vertical frequency spectrum with glow |
-| ∿ Wave | Mirrored waveform fill |
-| ✦ Galaxy | Rotating starburst — lines radiate from center, colored by frequency |
-| ≋ Aurora | Layered flowing sine bands, like northern lights |
-| ✺ Particles | Frequency-reactive particles that scatter outward and drift with gravity |
-| ⊙ Scope | Stabilized oscilloscope with zero-crossing lock |
+|---|---|
+| Ring | Circular frequency bars around a glowing core |
+| Bars | Vertical frequency spectrum with glow |
+| Wave | Mirrored waveform fill |
+| Galaxy | Rotating starburst, lines radiate from centre coloured by frequency |
+| Aurora | Layered flowing sine bands, like northern lights |
+| Particles | Frequency-reactive particles that scatter outward and drift with gravity |
+| Scope | Stabilised oscilloscope with zero-crossing lock |
 
-**Fullscreen:** double-click any visualizer (or click the ⛶ icon in the corner) to launch it fullscreen — works great on a TV or second screen. Move the mouse to reveal the style-cycle and exit controls. Press **Escape** to exit.
+Double-click any visualizer (or click the fullscreen icon) to launch it fullscreen, good for a TV or second screen. Move the mouse to reveal style-cycle and exit controls. Press Escape to leave.
+
+ID3 metadata embedded in every generated MP3:
 
 | Tag | Value |
-| --- | --- |
+|---|---|
 | Title | Song title |
 | Artist | Your input, or "WAIvePulse" if blank |
 | Album Artist | WAIvePulse |
@@ -230,79 +275,92 @@ Each finished card has:
 | Genre | Full tags string |
 | Year | Current year |
 | Encoded by | WAIvePulse / HeartMuLa 3B |
-| Comment | `Tags: ... \| Temperature: ... \| CFG Scale: ...` |
+| Comment | `Tags: ... | Temperature: ... | CFG Scale: ...` |
 
-### 9. Cancel
+### Load MP3 (external songs)
 
-Active jobs (queued or generating) have a **Cancel** button in the card header. Queued jobs cancel immediately. In-progress jobs finish the current generation, then discard the output.
+Click the "Load MP3" button to import local audio files into the history panel. Drag and drop also works for MP3, WAV, FLAC, OGG, M4A onto the right-hand panel.
 
-### 10. Load MP3 (import external songs)
+Loaded files play and visualize in the browser. Click the Studio button on a loaded card and the file is uploaded server-side (via `POST /upload`) and Demucs runs on it the same way as a generated song. The full Studio feature set works on imports: stem mixer, mute regions, Visual EQ, MASTER preset, master bus chain, Export Mix, Karaoke.
 
-Use the **▶ Load MP3** button to load one or more local audio files into the history panel — also supports **drag and drop** of MP3/WAV/FLAC/OGG/M4A onto the right-hand panel.
+One caveat. If you bookmark a Studio URL for a loaded MP3 and reopen it in a fresh browser session, the in-memory file reference is gone. Go back to the main page, drop the MP3 again, and click Studio. Songs generated by WAIvePulse and songs imported via the upload flow live server-side and never hit this limit.
 
-Loaded files can be played, visualized, and **sent to Studio for stem separation**. Clicking 🎛 Studio on a loaded card auto-uploads the file to the server (via `POST /upload`) and runs Demucs on it, exactly like a generated song. The full Studio feature set works on imports: stem mixer, mute regions, per-track Visual EQ, MASTER preset, master bus chain (LMT/CLP/EXC), Export Mix, and Karaoke mode.
+### Generation time
 
-Note: if you bookmark a Studio URL for a loaded MP3 and reopen it in a fresh browser session, the in-memory file reference is gone — go back to the main page, drop the MP3 again, and click Studio. (Songs generated by WAIvePulse and songs imported via the upload flow are server-side and don't have this limitation.)
+Approximate times on a mid-range 12 GB GPU. Your hardware will vary.
+
+| Duration | LM Tokens | Approx. time |
+|---|---|---|
+| 30 seconds | ~375 tokens | 10 to 12 min |
+| 1 minute | ~750 tokens | 20 to 25 min |
+| 2 minutes | ~1500 tokens | 40 to 50 min |
+| 3 minutes | ~2250 tokens | 60 to 80 min |
+| 5 minutes | ~3750 tokens | 100 to 130 min |
+
+Two phases run sequentially:
+
+1. Language model phase, autoregressive audio token generation, ~1.5 tokens/sec
+2. Codec decode phase, audio tokens to waveform, ~41 sec/step, ~10 steps per ~30s of audio
+
+Both phases stream live in the browser via the job card.
 
 ---
 
-## Lyric Helper
+## Lyric Helper (in depth)
 
-![WAIvePulse Lyric Helper](assets/lyrics.jpg)
+![Lyric Helper](assets/lyrics.jpg)
 
-Open `/lyrics` or click **Lyrics** in the top nav to write lyrics from a prompt instead of from scratch. Generation runs entirely on your local GPU via [Ollama](https://ollama.com) — no API keys, no cloud calls, no usage limits.
+Open `/lyrics` or click "Lyrics" in the top nav. Generation runs entirely on your local GPU via Ollama. No API keys, no cloud calls, no usage limits.
 
 ### Lyric Helper features
 
-- Theme/topic input, song structure dropdown (V·C·V·C·B·C, V·C·V·C, etc.), 10 tone chips, optional rhyme scheme and style reference
-- Model picker — auto-detected from your installed Ollama models, defaults to `llama3.1:8b` if available
-- Creativity slider (0.4 – 1.3 temperature)
-- **Live streaming output** — lyrics appear word-by-word in the output textarea as Ollama generates them. A pulsing dot inside the button, a shimmering button gradient, an indeterminate progress bar, and a glowing border on the output panel all run in parallel so the UI looks alive even during the 1–3 second wait before the first token arrives
-- Section markers (`[Verse]`, `[Chorus]`, etc.) baked into the system prompt so output is in the exact format HeartMuLa expects
-- **Send to Generator** stores the lyrics in `localStorage` and bounces you to the main page with the lyrics box pre-filled and a confirmation toast
-- Final status line reports elapsed time and token count when generation finishes
+- Theme/topic input, song-structure dropdown (V-C-V-C-B-C and variants), 10 tone chips, optional rhyme scheme and style reference
+- Model picker auto-populates from your installed Ollama models. Defaults to `llama3.1:8b` if available.
+- Creativity slider (0.4 to 1.3 temperature)
+- Live streaming output. Lyrics appear word by word in the textarea as Ollama generates them. A pulsing dot inside the button, a shimmering button gradient, an indeterminate progress bar, and a glowing output panel run in parallel so the UI stays alive even before the first token arrives.
+- Section markers (`[Verse]`, `[Chorus]`, etc.) baked into the system prompt so output matches HeartMuLa's expected format
+- "Send to Generator" stores the lyrics in `localStorage` and bounces you to the main page with the lyrics box pre-filled
+- The final status line reports elapsed time and token count
 
 ### Ollama setup
 
-If Ollama isn't installed or isn't reachable, the page shows an inline install guide above the form with three numbered steps:
+If Ollama isn't installed or isn't reachable, the page renders an inline install card above the form with three steps:
 
-1. **Install Ollama** — Windows: `winget install Ollama.Ollama` · Linux: `curl -fsSL https://ollama.com/install.sh | sh` · or download the installer from [ollama.com](https://ollama.com/download)
-2. **Pull a lyric model** — `ollama pull llama3.1:8b` (~5 GB, recommended) or `ollama pull llama3.2:3b` (~2 GB, smaller-VRAM alternative)
-3. **Refresh the page** — the badge in the top right turns green when Ollama is detected
+1. **Install Ollama.** Windows: `winget install Ollama.Ollama`. Linux: `curl -fsSL https://ollama.com/install.sh | sh`. Or download the installer from [ollama.com](https://ollama.com/download).
+2. **Pull a lyric model.** `ollama pull llama3.1:8b` (~5 GB, recommended) or `ollama pull llama3.2:3b` (~2 GB, smaller-VRAM fallback).
+3. **Refresh the page.** The badge in the top-right turns green when Ollama is detected.
 
-If Ollama is running but no models are installed, the guide shrinks to just the pull-model step.
+If Ollama is running but no models are installed, the card shrinks to the pull-model step only.
 
-### Avoiding VRAM contention with HeartMuLa
+### VRAM contention with HeartMuLa
 
-The Lyric Helper passes `keep_alive: 0` to Ollama on every request, so the model is unloaded from VRAM the moment generation finishes. This means the Lyrics → Generate workflow is safe on a 12 GB card: by the time you hit **Generate Song**, the ~5 GB Llama allocation has already been released and HeartMuLa loads cleanly. If you do hit `CUDA out of memory`, the error message in the job card lists the three common causes (Ollama still loaded, prior crash leaked memory, other GPU app running).
+The Lyric Helper passes `keep_alive: 0` to Ollama on every request, so the model leaves VRAM the moment generation finishes. On a 12 GB card the Lyrics-then-Generate workflow is safe: by the time you click "Generate Song", the ~5 GB Llama allocation is gone and HeartMuLa loads into a clean slate.
+
+If you do hit `CUDA out of memory`, the error message in the job card lists the three common causes (Ollama still loaded, a prior crash leaked memory, another GPU app running).
 
 ---
 
-## Studio (Stem Separation)
+## Studio (in depth)
 
-![WAIvePulse Studio](assets/studio.jpg)
+![Studio](assets/studio.jpg)
 
-Click **🎛 Studio** on any completed song card to open the Studio page for that song.
-
-### What it does
-
-The Studio page runs **Demucs** (Facebook Research) on your song to separate it into up to 6 individual stems, then gives you a DAW-style mixer to play them back together.
+Click the Studio button on any finished song card. The Studio page runs Demucs (Facebook Research) on the song to separate it into up to six stems, then opens a DAW-style mixer.
 
 ### Setup
 
-- **Demucs** installed in your Python environment: `pip install demucs` (included in `requirements.txt`)
-- **ffmpeg** on your PATH for MP3 stem output (WAV fallback if not present)
+- `demucs` in your Python environment. Included in `requirements.txt`.
+- `ffmpeg` on your PATH for MP3 stem output. Falls back to WAV if missing.
   - Linux: `sudo apt install ffmpeg`
   - Windows: `winget install ffmpeg`
-- Separation uses your GPU and takes a few minutes per song
+- Separation runs on your GPU and takes a few minutes per song.
 
 ### Stems
 
-| Stem | Description |
-| --- | --- |
+| Stem | Contents |
+|---|---|
 | Vocals | Lead and backing vocals |
 | Drums | Drum kit and percussion |
-| Bass | Bass guitar and low-end |
+| Bass | Bass guitar and low end |
 | Guitar | Electric and acoustic guitar |
 | Piano | Piano and keys |
 | Other | Everything else |
@@ -312,172 +370,166 @@ The Studio page runs **Demucs** (Facebook Research) on your song to separate it 
 One-click buttons above the mixer apply common stem combinations:
 
 | Preset | What's audible |
-| --- | --- |
+|---|---|
 | Full Mix | All stems |
-| Karaoke | Everything except vocals — sing along |
+| Karaoke | Everything except vocals (sing along) |
 | Acappella | Vocals only |
 | Drums Only | Drums only |
 | No Drums | Everything except drums |
 
-### A-B Loop
+### A-B loop
 
-**Drag on the ruler** to mark a loop region — a cyan highlight shows the selected range. Enable the **⟳** loop button and playback will repeat within that region. **ESC** clears the loop region.
+Drag on the ruler to mark a loop region. A cyan highlight shows the selected range. Enable the loop button and playback repeats inside that region. ESC clears the loop.
 
-### Mute Automation
+### Mute automation
 
-Draw mute regions directly on any waveform to silence a track for a specific section — acappella refrain, drum solo, instrumental bridge.
+Draw mute regions on any waveform to silence a track for a specific section. Useful for an acappella refrain, a drum solo, or an instrumental bridge.
 
-- **Shift + drag** on a waveform — draws a red mute region for that track
-- **Click inside a mute region** — deletes that region
-- Regions from the same track are **automatically merged** if they overlap or sit within 50 ms of each other
-- Mute regions work live during playback and are baked into the **⬇ Export Mix**
-- Hint reminder in the sidebar header: `⇧ drag = mute region`
+- Shift-drag on a waveform draws a red mute region for that track
+- Click inside a mute region to delete it
+- Regions on the same track auto-merge if they overlap or sit within 50 ms of each other
+- Mute regions play live and bake into Export Mix
+- Sidebar header reminds you: `⇧ drag = mute region`
 
-### Track Import
+### Track import
 
-Bring in any audio file as an extra mixer track — a sample, a loop, a scratch vocal, anything.
+Bring any audio file in as an extra mixer track. A sample, a loop, a scratch vocal, anything.
 
-- **＋ Track** button in the transport bar — opens a file picker (MP3, WAV, FLAC, OGG, M4A, AAC)
-- **Drag and drop** one or more audio files onto the Studio window — a full-screen drop target appears
+- "+ Track" button in the transport bar opens a file picker (MP3, WAV, FLAC, OGG, M4A, AAC)
+- Drag and drop one or more audio files onto the Studio window. A fullscreen drop target appears.
 - Imported tracks appear below the stem tracks with the same full knob set (VOL, PAN, EQ, REV, DLY, OFS)
-- **⟳ button** on imported tracks — toggles loop mode so a short sample repeats for the full song duration
-- **× button** — removes the imported track
-- Loop state is respected in Export Mix — looped imports will loop for the full render duration
-- Imported tracks get a distinct gold color in the waveform view so they're easy to spot
+- Loop toggle on imported tracks repeats a short sample for the full song duration
+- × button removes the imported track
+- Loop state is respected in Export Mix
+- Imported tracks render in gold in the waveform view so they're easy to spot
 
-### Karaoke Mode
+### Per-track Visual EQ
 
-![WAIvePulse Karaoke](assets/karaoke.jpg)
+Click the EQ button on any track strip to open a modal with:
 
-Click **🎤 Karaoke** in the transport bar (enabled once separation is done) to open a fullscreen performance page.
+- A live spectrum analyzer tapped after the EQ chain, so you see exactly the post-EQ signal
+- The combined EQ curve drawn from each band's actual biquad response via `getFrequencyResponse()` (no approximations)
+- Four coloured draggable points (SUB cyan, BASS blue, MID yellow, TREB orange) sitting at their corner or centre frequencies
+- Drag vertically to set gain, scroll the wheel over a point for fine adjustment, hold Shift for 0.1 dB steps
+- Live readouts under the canvas
+- A "RESET EQ" button to flatten all four bands
+- Hi-DPI canvas (devicePixelRatio scaling) for crisp lines on Retina or 4K
+
+Changes sync live with the mixer-strip knobs. Press Escape to close.
+
+### Master bus chain
+
+Signal path on the master bus:
+
+```
+Track sends -> Master Bus -> Sub EQ (60 Hz lowshelf) -> Air EQ (10 kHz highshelf) -> [LMT or CLP] -> Master Volume -> Output
+                                                                                  \-> Exciter (parallel) -/
+```
+
+**LMT vs CLP, pick one.** They sit at the same point and target the same problem (peaks) with different methods.
+
+| | LMT (Limiter) | CLP (Clipper) |
+|---|---|---|
+| Method | DynamicsCompressor, −18 dB threshold, 4:1 ratio, fast attack | tanh-bent waveshaper, knee ≈−4.4 dBFS, ceiling −0.5 dBFS, 4× oversampled |
+| Effect on transients | Ducks them. Envelope follower clamps gain when input exceeds threshold | Bends them at the ceiling. Instant, sample-by-sample |
+| Sound | Glued, radio-ready, can feel squashed | Punchy, transients survive, can add mild harmonic distortion if pushed |
+| Best for | Vocal-forward mixes, ballads, anything where average loudness matters more than transient detail | Drum-forward mixes, anything where kick and snare snap matter. AI-generated music that feels limp. |
+| Use when | You want loudness glue and don't mind softer drums | You want loudness without losing impact (a sensible default for AI music) |
+
+Clicking either button automatically disables the other.
+
+### Controls
+
+- **M, S, NRM, RST, DUP, EQ**: per-track buttons. Mute, Solo, Normalize, Reset knobs, Duplicate, open Visual EQ
+- **VOL, PAN, SUB, Bass, Mid, Treb, Rev, Dly, OFS knobs**: per-track. Drag up/down or scroll. Double-click to reset.
+- **Click a track strip or waveform row**: select that track (cyan highlight). Keyboard shortcuts then apply to it.
+- **Tab / Shift+Tab**: cycle to next / previous track
+- **Click anywhere on a waveform or ruler**: seek to that position. Drag on the ruler to set the A-B loop.
+- **Shift + drag on a waveform**: draw a mute region for that section
+- **Drag an imported clip block**: reposition it on the timeline
+- **EXC**: toggle master harmonic exciter (overtone shimmer on highs only)
+- **LMT**: toggle master limiter, mutually exclusive with CLP
+- **CLP**: toggle master soft clipper at −0.5 dBFS ceiling, mutually exclusive with LMT
+- **MASTER**: one-click mastering preset across all stems
+- **VOL slider**: master output volume (0 to 150%), baked into Export Mix
+- **RST ALL**: reset every knob on every track to defaults
+- **? or H**: open the in-app help reference
+- **Space**: play / pause
+- **Home**: stop and return to start
+- **Export Mix button**: render the full mix with everything baked in to a lossless WAV
+- **Stems button**: download all six raw separated stems as a ZIP
+
+Full keyboard shortcut reference: press ? or H inside Studio.
+
+### Export Mix (what's baked in)
+
+Everything you hear in the Studio is rendered into the exported WAV, including the limiter and clipper:
+
+- Per-track: volume, pan, SUB/Bass/Mid/Treb EQ, reverb send, delay send, offset (OFS), mute regions, looped imports, clip start position
+- Master bus: Sub EQ, Air EQ, exciter, limiter (LMT), clipper (CLP), master volume
+
+Solo and mute states are honoured. Imported tracks that are short and have loop enabled loop for the full render duration.
+
+### Notes
+
+- Separation and generation share the same job queue. Only one runs at a time, to avoid VRAM conflicts.
+- Stems are cached. Clicking Studio again on the same song loads instantly.
+- The `?sep=` URL parameter lets you bookmark or share a direct link to a finished separation.
+- The MASTER preset enables the clipper (CLP), not the limiter. Click LMT manually if you prefer the glued limiter sound.
+
+---
+
+## Karaoke (in depth)
+
+![Karaoke](assets/karaoke.jpg)
+
+Click the Karaoke button in the Studio transport bar (enabled once separation is done) to open a fullscreen performance page.
 
 | Feature | Description |
 |---|---|
-| 5-word lyric window | Active word highlighted in amber; two words on each side shown dimmer and smaller — same sliding window style as professional karaoke |
-| Lyrics sync | Whisper transcribes the vocals stem on-demand; LCS algorithm aligns Whisper's output to your original lyrics to correct misheard words |
-| Studio mix passthrough | Karaoke carries your full studio mixer settings — per-track volume, pan, EQ, reverb, delay, offset, mute regions, and the master bus chain (EQ, exciter, limiter, clipper, master volume) are all active on the karaoke page. What you hear in the studio is what plays during recording. |
-| Vocals toggle | **V** key or button — mutes/unmutes the vocals stem in real time. Karaoke mode = vocals off, sing-along mode = vocals on |
-| Intro handling | Lyrics stay hidden during instrumental intros and slide into view naturally about 3 seconds before the first word is sung |
-| Visual styles | 20+ styles including Galaxy, Aurora, Bars, Scope, Hypertube, Kaleidoscope, Bubbles, Lasers, and more — press **N** to cycle |
-| Auto-transcribe | **AUTO TX** toggle in Studio transport — when on, Whisper runs automatically in the background right after separation finishes so Karaoke opens instantly |
-| Keyboard | **Space** play/pause · **V** vocals toggle · **N** next style · **←/→** seek ±5s · **Esc** back to Studio |
+| Five-word lyric window | Active word highlighted in amber; two words each side dimmer and smaller (the sliding-window style used by professional karaoke) |
+| Lyrics sync | Whisper transcribes the vocals stem on demand; an LCS algorithm aligns Whisper's transcript to your original lyrics to correct misheard words |
+| Studio mix passthrough | Karaoke carries your full Studio mixer settings. Per-track volume, pan, EQ, reverb, delay, offset, mute regions, and the full master bus chain (EQ, exciter, limiter, clipper, master volume) all play on the karaoke page. What you hear in Studio is what plays during recording. |
+| Vocals toggle | V key or button mutes or unmutes the vocals stem in real time. Karaoke mode = vocals off, sing-along mode = vocals on. |
+| Intro handling | Lyrics stay hidden during instrumental intros and slide into view about 3 seconds before the first sung word |
+| Visual styles | 20+ styles including Galaxy, Aurora, Bars, Scope, Hypertube, Kaleidoscope, Bubbles, Lasers. Press N to cycle. |
+| Auto-transcribe | "AUTO TX" toggle in the Studio transport. When on, Whisper runs in the background right after separation so Karaoke opens instantly. |
+| Keyboard | Space play/pause, V vocals toggle, N next style, Left/Right seek ±5s, Esc back to Studio |
 
-**Screen recording use case:** dial in your mix in the Studio, then open Karaoke and record your screen. The result is a lyric video with a synced sliding word display and a fully customized mix, ready to upload directly to YouTube with no additional tools required.
+**Screen-recording flow:** dial in your mix in Studio, open Karaoke, record your screen. You get a lyric video with synced sliding words and a fully tuned mix, ready to upload to YouTube.
 
-**Setup:** requires `faster-whisper` — already included in `requirements.txt`, installed automatically by the setup script.
+### Setup
+
+Karaoke requires `faster-whisper`. It is in `requirements.txt` and the setup script installs it.
 
 ```
 pip install faster-whisper
 ```
 
-If `faster-whisper` is not installed, Karaoke mode still works — it just plays the song with the visualizer and no lyric sync.
-
-### Controls
-
-- **Mute (M)** — silence an individual track
-- **Solo (S)** — hear only soloed tracks (multiple solo works)
-- **Volume, Pan, SUB, Bass, Mid, Treb, Rev, Dly, OFS knobs** — per-track; drag up/down or scroll wheel; double-click to reset
-- **NRM** — normalize track to peak level
-- **RST** — reset all knobs to default
-- **DUP** — duplicate track with independent knobs (use OFS knob for ADT/doubling)
-- **Click a track strip or waveform row** — selects that track (cyan highlight); keyboard shortcuts then apply to it
-- **Tab / Shift+Tab** — cycle to next / previous track
-- **Click anywhere on a waveform / ruler** — seek to that position (drag on ruler to set A-B loop)
-- **Shift + drag on a waveform** — draw a mute region for that section
-- **Drag an imported clip block** — reposition where in the song it plays (grab cursor appears on hover)
-- **EXC** — toggle master bus harmonic exciter (adds overtone shimmer to high frequencies only)
-- **LMT** — toggle master bus limiter/compressor (loudness glue, tames peaks). Mutually exclusive with CLP
-- **CLP** — toggle master bus soft clipper (catches transient peaks at −0.5 dBFS, preserves drum punch better than the limiter). Mutually exclusive with LMT
-- **MASTER** — one-click mastering preset applied to all stems
-- **VOL slider** — master output volume (0–150%); scales the full mix; baked into Export Mix
-- **RST ALL** — reset every knob on every track to defaults in one click
-- **? / H** — open the in-app help reference
-- **Space** — play / pause
-- **Home** — stop and return to start
-- **⬇ Export Mix** — renders the full mix (all knobs, EQ, mute regions, positioning, master chain) to a lossless WAV
-
-**Full keyboard shortcut reference:** press **?** or **H** inside the Studio to open the built-in help panel.
-
-### Master bus chain
-
-The signal path on the master bus, in order:
-
-```
-Track sends → Master Bus → Sub EQ (60 Hz lowshelf) → Air EQ (10 kHz highshelf) → [LMT or CLP] → Master Volume → Output
-                                                                               ↘ Exciter (parallel)  ↗
-```
-
-**LMT vs CLP — pick one, not both.** They sit at the same point in the chain and target the same problem (peaks), but solve it differently:
-
-| | LMT (Limiter) | CLP (Clipper) |
-|---|---|---|
-| Method | DynamicsCompressor, −18 dB threshold, 4:1 ratio, fast attack | tanh-bent waveshaper, knee at ≈−4.4 dBFS, ceiling at −0.5 dBFS, 4× oversampled |
-| What it does to transients | Ducks them (envelope follower clamps gain when input exceeds threshold) | Bends them at the ceiling (instant, sample-by-sample) |
-| Sound | Glued, "radio-ready," can feel squashed | Punchy, transients survive, can introduce mild harmonic distortion if pushed hard |
-| Best for | Vocal-forward mixes, ballads, anything where average loudness matters more than transient detail | Drum-forward mixes, anything where kick/snare snap matters; AI-generated music that already feels limp |
-| Use it when | You want loudness glue and don't mind softer drums | You want loudness without losing impact (usually the better default for AI music) |
-
-Clicking either button automatically disables the other.
-
-### Export Mix — what's baked in
-
-Everything you hear in the Studio is rendered into the exported WAV — including the limiter and clipper. The full list:
-
-- Per-track: volume, pan, SUB/Bass/Mid/Treb EQ, reverb send, delay send, offset (OFS), mute regions, looped imports, clip start position
-- Master bus: Sub EQ, Air EQ, exciter, **limiter (LMT)**, **clipper (CLP)**, master volume
-
-Solo and mute states are honored. Imported tracks that are short and have loop enabled will loop for the full render duration.
-
-### Notes
-
-- Separation and generation share the same job queue — only one runs at a time to avoid VRAM conflicts
-- The stems are cached: clicking Studio again on the same song loads instantly
-- The `?sep=` URL parameter lets you bookmark or share a direct link to a finished separation
-- The **MASTER preset** now enables the **clipper** (CLP), not the limiter — clippers preserve transient punch better on AI-generated material. Click LMT manually if you prefer the glued limiter sound
+Without `faster-whisper`, Karaoke still works. It plays the song with the visualizer and no lyric sync.
 
 ---
 
-## Generation Time
-
-Approximate times on a mid-range GPU with 12 GB VRAM — your hardware will vary:
-
-| Duration | LM Tokens | Approx. Time |
-|---|---|---|
-| 30 seconds | ~375 tokens | 10–12 min |
-| 1 minute | ~750 tokens | 20–25 min |
-| 2 minutes | ~1500 tokens | 40–50 min |
-| 3 minutes | ~2250 tokens | 60–80 min |
-| 5 minutes | ~3750 tokens | 100–130 min |
-
-Two phases run sequentially:
-
-1. **Language model phase** — autoregressive audio token generation (~1.5 tokens/sec)
-2. **Codec decode phase** — converts tokens to waveform (~41 sec/step, 10 steps per ~30s of audio)
-
-Progress for both phases is shown live in the browser via the job card.
-
----
-
-## File Structure
+## File structure
 
 ```
 waivepulse/
-├── setup.sh                    First-time setup: install deps + download models (Linux)
-├── setup.bat                   First-time setup: install deps + download models (Windows)
+├── setup.sh                    First-time setup, deps + model download (Linux)
+├── setup.bat                   First-time setup, deps + model download (Windows)
 ├── start.sh                    Launch the server (Linux)
 ├── start.bat                   Launch the server (Windows)
 ├── requirements.txt            Python dependencies (installed by setup script)
 ├── README.md                   This file
 │
 ├── backend/
-│   └── app.py                  FastAPI server — queue, SSE, history, generation,
+│   └── app.py                  FastAPI server: queue, SSE, history, generation,
 │                               separation, transcription, upload, Ollama relay
 │
-├── frontend/                   Static HTML — no build step, served directly by FastAPI
-│   ├── index.html              Generate page — lyrics + tags form, history sidebar
-│   ├── studio.html             Studio page — stem mixer, Visual EQ, master chain
-│   ├── karaoke.html            Karaoke page — fullscreen visualizer + synced lyrics
-│   └── lyrics.html             Lyric Helper page — Ollama-backed streaming lyric writer
+├── frontend/                   Static HTML, no build step, served directly by FastAPI
+│   ├── index.html              Generate page: lyrics + tags form, history sidebar
+│   ├── studio.html             Studio page: stem mixer, Visual EQ, master chain
+│   ├── karaoke.html            Karaoke page: fullscreen visualizer + synced lyrics
+│   └── lyrics.html             Lyric Helper page: Ollama-backed streaming lyric writer
 │
 ├── scripts/
 │   ├── test_generate.py        Standalone end-to-end test (bypasses the web server)
@@ -496,31 +548,33 @@ waivepulse/
     └── *.mp3
 ```
 
-**Model files** live wherever you set `HEARTMULA_PATH`:
+Model files live wherever you set `HEARTMULA_PATH`:
+
 ```
 <HEARTMULA_PATH>/
 ├── gen_config.json
 ├── tokenizer.json
 ├── HeartMuLa-oss-3B/       Language model (~15 GB, 4 safetensors shards)
-└── HeartCodec-oss/          Audio codec (~6.2 GB, 2 safetensors shards)
+└── HeartCodec-oss/         Audio codec (~6.2 GB, 2 safetensors shards)
 ```
 
 ---
 
-## API Endpoints
+## API endpoints
 
-The backend is a plain REST API — you can call it from curl, Python, or any HTTP client.
+The backend is a plain REST API. Call it from curl, Python, or any HTTP client.
 
 ### Page routes
 
 | Route | Serves |
 |---|---|
-| `GET /` | `frontend/index.html` — Generate page |
-| `GET /studio` | `frontend/studio.html` — Stem mixer (needs `?job=<id>` or `?sep=<id>`) |
-| `GET /karaoke` | `frontend/karaoke.html` — Fullscreen visualizer (needs `?sep=<id>`) |
-| `GET /lyrics` | `frontend/lyrics.html` — Lyric Helper |
+| `GET /` | `frontend/index.html` (Generate page) |
+| `GET /studio` | `frontend/studio.html` (Stem mixer, needs `?job=<id>` or `?sep=<id>`) |
+| `GET /karaoke` | `frontend/karaoke.html` (Fullscreen visualizer, needs `?sep=<id>`) |
+| `GET /lyrics` | `frontend/lyrics.html` (Lyric Helper) |
 
 ### `GET /model-status`
+
 ```json
 {
   "ready": true,
@@ -532,17 +586,19 @@ The backend is a plain REST API — you can call it from curl, Python, or any HT
   "incomplete_files": 0
 }
 ```
+
 `ready: false` with `incomplete_files > 0` means models are still downloading.
 
 ### Service-availability checks
 
 | Route | Purpose |
 |---|---|
-| `GET /demucs-status` | `{available, ffmpeg}` — Studio stem separation requires both |
-| `GET /whisper-status` | `{available}` — Karaoke lyric sync requires this |
-| `GET /ollama-status` | `{available, models[]}` — Lyric Helper auto-detects from this |
+| `GET /demucs-status` | `{available, ffmpeg}`. Studio separation requires both. |
+| `GET /whisper-status` | `{available}`. Karaoke lyric sync requires this. |
+| `GET /ollama-status` | `{available, models[]}`. Lyric Helper auto-detects from this. |
 
 ### `POST /generate`
+
 ```json
 {
   "lyrics": "[Verse]\nHello world\n[Chorus]\nSinging now",
@@ -554,7 +610,8 @@ The backend is a plain REST API — you can call it from curl, Python, or any HT
   "topk": 50
 }
 ```
-Returns `{"job_id": "abc12345"}`. Job is added to the FIFO queue immediately.
+
+Returns `{"job_id": "abc12345"}`. The job goes onto the FIFO queue.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
@@ -562,11 +619,12 @@ Returns `{"job_id": "abc12345"}`. Job is added to the FIFO queue immediately.
 | tags | string | required | Comma-separated style tags |
 | title | string | "Untitled" | Used for display name and output filename |
 | max_duration_sec | int | 300 | Maximum audio length in seconds |
-| temperature | float | 1.0 | Sampling temperature (0.5–2.0) |
+| temperature | float | 1.0 | Sampling temperature (0.5 to 2.0) |
 | cfg_scale | float | 1.5 | Classifier-free guidance scale |
 | topk | int | 50 | Top-k sampling cutoff |
 
 ### `GET /status/{job_id}`
+
 ```json
 {
   "status": "done",
@@ -582,11 +640,12 @@ Returns `{"job_id": "abc12345"}`. Job is added to the FIFO queue immediately.
   "created_at": "2026-05-14T19:16:02.634449"
 }
 ```
-Status values: `queued` → `generating` → `done` / `error` / `cancelled`
+
+Status values: `queued`, `generating`, `done`, `error`, `cancelled`.
 
 ### `POST /cancel/{job_id}`
 
-Cancels a queued or generating job. Queued jobs cancel immediately. Generating jobs are flagged — the output is discarded once generation finishes.
+Cancels a queued or generating job. Queued jobs cancel immediately. Generating jobs are flagged; the output is discarded once generation finishes.
 
 ### `GET /progress/{job_id}`
 
@@ -599,106 +658,65 @@ data: "__done__"
 ```
 
 ### `GET /outputs/{filename}.mp3`
+
 Direct download/stream of a generated audio file.
 
 ### `GET /history`
-Returns all jobs in reverse chronological order. Includes full job data (lyrics, settings, file path, etc.). Persisted in `history.json` across server restarts.
+
+Returns all jobs in reverse chronological order. Includes full job data (lyrics, settings, file path). Persisted in `history.json` across server restarts.
 
 ### `DELETE /history/{job_id}`
+
 Deletes the job record and the corresponding MP3 file on disk.
 
 ### `POST /upload`
-Multipart file upload (`file` field) for external audio. Saves to `outputs/`, runs BPM/key detection, creates a `done` history record indistinguishable from a generated song, and returns `{"job_id": "abc12345"}`. Used by the **▶ Load MP3** / drag-drop flow when the user clicks 🎛 Studio on a locally-loaded card. Accepts MP3, WAV, FLAC, OGG, M4A, AAC.
+
+Multipart file upload (`file` field) for external audio. Saves to `outputs/`, runs BPM/key detection, creates a `done` history record indistinguishable from a generated song, and returns `{"job_id": "abc12345"}`. The "Load MP3" / drag-drop flow uses this when you click Studio on a locally-loaded card. Accepts MP3, WAV, FLAC, OGG, M4A, AAC.
 
 ### Stem separation (Studio)
 
 | Route | Purpose |
 |---|---|
-| `POST /separate/{job_id}` | Queue Demucs separation for a finished song. Returns `{"sep_id": "..."}` |
-| `GET /separate/status/{sep_id}` | `{status, message, stems, title}` — status is `queued` → `separating` → `done` / `error` |
-| `GET /separate/progress/{sep_id}` | SSE stream of Demucs log lines, ends with `__done__` |
-| `GET /stems/{sep_id}/{filename}` | Direct stem audio (vocals/drums/bass/guitar/piano/other; MP3 if ffmpeg, else WAV) |
-| `GET /stems/{sep_id}/zip` | All six stems as a single ZIP — used by Studio's **⬇ Stems** button |
+| `POST /separate/{job_id}` | Queue Demucs separation for a finished song. Returns `{"sep_id": "..."}`. |
+| `GET /separate/status/{sep_id}` | `{status, message, stems, title}`. Status is `queued`, `separating`, `done`, or `error`. |
+| `GET /separate/progress/{sep_id}` | SSE stream of Demucs log lines, ends with `__done__`. |
+| `GET /stems/{sep_id}/{filename}` | Direct stem audio (vocals/drums/bass/guitar/piano/other; MP3 if ffmpeg, else WAV). |
+| `GET /stems/{sep_id}/zip` | All six stems as a single ZIP. Used by the Studio "Stems" button. |
 
 ### Lyric transcription (Karaoke)
 
 | Route | Purpose |
 |---|---|
-| `POST /transcribe/{sep_id}` | Run faster-whisper on the vocals stem; aligns to original lyrics via LCS. Query params: `force=true` (re-run), `model=base` (tiny/base/small/medium/large-v2/large-v3) |
-| `GET /transcribe/status/{sep_id}` | `{status, words, match_pct, tx_model}` — status is `none` / `transcribing` / `done` |
+| `POST /transcribe/{sep_id}` | Run faster-whisper on the vocals stem; aligns to original lyrics via LCS. Query params: `force=true` (re-run), `model=base` (tiny/base/small/medium/large-v2/large-v3). |
+| `GET /transcribe/status/{sep_id}` | `{status, words, match_pct, tx_model}`. Status is `none`, `transcribing`, or `done`. |
 
 ### Lyric generation (Ollama)
 
 | Route | Purpose |
 |---|---|
-| `POST /lyrics/suggest` | Non-streaming — request body: `{theme, structure, tone, rhyme, style, model, temperature}`. Returns `{lyrics, model}` after the full generation completes. Sends `keep_alive: 0` to Ollama so the model unloads from VRAM immediately |
-| `POST /lyrics/suggest/stream` | Streaming — same body. Relays each Ollama token as an SSE `data:` event, ends with `__done__`. Used by the Lyric Helper page for the word-by-word live output |
+| `POST /lyrics/suggest` | Non-streaming. Body: `{theme, structure, tone, rhyme, style, model, temperature}`. Returns `{lyrics, model}` once generation completes. Sends `keep_alive: 0` to Ollama so the model unloads from VRAM immediately. |
+| `POST /lyrics/suggest/stream` | Streaming. Same body. Relays each Ollama token as an SSE `data:` event, ends with `__done__`. The Lyric Helper page uses this for word-by-word live output. |
 
 ---
 
-## Troubleshooting
-
-### Port already in use
-The launchers automatically kill any existing process on port 7861 before starting. If you still see the error, run manually:
-
-Linux:
-```bash
-fuser -k 7861/tcp
-```
-Windows:
-```batch
-for /f "tokens=5" %a in ('netstat -ano ^| findstr ":7861 " ^| findstr "LISTENING"') do taskkill /F /PID %a
-```
-
-### "Models missing" badge
-Run the download script directly:
-
-Linux:
-```bash
-HEARTMULA_PATH="$HOME/HeartMuLa/ckpt" <your-python> scripts/download_models.py
-```
-Windows:
-```batch
-<your-python> scripts\download_models.py
-```
-Total download size is ~21 GB. The badge auto-refreshes every 10 seconds while downloading.
-
-### Generation error in job card
-Check the terminal running the launcher for the full Python traceback. Common causes:
-
-- **Out of VRAM** — close other GPU-heavy apps before generating
-- **Corrupted model file** — re-run `download_models.py` to re-download
-
-### Model loads slowly on first request
-Normal. The first `POST /generate` after starting the server triggers model load (~20–30 seconds) before generation begins. Subsequent requests use the already-loaded model.
-
-### `import error: No module named 'triton'`
-Harmless warning from PyTorch on Windows — triton is Linux-only and will be present automatically on Linux. Generation still works correctly on Windows without it.
-
-### History not showing after restart
-
-History is loaded from `history.json` on startup. Any jobs that were `queued` or `generating` when the server stopped are automatically marked as errors.
-
----
-
-## How It Works (Technical)
+## How it works
 
 ```
-Browser → FastAPI (uvicorn) → FIFO queue → worker thread → HeartMuLaGenPipeline
-                    ↑                              │
-             SSE /progress              thread-local stdout capture
-             (real-time logs)                      │
-                                       1. Language Model (3B params)
-                                          Autoregressive token generation
-                                          Input: lyrics text + style tags
-                                          Output: audio tokens (discrete codes)
-                                                   │
-                                       2. HeartCodec (decoder)
-                                          Converts audio tokens → waveform
-                                          Multiple decode passes per audio segment
-                                                   │
-                                       3. MP3 saved to outputs/{title}_{job_id}.mp3
-                                          history.json updated
+Browser -> FastAPI (uvicorn) -> FIFO queue -> worker thread -> HeartMuLaGenPipeline
+                  ^                                |
+           SSE /progress              thread-local stdout capture
+           (real-time logs)                        |
+                                     1. Language Model (3B params)
+                                        Autoregressive token generation
+                                        Input: lyrics text + style tags
+                                        Output: audio tokens (discrete codes)
+                                                 |
+                                     2. HeartCodec (decoder)
+                                        Audio tokens -> waveform
+                                        Multiple decode passes per audio segment
+                                                 |
+                                     3. MP3 saved to outputs/{title}_{job_id}.mp3
+                                        history.json updated
 ```
 
 A single background worker thread processes jobs in order. `stdout` and `stderr` are wrapped with a thread-local tee so each generation thread's output is captured separately and streamed to the browser without interfering with other output.
@@ -707,16 +725,94 @@ A single background worker thread processes jobs in order. `stdout` and `stderr`
 
 ## Configuration
 
-Setup writes a small config file (`.waivepulse` on Linux, `.waivepulse.bat` on Windows) that `start` reads automatically — you never need to edit `start.sh` or `start.bat`.
+Setup writes a small config file (`.waivepulse` on Linux, `.waivepulse.bat` on Windows) that the launcher reads. You never need to edit `start.sh` or `start.bat` by hand.
 
-To change the install location, set these environment variables **before running setup**:
+To change the install location, set these environment variables before running setup:
 
 | Variable | Default (Linux) | Default (Windows) |
-| --- | --- | --- |
+|---|---|---|
 | `WAIVEPULSE_VENV` | `~/HeartMuLa/venv` | `%USERPROFILE%\HeartMuLa\venv` |
 | `WAIVEPULSE_CKPT` | `~/HeartMuLa/ckpt` | `%USERPROFILE%\HeartMuLa\ckpt` |
 
 Example:
+
 ```bash
 WAIVEPULSE_CKPT=/mnt/models/HeartMuLa bash setup.sh
 ```
+
+---
+
+## Troubleshooting
+
+### Port already in use
+
+The launchers kill any existing process on port 7861 before starting. If you still see the error, run manually:
+
+Linux:
+
+```bash
+fuser -k 7861/tcp
+```
+
+Windows:
+
+```batch
+for /f "tokens=5" %a in ('netstat -ano ^| findstr ":7861 " ^| findstr "LISTENING"') do taskkill /F /PID %a
+```
+
+### "Models missing" badge
+
+Run the download script directly:
+
+Linux:
+
+```bash
+HEARTMULA_PATH="$HOME/HeartMuLa/ckpt" <your-python> scripts/download_models.py
+```
+
+Windows:
+
+```batch
+<your-python> scripts\download_models.py
+```
+
+Total download is ~21 GB. The badge refreshes every 10 seconds while downloading.
+
+### CUDA out of memory
+
+The error message in the job card lists the three common causes:
+
+1. **Ollama still holding a lyric model in VRAM.** Run `ollama stop <model-name>`.
+2. **A previous generation crashed without releasing memory.** Restart the server.
+3. **Another GPU app is open.** A browser with WebGL, a video player, a second model loaded somewhere.
+
+If none of those apply, your GPU is too small for HeartMuLa 3B. The model needs ~12 GB.
+
+### Generation error in job card
+
+Check the terminal running the launcher for the full Python traceback. Common causes:
+
+- Out of VRAM (see above)
+- Corrupted model file. Re-run `download_models.py`.
+
+### Model loads slowly on first request
+
+Normal. The first `POST /generate` after starting the server triggers a model load that takes 20 to 30 seconds before generation begins. Later requests reuse the loaded model.
+
+### `import error: No module named 'triton'`
+
+Harmless warning from PyTorch on Windows. triton is Linux-only and is present automatically on Linux. Generation works fine on Windows without it.
+
+### History not showing after restart
+
+History loads from `history.json` on startup. Jobs that were `queued` or `generating` when the server stopped are marked as errors.
+
+### Lyrics page shows "Ollama not running"
+
+The page is a static install guide until Ollama is reachable. Install Ollama (`winget install Ollama.Ollama` on Windows, `curl -fsSL https://ollama.com/install.sh | sh` on Linux), run `ollama pull llama3.1:8b`, then refresh.
+
+---
+
+## License
+
+MIT + Commons Clause. The Commons Clause restricts commercial sale of the software itself but allows commercial use of its output. Use the songs and videos you generate for whatever you want.
