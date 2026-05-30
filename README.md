@@ -440,26 +440,54 @@ Clicking either button automatically disables the other.
 
 ### Controls
 
-- **M, S, NRM, RST, DUP, EQ**: per-track buttons. Mute, Solo, Normalize, Reset knobs, Duplicate, open Visual EQ
-- **VOL, PAN, SUB, Bass, Mid, Treb, Rev, Dly, OFS knobs**: per-track. Drag up/down or scroll. Double-click to reset.
-- **Click a track strip or waveform row**: select that track (cyan highlight). Keyboard shortcuts then apply to it.
-- **Tab / Shift+Tab**: cycle to next / previous track
-- **Click anywhere on a waveform or ruler**: seek to that position. Drag on the ruler to set the A-B loop.
-- **Shift + drag on a waveform**: draw a mute region for that section
-- **Drag an imported clip block**: reposition it on the timeline
-- **EXC**: toggle master harmonic exciter (overtone shimmer on highs only)
-- **LMT**: toggle master limiter, mutually exclusive with CLP
-- **CLP**: toggle master soft clipper at −0.5 dBFS ceiling, mutually exclusive with LMT
-- **MASTER**: one-click mastering preset across all stems
-- **VOL slider**: master output volume (0 to 150%), baked into Export Mix
-- **RST ALL**: reset every knob on every track to defaults
-- **? or H**: open the in-app help reference
-- **Space**: play / pause
-- **Home**: stop and return to start
-- **Export Mix button**: render the full mix with everything baked in to a lossless WAV
-- **Stems button**: download all six raw separated stems as a ZIP
+A blank Hotkey cell means the control is mouse-only.
 
-Full keyboard shortcut reference: press ? or H inside Studio.
+| Group | Control / action | Hotkey | What it does |
+|---|---|---|---|
+| Transport | Play / pause | `Space` | Toggle playback |
+| Transport | Stop | `Home` | Stop and return to start |
+| Transport | Jump to end of song | `.` | Seek to the end |
+| Transport | Nudge playhead | `←` / `→` | Seek back / forward 2 seconds |
+| Transport | Jump playhead | `Shift+←` / `Shift+→` | Seek back / forward 10 seconds |
+| Transport | Click anywhere on a waveform or ruler | | Seek to that position |
+| Track select | Click a track strip or waveform row | | Selects that track (cyan highlight) |
+| Track select | Cycle next / previous track | `Tab` / `Shift+Tab` | Selection follows highlight |
+| Track ops | Mute | `M` or click `M` button | Silence selected track |
+| Track ops | Solo | `S` or click `S` button | Hear only soloed tracks (multiple solos OK) |
+| Track ops | Normalize | `N` or click `NRM` | Bring peak to ~−0.5 dBFS |
+| Track ops | Reset all knobs on track | `R` or click `RST` | Per-track reset to defaults |
+| Track ops | Duplicate track | `D` or click `DUP` | Independent copy with its own knobs (use OFS for ADT) |
+| Track ops | Visual EQ | click `EQ` | Live spectrum + draggable 4-band curve modal |
+| Knobs | Drag VOL / PAN / SUB / Bass / Mid / Treb / Rev / Dly / OFS | | Drag up-down or scroll wheel |
+| Knobs | Reset a single knob | double-click knob | Back to default value |
+| A-B loop | Drag on the ruler | | Mark a loop region (cyan highlight) |
+| A-B loop | Set loop IN at playhead | `[` | Marks the loop start |
+| A-B loop | Set loop OUT at playhead | `]` | Marks the loop end |
+| A-B loop | Toggle loop | `L` or click loop button | Repeat playback inside the marked region |
+| A-B loop | Clear loop region | `Esc` | Removes the marked region |
+| Mute regions | Paint mute region on a track | `Shift` + drag on waveform | Draws a red mute region for that track |
+| Mute regions | Delete one region | click inside the region | Removes that region |
+| Mute regions | Clear all on selected track | `Delete` / `Backspace` | Wipes every mute region on the track |
+| Track import | Drag clip block left / right | | Reposition the imported clip on the timeline |
+| Track import | Toggle loop on imported track | click loop icon | Short sample repeats for full song |
+| Track import | Remove imported track | click × on the strip | Drops the import |
+| Master bus | Harmonic exciter | click `EXC` | Parallel 3 kHz saturation at 18% wet |
+| Master bus | Limiter | click `LMT` | Master limiter (turning on disables CLP) |
+| Master bus | Soft clipper | click `CLP` | Master clipper at −0.5 dBFS (turning on disables LMT) |
+| Master bus | Apply mastering preset | `Ctrl+Shift+M` or click `MASTER` | Full one-click mastering chain across stems |
+| Master bus | Master volume slider | drag slider | 0 to 150%, baked into Export Mix |
+| Master bus | Reset every track | click `RST ALL` | All knobs on all tracks to defaults |
+| Zoom | Zoom in | `+` / `=` | Wider waveforms, finer editing |
+| Zoom | Zoom out | `−` | Tighter waveforms |
+| Zoom | Fit | `F` | Reset zoom to show the full song |
+| Zoom | Pan horizontally when zoomed | scroll on a waveform | Vertical wheel scrolls horizontally |
+| Export | Export Mix to WAV | `Ctrl+E` or click button | Renders full mix with every setting baked in |
+| Export | Download stems ZIP | click `Stems` button | All six raw separated stems |
+| Karaoke | Open Karaoke page | click `Karaoke` button | Fullscreen visualizer + synced lyrics |
+| Help | Open / close help modal | `?` or `H` | In-app shortcut reference |
+| Help | Close any open modal | `Esc` | Closes EQ modal, help modal, or clears loop |
+
+Pressing `?` or `H` inside Studio opens the same reference in-app.
 
 ### Export Mix (what's baked in)
 
