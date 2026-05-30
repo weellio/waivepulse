@@ -73,7 +73,7 @@ External songs work too. Drop an MP3 into the history panel, click Studio, and D
 
 After separation, click the Karaoke button. faster-whisper transcribes the vocals stem on demand, an LCS algorithm aligns the transcript to your original lyrics (correcting misheard words), and a fullscreen performance page opens with a five-word sliding lyric window, 20+ visualizer styles, and your Studio mix carried over intact.
 
-Record your screen during playback and you have a lyric video with synced words and a tuned mix, ready to upload to YouTube without external tools.
+Capture the Karaoke playback with a screen recorder (OBS, Windows Game Bar, NVIDIA ShadowPlay, QuickTime) and you have a lyric video with synced words and a tuned mix, ready to upload to YouTube. WAIvePulse does not record video itself; it produces the visual and audio you record.
 
 [Detail section below](#karaoke-in-depth)
 
@@ -496,7 +496,7 @@ Click the Karaoke button in the Studio transport bar (enabled once separation is
 | Auto-transcribe | "AUTO TX" toggle in the Studio transport. When on, Whisper runs in the background right after separation so Karaoke opens instantly. |
 | Keyboard | Space play/pause, V vocals toggle, N next style, Left/Right seek ±5s, Esc back to Studio |
 
-**Screen-recording flow:** dial in your mix in Studio, open Karaoke, record your screen. You get a lyric video with synced sliding words and a fully tuned mix, ready to upload to YouTube.
+**Screen-recording flow:** dial in your mix in Studio, open Karaoke, then record your screen with OBS, Windows Game Bar, NVIDIA ShadowPlay, or QuickTime. You get a lyric video with synced sliding words and a fully tuned mix that you can upload to YouTube. WAIvePulse does not record video itself; it produces the visual and audio you record.
 
 ### Setup
 
