@@ -31,7 +31,7 @@ Runs on your own machine. No cloud, no subscription, no usage limits.
 - **Studio track import** — drag & drop or ＋ Track button adds any audio file (MP3/WAV/FLAC/OGG) as a full mixer track; drag the clip block left/right on the timeline to set its start position; loop toggle repeats short clips for the full song
 - **Studio per-track SUB knob** — 60 Hz lowshelf shelf per track; AI music often lacks sub-bass — boost this on drums and bass stems to add physical rumble and body
 - **Studio per-track Visual EQ** — EQ button on every track opens a modal with a live spectrum analyzer and a draggable curve. Each of the 4 bands (SUB / BASS / MID / TREB) appears as a colored point on the curve — drag vertically to set gain, scroll the wheel for fine adjustment. Changes sync live with the mixer-strip knobs. Esc to close
-- **Lyric Helper page** (`/lyrics`) — local Ollama-backed lyric writing tool. Enter a theme, structure (V·C·V·C·B·C, etc.), tone, optional rhyme scheme and style reference; get back HeartMuLa-formatted lyrics with proper `[Verse]`/`[Chorus]` markers. Defaults to `llama3.1:8b` if installed. The **Send to Generator** button drops the result into the main page's lyrics box. Requires [Ollama](https://ollama.com) running locally — nothing is sent to the cloud
+- **Lyric Helper page** (`/lyrics`) — local Ollama-backed lyric writing tool. Enter a theme, structure (V·C·V·C·B·C, etc.), tone, optional rhyme scheme and style reference; lyrics **stream in word-by-word** in the output panel as Ollama generates them, complete with pulsing dot, shimmering button, and animated progress bar so the UI clearly looks alive during the first 1–3 seconds of model load. Output is pre-formatted with `[Verse]`/`[Chorus]` markers that HeartMuLa expects. If Ollama isn't installed, the page shows an inline install guide (winget, curl, download link) and a `ollama pull llama3.1:8b` command. The **Send to Generator** button drops the result into the main page's lyrics box. Requires [Ollama](https://ollama.com) running locally — nothing is sent to the cloud
 - **Top navigation bar** linking the Generate, Lyrics, and Studio pages — visible on every page so the tools are discoverable from anywhere
 - **Studio master harmonic exciter** — EXC button on the master bus; high-passes at 3 kHz, applies soft saturation, mixes back at 18% wet; adds overtone shimmer and "air" AI audio typically lacks
 - **Studio master soft clipper** — CLP button on the master bus; tanh-bent waveshaper with a −0.5 dBFS ceiling, knee at ≈−4.4 dBFS, 4× oversampled; catches transient peaks without ducking them the way a limiter does — preserves drum punch while preventing overs. Mutually exclusive with LMT (only one can be active at a time)
@@ -246,6 +246,38 @@ Note: if you bookmark a Studio URL for a loaded MP3 and reopen it in a fresh bro
 
 ---
 
+## Lyric Helper
+
+![WAIvePulse Lyric Helper](assets/lyrics.jpg)
+
+Open `/lyrics` or click **Lyrics** in the top nav to write lyrics from a prompt instead of from scratch. Generation runs entirely on your local GPU via [Ollama](https://ollama.com) — no API keys, no cloud calls, no usage limits.
+
+### Lyric Helper features
+
+- Theme/topic input, song structure dropdown (V·C·V·C·B·C, V·C·V·C, etc.), 10 tone chips, optional rhyme scheme and style reference
+- Model picker — auto-detected from your installed Ollama models, defaults to `llama3.1:8b` if available
+- Creativity slider (0.4 – 1.3 temperature)
+- **Live streaming output** — lyrics appear word-by-word in the output textarea as Ollama generates them. A pulsing dot inside the button, a shimmering button gradient, an indeterminate progress bar, and a glowing border on the output panel all run in parallel so the UI looks alive even during the 1–3 second wait before the first token arrives
+- Section markers (`[Verse]`, `[Chorus]`, etc.) baked into the system prompt so output is in the exact format HeartMuLa expects
+- **Send to Generator** stores the lyrics in `localStorage` and bounces you to the main page with the lyrics box pre-filled and a confirmation toast
+- Final status line reports elapsed time and token count when generation finishes
+
+### Ollama setup
+
+If Ollama isn't installed or isn't reachable, the page shows an inline install guide above the form with three numbered steps:
+
+1. **Install Ollama** — Windows: `winget install Ollama.Ollama` · Linux: `curl -fsSL https://ollama.com/install.sh | sh` · or download the installer from [ollama.com](https://ollama.com/download)
+2. **Pull a lyric model** — `ollama pull llama3.1:8b` (~5 GB, recommended) or `ollama pull llama3.2:3b` (~2 GB, smaller-VRAM alternative)
+3. **Refresh the page** — the badge in the top right turns green when Ollama is detected
+
+If Ollama is running but no models are installed, the guide shrinks to just the pull-model step.
+
+### Avoiding VRAM contention with HeartMuLa
+
+The Lyric Helper passes `keep_alive: 0` to Ollama on every request, so the model is unloaded from VRAM the moment generation finishes. This means the Lyrics → Generate workflow is safe on a 12 GB card: by the time you hit **Generate Song**, the ~5 GB Llama allocation has already been released and HeartMuLa loads cleanly. If you do hit `CUDA out of memory`, the error message in the job card lists the three common causes (Ollama still loaded, prior crash leaked memory, other GPU app running).
+
+---
+
 ## Studio (Stem Separation)
 
 ![WAIvePulse Studio](assets/studio.jpg)
@@ -438,15 +470,26 @@ waivepulse/
 ├── README.md                   This file
 │
 ├── backend/
-│   └── app.py                  FastAPI server — queue, SSE, history, pipeline loader
+│   └── app.py                  FastAPI server — queue, SSE, history, generation,
+│                               separation, transcription, upload, Ollama relay
 │
-├── frontend/
-│   └── index.html              Single-page UI — no build step, served directly by FastAPI
+├── frontend/                   Static HTML — no build step, served directly by FastAPI
+│   ├── index.html              Generate page — lyrics + tags form, history sidebar
+│   ├── studio.html             Studio page — stem mixer, Visual EQ, master chain
+│   ├── karaoke.html            Karaoke page — fullscreen visualizer + synced lyrics
+│   └── lyrics.html             Lyric Helper page — Ollama-backed streaming lyric writer
 │
 ├── scripts/
 │   ├── test_generate.py        Standalone end-to-end test (bypasses the web server)
 │   ├── download_models.py      Download/re-download model weights from HuggingFace
 │   └── fix_dist_infos.py       Utility to remove stale dist-info conflicts in site-packages
+│
+├── assets/                     Branding + screenshots used in this README
+│   ├── wave small.png          Header logo
+│   ├── wavepulse.jpg           Generate-page hero shot
+│   ├── studio.jpg              Studio screenshot
+│   ├── karaoke.jpg             Karaoke screenshot
+│   └── lyrics.jpg              Lyric Helper screenshot
 │
 ├── history.json                Persisted job history (auto-created, gitignored)
 └── outputs/                    All generated MP3 files saved here (gitignored)
