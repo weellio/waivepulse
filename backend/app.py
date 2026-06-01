@@ -1274,6 +1274,14 @@ def karaoke_page():
     return HTMLResponse(content="<h1>Karaoke page not found</h1>", status_code=404)
 
 
+@app.get("/looper", response_class=HTMLResponse)
+def looper_page():
+    html_path = FRONTEND_DIR / "looper.html"
+    if html_path.exists():
+        return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h1>Looper page not found</h1>", status_code=404)
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=7861, reload=False)

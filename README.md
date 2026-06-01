@@ -6,7 +6,7 @@
 
 Write a song. Generate it. Mix it. Perform it. On your own GPU.
 
-WAIvePulse is a local AI music studio that runs four connected tools in one browser. You write lyrics (or have Llama write them for you), describe the style you want with tags, and the **HeartMuLa 3B** model generates a complete song with vocals as an MP3. You then open that song in a browser DAW that separates it into six stems, gives you a per-track mixer with mastering chain and Visual EQ, and a karaoke performance mode synced to your original lyrics.
+WAIvePulse is a local AI music studio that runs five connected tools in one browser. You write lyrics (or have Llama write them for you), describe the style you want with tags, and the **HeartMuLa 3B** model generates a complete song with vocals as an MP3. You then open that song in a browser DAW that separates it into six stems, gives you a per-track mixer with mastering chain and Visual EQ, and a karaoke performance mode synced to your original lyrics. A built-in loop station lets you build original ideas layer by layer — drums, keyboard, guitar, microphone — entirely in the browser with no plugins.
 
 No cloud. No subscription. No API keys. No usage caps.
 
@@ -20,7 +20,7 @@ No cloud. No subscription. No API keys. No usage caps.
 
 ## The workflow
 
-Four pages, one flow. Each page does one job. The top navigation bar links them all.
+Five pages, one ecosystem. Each page does one job. The top navigation bar links them all.
 
 ### 1. Write lyrics with Ollama
 
@@ -67,7 +67,26 @@ External songs work too. Drop an MP3 into the history panel, click Studio, and D
 
 [Detail section below](#studio-in-depth)
 
-### 4. Perform in Karaoke
+### 4. Build loops in the Looper
+
+![Looper](assets/looper.jpg)
+
+Open the Looper page at any time — it works independently of the AI generation workflow. Record up to six layered loops directly in the browser using synthesized drums, a two-octave keyboard synth, a guitar voice, or your microphone. Loops stay in sync automatically: the first recording sets the master length and every subsequent slot snaps to match.
+
+- **Drum machine:** 8 pads (Kick, Snare, Hi-Hat, Open HH, Clap, Tom, 808, Perc) synthesized via Web Audio — keys `1`–`8` — plus a **16-step sequencer** to program patterns instead of playing live
+- **Synth keyboard:** two octaves (C4–C6). Lower octave plays from the keyboard (white `A`–`K`, black `W E T Y U`); upper-octave white keys play from `Z X C V B N M`. Four oscillator waveforms plus a guitar mode that uses a periodic-wave brightness sweep for a plucked-string sound
+- **Click-and-drag slide:** hold the mouse and drag across pads or keys for a glissando / drum-roll effect
+- **Full ADSR envelope:** Attack, Decay, Sustain level, and Release shape every synth voice (vertical sliders)
+- **Sampler:** import any audio file and pitch it chromatically across the keyboard, or record a loop and load it directly as a sample — useful for turning a beatbox vocal or bass run into a pitched instrument
+- **Microphone:** live input with a built-in compressor to prevent clipping; voice goes straight into whichever loop slot is recording
+- **Tempo tools:** BPM control, tap tempo, metronome, adjustable count-in, and optional quantize that snaps the first loop to the nearest bar
+- **Master FX:** global reverb, delay (tempo-synced), and master volume
+- **F1–F6 hotkeys** for one-finger loop triggering while both hands play instruments
+- **Export Mix:** renders all active loops into a single `looper-mix.wav` download
+
+[Detail section below](#looper-in-depth)
+
+### 5. Perform in Karaoke
 
 ![Karaoke](assets/karaoke.jpg)
 
@@ -88,6 +107,7 @@ Capture the Karaoke playback with a screen recorder (OBS, Windows Game Bar, NVID
 | Generates songs from lyrics | Yes | Yes | No |
 | Browser-based stem mixer | Yes | No (or extra fee) | N/A (native) |
 | Karaoke or lyric video output | Yes | No | No (manual) |
+| Loop station (drums, synth, guitar, mic) | Yes | No | External plugin |
 | Subscription | None | Monthly | Monthly or one-time |
 | Usage cap | None | Tokens or credits | None |
 | Your lyrics or audio leave your computer | Never | Always | Never |
@@ -538,7 +558,158 @@ Without `faster-whisper`, Karaoke still works. It plays the song with the visual
 
 ---
 
-## File structure
+## Looper (in depth)
+
+![Looper](assets/looper.jpg)
+
+Open `/looper` or click "Looper" in the top nav. The page runs entirely in the browser using the Web Audio API — no server calls, no GPU required. Everything you record is captured with an AudioWorklet that runs on the browser's dedicated audio rendering thread, avoiding the main-thread glitches that cause crackling in older Web Audio approaches.
+
+The layout is a full-width row of six loop slots across the top, with the instruments below: drum machine on the left, the two-octave keyboard in the center, and microphone plus Master FX on the right.
+
+### How looping works
+
+The first slot you record sets the **master loop length**. Every subsequent slot auto-stops recording at exactly the end of that master cycle, so all loops stay in perfect sync without manual timing. Press F1–F6 (or click Record on a slot) to start, press again to stop. If count-in is enabled the slot waits for the metronome to count down before recording begins.
+
+Each slot plays back independently in a continuous loop. Slots can be muted (⏸), cleared (✕), or loaded into the sampler keyboard (🎹 Use as Sample). Per-slot volume sliders let you balance the mix while everything plays.
+
+### Instruments
+
+#### Drum machine
+
+Eight synthesized pads, triggered by clicking or pressing keys `1`–`8`.
+
+| Pad | Key | Sound |
+|---|---|---|
+| Kick | `1` | 808-style sine sweep with sharp transient |
+| Snare | `2` | Bandpass noise burst + tone body |
+| Hi-Hat | `3` | Short high-pass noise burst |
+| Open HH | `4` | Longer open hi-hat decay |
+| Clap | `5` | Three overlapping noise layers |
+| Tom | `6` | Descending pitch-sweep oscillator |
+| 808 | `7` | Sub-bass sine with soft waveshaper distortion |
+| Perc | `8` | Short triangle-wave transient |
+
+All drums are synthesized in real time — no sample files on disk.
+
+#### Step sequencer
+
+Click **Sequencer** in the Drum Machine header to switch from live pads to a 16-step grid — one row per drum, color-coded. Click cells to toggle hits, then press **▶ Play** to run the pattern. Programming a beat this way is far easier than nailing the timing live.
+
+- 16 steps at 16th-note resolution, locked to the current BPM
+- The playing step highlights as it scrolls, so you can see the pattern move
+- Runs alongside live pad hits and the keyboard — record the sequencer output into a loop slot like any other instrument
+- Changing BPM (including via tap tempo) restarts the sequencer in sync
+
+Switch back to **Pads** at any time; the pattern is preserved.
+
+#### Synth keyboard
+
+Two octaves (C4–C6) displayed as a piano keyboard.
+
+- **Lower octave** is keyboard-playable in the GarageBand "musical typing" style: white keys `A S D F G H J K`, black keys `W E T Y U`
+- **Upper-octave white keys** play from the bottom row `Z X C V B N M` (D → C). The upper-octave black keys are mouse/drag only
+- **Octave shift** (− / +) moves the whole keyboard between octaves 1 and 6 so the typing keys can reach any range
+- **Click-and-drag slide:** hold the left mouse button and drag across the keys for a glissando — it plays each note (including black keys) as you pass over and releases it as you leave. The same drag works across the drum pads for rolls.
+
+**Instrument modes:**
+
+| Mode | How it works |
+|---|---|
+| Sine / Triangle / Saw / Square | Oscillator with the selected waveform, shaped by the ADSR envelope |
+| 🎸 Guitar | Periodic wave with 7 harmonics; a low-pass filter sweeps from bright (pluck transient) to mellow (string body) over 60 ms, then an exponential decay over ~2.5 s. No feedback loops — stable at all frequencies. A volume slider tames the level (default 28 %). |
+| 🎹 Sample | Imported audio pitched across the keyboard by `playbackRate`. Each semitone = 2^(1/12) ratio from the root. Shaped by the ADSR envelope. |
+
+#### ADSR envelope
+
+Applies to all synth and sample voices (not guitar, which has its own built-in decay).
+
+| Stage | Control | What it shapes |
+|---|---|---|
+| Attack | A slider (1–500 ms) | Time from key press to peak amplitude |
+| Decay | D slider (10–2000 ms) | Time from peak to the sustain level |
+| Sustain | S slider (0–100 %) | Amplitude held while the key is down |
+| Release | R slider (30–4000 ms) | Fade time after the key is released |
+
+Setting S to 0 % and D to a long value (e.g. 800 ms) produces a pluck-like sound on any waveform: instant peak, decays to silence while held. This is also the Guitar preset's starting point.
+
+#### Sampler
+
+Two ways to load a sample:
+
+1. **Import:** click `📁 Import` and choose any audio file (MP3, WAV, FLAC, OGG, M4A). The file is decoded in the browser; nothing is uploaded to the server.
+2. **Use as Sample:** once a loop slot has a recording, click `🎹 Use as Sample` on that slot. The recorded buffer becomes the sample source immediately.
+
+Once loaded, the sample name appears next to the `🎹 Sample` toggle. Click the toggle to switch between the sample and the last-used oscillator waveform.
+
+#### Microphone
+
+Click the 🎤 button to request microphone access. The browser prompts for permission once. When enabled:
+
+- Voice feeds into whichever loop slot is currently recording alongside the drums and keyboard
+- A dynamics compressor (threshold −22 dB, ratio 6:1) sits between the mic and the capture chain to prevent clipping from loud input
+- A level meter bar shows real-time input amplitude
+- Click 🎤 again to release the microphone
+
+#### Master FX
+
+A panel on the right applies global effects to the whole mix off the master bus:
+
+| Control | What it does |
+|---|---|
+| Reverb | Wet level of a synthetic ~1.5 s convolution reverb |
+| Delay | Wet level of a tempo-synced echo (1/8-note, fed back at ~38 %) |
+| Volume | Master output level (0–150 %) |
+
+### Transport controls
+
+| Control | What it does |
+|---|---|
+| BPM − / + | Adjust tempo (±1 / ±5). Affects metronome, count-in timing, sequencer, and delay sync. |
+| Tap | Tap repeatedly on the beat to set BPM from the average interval. Resets if you pause. |
+| Beat dots | Visual four-beat indicator. First beat (downbeat) lights red; others light cyan. |
+| Metro | Toggle metronome click track on/off. |
+| Count-in | Set 0–4 beats of metronome lead-in before recording starts. `off` = record immediately. |
+| Quantize | When on, snaps the first recorded loop's length to the nearest whole bar (at the current BPM) so the loop locks to the grid. |
+| ⚡ Bypass | Routes instruments directly to speakers, bypassing the capture chain. Use to diagnose audio glitches: if a crackle disappears in bypass mode it was the capture processor; if it persists it is your audio driver or DAC. |
+| ⬇ Export | Renders all loop slots through an OfflineAudioContext and downloads `looper-mix.wav`. Slot volumes are applied; the mix is exactly what you hear. |
+| ✕ Clear All | Stops and clears all six slots. |
+
+### Hotkeys
+
+| Key | Action |
+|---|---|
+| `F1`–`F6` | Toggle record on loop slot 1–6 |
+| `1`–`8` | Trigger drum pads |
+| `A S D F G H J K` | Piano white keys, lower octave (C–C) |
+| `W E T Y U` | Piano black keys, lower octave (C# D# F# G# A#) |
+| `Z X C V B N M` | Piano white keys, upper octave (D–C) |
+
+### Audio architecture
+
+Instruments and microphone feed an **input bus**. An AudioWorklet node on the input bus captures samples to a buffer when recording is active (postMessage back to the main thread). The worklet runs on the browser's dedicated audio rendering thread, so main-thread JavaScript activity cannot cause audio dropouts.
+
+Loop playback feeds a separate **loop bus** that goes directly to the master output — loop audio is heard but not re-captured when recording a new slot, so each layer stays clean. The master output also feeds parallel reverb and delay sends before reaching the speakers.
+
+```
+Drums / Keyboard / Guitar
+Microphone  ──────────────→  inputBus ──→ AudioWorklet ──→ masterOut ──┬──────────────→ speakers
+                                      (captures when recording)        ├─→ reverb send ─┤
+Loop slot playback ─────────────────────────→ loopBus ────────────────┘─→ delay send ──┘
+```
+
+### Export
+
+Click **⬇ Export** in the transport bar. The export:
+
+- Renders only slots that have a recording
+- Applies each slot's current volume setting
+- Loops every slot for exactly the master loop length
+- Writes a standard 16-bit stereo PCM WAV file
+- Downloads as `looper-mix.wav` with no server round-trip
+
+The exported WAV can be dragged into the Studio page's track import to mix alongside AI-generated stems.
+
+---
 
 ```
 waivepulse/
@@ -557,7 +728,8 @@ waivepulse/
 │   ├── index.html              Generate page: lyrics + tags form, history sidebar
 │   ├── studio.html             Studio page: stem mixer, Visual EQ, master chain
 │   ├── karaoke.html            Karaoke page: fullscreen visualizer + synced lyrics
-│   └── lyrics.html             Lyric Helper page: Ollama-backed streaming lyric writer
+│   ├── lyrics.html             Lyric Helper page: Ollama-backed streaming lyric writer
+│   └── looper.html             Looper page: loop station with drums, synth, guitar, mic
 │
 ├── scripts/
 │   ├── test_generate.py        Standalone end-to-end test (bypasses the web server)
@@ -600,6 +772,7 @@ The backend is a plain REST API. Call it from curl, Python, or any HTTP client.
 | `GET /studio` | `frontend/studio.html` (Stem mixer, needs `?job=<id>` or `?sep=<id>`) |
 | `GET /karaoke` | `frontend/karaoke.html` (Fullscreen visualizer, needs `?sep=<id>`) |
 | `GET /lyrics` | `frontend/lyrics.html` (Lyric Helper) |
+| `GET /looper` | `frontend/looper.html` (Loop station — no parameters needed) |
 
 ### `GET /model-status`
 
