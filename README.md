@@ -72,18 +72,17 @@ External songs work too. Drop an MP3 into the history panel, click Studio, and D
 
 ![Looper](assets/looper.jpg)
 
-Open the Looper page at any time — it works independently of the AI generation workflow. Record up to six layered loops directly in the browser using synthesized drums, a two-octave keyboard synth, a guitar voice, or your microphone. Loops stay in sync automatically: the first recording sets the master length and every subsequent slot snaps to match.
+Open the Looper page at any time — it works independently of the AI generation workflow. Record up to six layered loops directly in the browser using synthesized drums, a two-octave keyboard synth, a guitar voice, or your microphone. Overdubs are **quantized**: layers always record a full bar aligned to the beat, no matter when you hit Record.
 
-- **Drum machine:** 8 pads (Kick, Snare, Hi-Hat, Open HH, Clap, Tom, 808, Perc) synthesized via Web Audio — keys `1`–`8` — plus a **16-step sequencer** to program patterns instead of playing live
-- **Synth keyboard:** two octaves (C4–C6). Lower octave plays from the keyboard (white `A`–`K`, black `W E T Y U`); upper-octave white keys play from `Z X C V B N M`. Four oscillator waveforms plus a guitar mode that uses a periodic-wave brightness sweep for a plucked-string sound
+- **Drum machine:** 8 pads (Kick, Snare, Hi-Hat, Open HH, Clap, Tom, 808, Perc) synthesized via Web Audio — keys `1`–`8` — plus a **16-step sequencer** with per-step velocity, and a **→ Loop** button that renders a beat straight into a slot with perfect timing
+- **Synth keyboard:** two octaves (C4–C6, keys `A`–`K` / `W E T Y U` / `Z X C V B N M`). Oscillator waveforms, a plucked **guitar** voice, a resonant **low-pass filter** (cutoff + reso), and an **arpeggiator** (rate + up/down/random)
 - **Click-and-drag slide:** hold the mouse and drag across pads or keys for a glissando / drum-roll effect
-- **Full ADSR envelope:** Attack, Decay, Sustain level, and Release shape every synth voice (vertical sliders)
-- **Sampler:** import any audio file and pitch it chromatically across the keyboard, or record a loop and load it directly as a sample — useful for turning a beatbox vocal or bass run into a pitched instrument
-- **Microphone:** live input with a built-in compressor to prevent clipping; voice goes straight into whichever loop slot is recording
-- **Tempo tools:** BPM control, tap tempo, metronome, adjustable count-in, and optional quantize that snaps the first loop to the nearest bar
+- **Full ADSR envelope:** Attack, Decay, Sustain, and Release shape every synth voice (vertical sliders)
+- **Sampler:** import any audio file (or a recorded loop) and pitch it chromatically across the keyboard
+- **Microphone + Autotune:** live input with a clip-guard compressor, plus a stylized hard-tune that snaps your voice to a chosen key/scale
+- **Tempo tools:** BPM, tap tempo, metronome, adjustable count-in, quantize, and a per-loop ½-beat nudge
 - **Master FX:** global reverb, delay (tempo-synced), and master volume
-- **F1–F6 hotkeys** for one-finger loop triggering while both hands play instruments
-- **Export Mix:** renders all active loops into a single `looper-mix.wav` download
+- **F1–F6** record loops hands-free; **Export Mix** renders all loops to a single WAV
 
 [Detail section below](#looper-in-depth)
 
@@ -577,9 +576,11 @@ The layout is a full-width row of six loop slots across the top, with the instru
 
 ### How looping works
 
-The first slot you record sets the **master loop length**. Every subsequent slot auto-stops recording at exactly the end of that master cycle, so all loops stay in perfect sync without manual timing. Press F1–F6 (or click Record on a slot) to start, press again to stop. If count-in is enabled the slot waits for the metronome to count down before recording begins.
+The **first** slot you record sets the **master loop length** — record freely and tap Record again (or F1–F6) to set it. A count-in of 0–4 beats can lead you in.
 
-Each slot plays back independently in a continuous loop. Slots can be muted (⏸), cleared (✕), or loaded into the sampler keyboard (🎹 Use as Sample). Per-slot volume sliders let you balance the mix while everything plays.
+Every **overdub** after that is **quantized**: when you hit Record, the slot *arms* (amber, "ARM"), waits for the master loop's next downbeat, then records exactly one bar and auto-aligns it. So layers are always full-length and on the grid no matter when you press Record — no need to start exactly on beat 1.
+
+Each slot plays back independently in a continuous loop. Slots can be muted (⏸), cleared (✕), or loaded into the sampler keyboard (🎹 Use as Sample). Per-slot volume sliders balance the mix, and a per-slot **SYNC ◀ ▶** nudges a layer ±½ beat (live, non-destructive) to fine-tune a take that landed slightly off.
 
 ### Instruments
 
@@ -605,8 +606,10 @@ All drums are synthesized in real time — no sample files on disk.
 Click **Sequencer** in the Drum Machine header to switch from live pads to a 16-step grid — one row per drum, color-coded. Click cells to toggle hits, then press **▶ Play** to run the pattern. Programming a beat this way is far easier than nailing the timing live.
 
 - 16 steps at 16th-note resolution, locked to the current BPM
+- **Per-step velocity:** click a cell to toggle it, drag a cell up/down (or scroll-wheel it) to set how loud that hit is — the colored fill shows the level
 - The playing step highlights as it scrolls, so you can see the pattern move
-- Runs alongside live pad hits and the keyboard — record the sequencer output into a loop slot like any other instrument
+- **▶ Play** runs the pattern; **Reset** clears all steps for a fresh one
+- **→ Loop** renders the pattern straight into the next empty loop slot — bypassing live recording for mathematically perfect timing (the decay tails are wrapped around the loop point for a seamless join)
 - Changing BPM (including via tap tempo) restarts the sequencer in sync
 
 Switch back to **Pads** at any time; the pattern is preserved.
@@ -641,6 +644,24 @@ Applies to all synth and sample voices (not guitar, which has its own built-in d
 
 Setting S to 0 % and D to a long value (e.g. 800 ms) produces a pluck-like sound on any waveform: instant peak, decays to silence while held. This is also the Guitar preset's starting point.
 
+#### Filter
+
+A resonant low-pass filter on the oscillator and sample voices:
+
+- **Cutoff** (120 Hz – 16 kHz) — opens/closes the brightness; wide open by default
+- **Reso** (Q) — emphasis at the cutoff for that classic synth "peak"
+
+Cutoff and resonance update live on currently-held notes, so you can sweep the filter while a chord rings.
+
+#### Arpeggiator
+
+Click **⇅ Arp** and hold a chord — the held notes play in sequence locked to the BPM:
+
+- **Rate:** 1/8 · 1/16 · 1/32 notes
+- **Mode:** Up · Down · Up/Down · Random
+
+Works with any instrument (oscillator, guitar, or sample) and re-syncs when you change tempo or tap.
+
 #### Sampler
 
 Two ways to load a sample:
@@ -658,6 +679,14 @@ Click the 🎤 button to request microphone access. The browser prompts for perm
 - A dynamics compressor (threshold −22 dB, ratio 6:1) sits between the mic and the capture chain to prevent clipping from loud input
 - A level meter bar shows real-time input amplitude
 - Click 🎤 again to release the microphone
+
+#### Autotune
+
+A stylized hard-tune effect for the mic, running in its own AudioWorklet (autocorrelation pitch detection → snap to the nearest note in the chosen scale → granular pitch shift):
+
+- **🎚 Autotune** toggles it (transparent until enabled)
+- **Key** + **Scale** (Major / Minor / Chromatic) define which notes the pitch snaps to
+- **Retune** sets the snap speed — fast for the robotic effect, slower for a natural glide
 
 #### Master FX
 
@@ -692,6 +721,7 @@ A panel on the right applies global effects to the whole mix off the master bus:
 | `A S D F G H J K` | Piano white keys, lower octave (C–C) |
 | `W E T Y U` | Piano black keys, lower octave (C# D# F# G# A#) |
 | `Z X C V B N M` | Piano white keys, upper octave (D–C) |
+| `?` | Open / close the in-app help & shortcut reference |
 
 ### Audio architecture
 
