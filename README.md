@@ -58,6 +58,7 @@ Click the Studio button on any finished song card. Demucs splits the song into s
 - **Visual EQ on every track:** click the EQ button to open a modal with a live spectrum analyzer and a draggable four-band curve, all backed by the actual biquad-filter responses
 - **Master soft clipper (CLP) or limiter (LMT)**, mutually exclusive. The clipper preserves transient punch on AI music that otherwise sounds limp; the limiter glues for a louder, ballad-friendly sound
 - **Harmonic exciter (EXC):** parallel 3 kHz high-pass into a soft saturator at 18% wet, for air and shimmer AI vocals lack
+- **Master FX rack:** a noise gate (with duck mode), a bitcrusher + sample-rate reducer, a 4×-oversampled wavefolder, and a Dattorro plate reverb — each bypassable and baked into Export Mix
 - **MASTER preset:** one click applies a starter mastering chain (drum ADT thickening, per-stem EQ, exciter, clipper, master sub and air EQ boost)
 - **Mute automation:** shift-drag any waveform to draw red mute regions, baked into Export Mix
 - **Track import:** drag any audio file onto the page and it becomes a full mixer track with its own knob set and loop toggle
@@ -442,9 +443,13 @@ Changes sync live with the mixer-strip knobs. Press Escape to close.
 Signal path on the master bus:
 
 ```
-Track sends -> Master Bus -> Sub EQ (60 Hz lowshelf) -> Air EQ (10 kHz highshelf) -> [LMT or CLP] -> Master Volume -> Output
-                                                                                  \-> Exciter (parallel) -/
+Track sends -> Master Bus -> Sub EQ (60 Hz lowshelf) -> Air EQ (10 kHz highshelf)
+            -> [Gate] -> [Crusher] -> [Wavefolder] -> FX Out -> [LMT or CLP] -> Master Volume -> Output
+                                                            |-> Exciter (parallel) ------------------^
+                                                            \-> Plate reverb (parallel send) --------^
 ```
+
+The gate, crusher and wavefolder are serial inserts (off by default, bypassed when off); the exciter and plate reverb are parallel sends. All of them, plus the limiter/clipper, are reproduced exactly in Export Mix.
 
 **LMT vs CLP, pick one.** They sit at the same point and target the same problem (peaks) with different methods.
 
@@ -494,6 +499,10 @@ A blank Hotkey cell means the control is mouse-only.
 | Master bus | Harmonic exciter | click `EXC` | Parallel 3 kHz saturation at 18% wet |
 | Master bus | Limiter | click `LMT` | Master limiter (turning on disables CLP) |
 | Master bus | Soft clipper | click `CLP` | Master clipper at −0.5 dBFS (turning on disables LMT) |
+| Master FX | Noise gate | click `GATE` | Dual-threshold hysteresis gate, attack/hold/release; `DUCK` inverts it |
+| Master FX | Bitcrusher | click `CRUSH` | Bit-depth + sample-rate reduction (`bits` / `rate` sliders) |
+| Master FX | Wavefolder | click `FOLD` | 4×-oversampled wavefolder (`drive` slider) for added harmonics |
+| Master FX | Plate reverb | click `PLATE` | Dattorro plate reverb, parallel send (`mix` slider) |
 | Master bus | Apply mastering preset | `Ctrl+Shift+M` or click `MASTER` | Full one-click mastering chain across stems |
 | Master bus | Master volume slider | drag slider | 0 to 150%, baked into Export Mix |
 | Master bus | Reset every track | click `RST ALL` | All knobs on all tracks to defaults |
@@ -724,12 +733,18 @@ waivepulse/
 │   └── app.py                  FastAPI server: queue, SSE, history, generation,
 │                               separation, transcription, upload, Ollama relay
 │
-├── frontend/                   Static HTML, no build step, served directly by FastAPI
+├── frontend/                   Static front-end, no build step, served directly by FastAPI
+│   │                           Each page is markup-only HTML + a CSS file + ES-module JS
 │   ├── index.html              Generate page: lyrics + tags form, history sidebar
-│   ├── studio.html             Studio page: stem mixer, Visual EQ, master chain
+│   ├── studio.html             Studio page: stem mixer, Visual EQ, master chain + FX rack
 │   ├── karaoke.html            Karaoke page: fullscreen visualizer + synced lyrics
 │   ├── lyrics.html             Lyric Helper page: Ollama-backed streaming lyric writer
-│   └── looper.html             Looper page: loop station with drums, synth, guitar, mic
+│   ├── looper.html             Looper page: loop station with drums, synth, guitar, mic
+│   ├── css/                    One stylesheet per page (index.css, studio.css, …)
+│   ├── js/                     ES modules per page: js/<page>/state.js (shared state),
+│   │                           main.js (entry), + focused modules (audio, ui, transport…)
+│   └── worklets/               AudioWorkletProcessor files (looper-capture, looper-autotune,
+│                               studio-dattorro, studio-bitcrusher, studio-gate)
 │
 ├── scripts/
 │   ├── test_generate.py        Standalone end-to-end test (bypasses the web server)
@@ -741,12 +756,24 @@ waivepulse/
 │   ├── wavepulse.jpg           Generate-page hero shot
 │   ├── studio.jpg              Studio screenshot
 │   ├── karaoke.jpg             Karaoke screenshot
-│   └── lyrics.jpg              Lyric Helper screenshot
+│   ├── lyrics.jpg              Lyric Helper screenshot
+│   └── looper.jpg              Looper screenshot
 │
 ├── history.json                Persisted job history (auto-created, gitignored)
 └── outputs/                    All generated MP3 files saved here (gitignored)
     └── *.mp3
 ```
+
+### Front-end architecture
+
+There is still **no build step** — the browser loads the modules directly. Each page follows the same convention so edits stay focused:
+
+- `<page>.html` is markup only; it links `/css/<page>.css` and ends with `<script type="module" src="/js/<page>/main.js">`.
+- `js/<page>/state.js` exports a single shared object `S` holding all cross-module mutable state. Modules read and write `S.x` (mutating a property of the shared object propagates across modules).
+- `js/<page>/main.js` is the entry point: it imports the modules, runs init, and exposes every function used by an inline HTML handler on `window` (so `onclick="…"` attributes keep working).
+- `worklets/*.js` are real `AudioWorkletProcessor` files loaded with `ctx.audioWorklet.addModule('/worklets/…')`.
+
+FastAPI serves these via static mounts (`/js`, `/css`, `/worklets`). To find the code behind a control, open its page's `js/<page>/` folder — the module names describe their concern (audio, transport, ui, etc.).
 
 Model files live wherever you set `HEARTMULA_PATH`:
 

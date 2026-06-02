@@ -70,16 +70,6 @@ app.mount("/js",       StaticFiles(directory=str(FRONTEND_DIR / "js")),       na
 app.mount("/css",      StaticFiles(directory=str(FRONTEND_DIR / "css")),      name="css")
 app.mount("/worklets", StaticFiles(directory=str(FRONTEND_DIR / "worklets")), name="worklets")
 
-
-@app.middleware("http")
-async def _no_cache_frontend(request, call_next):
-    """Always revalidate the split frontend assets so edits show up on a normal
-    reload (ES-module imports aren't cache-busted, so stale modules would mismatch)."""
-    resp = await call_next(request)
-    if request.url.path.startswith(("/js/", "/css/", "/worklets/")):
-        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    return resp
-
 # ── Model ──────────────────────────────────────────────────────────────────────
 _pipeline      = None
 _pipeline_lock = threading.Lock()
@@ -320,77 +310,35 @@ def _run_transcription(sep_id: str, model_name: str = 'base'):
         if not candidates:
             raise FileNotFoundError('Vocals stem not found — run separation first')
 
-        # ── Diagnostics: which vocals file are we feeding Whisper? ──
-        vocals_path = candidates[0]
-        try:
-            _sz = vocals_path.stat().st_size
-        except OSError:
-            _sz = -1
-        _real_stdout.write(
-            f'[waivepulse] Vocals stem: {vocals_path} ({_sz} bytes); '
-            f'{len(candidates)} candidate(s) under {out_dir}\n'
-        )
-        if len(candidates) > 1:
-            _real_stdout.write('[waivepulse]   other candidates: '
-                               + ', '.join(str(c) for c in candidates[1:]) + '\n')
-        if 0 <= _sz < 2048:
-            _real_stdout.write('[waivepulse] ⚠ vocals stem is tiny/empty — separation likely produced no vocals\n')
-
         from faster_whisper import WhisperModel
         _real_stdout.write(f'[waivepulse] Loading {label} model…\n')
         model = WhisperModel(model_name, device='cpu', compute_type='int8')
         _real_stdout.write(f'[waivepulse] Transcribing vocals for sep {sep_id}…\n')
-        segments, info = model.transcribe(
-            str(vocals_path),
+        segments, _ = model.transcribe(
+            str(candidates[0]),
             word_timestamps=True,
             vad_filter=True,
             vad_parameters={"min_silence_duration_ms": 400},
             beam_size=5,
             temperature=0.0,
         )
-        _real_stdout.write(
-            f'[waivepulse] Whisper info: language={getattr(info, "language", "?")} '
-            f'(p={getattr(info, "language_probability", 0) or 0:.2f}), '
-            f'audio_duration={getattr(info, "duration", 0) or 0:.1f}s\n'
-        )
 
         transcript_words = []
-        seg_texts = []
         for seg in segments:
-            seg_texts.append(seg.text)
             for w in (seg.words or []):
                 wrd = w.word.strip()
                 if wrd:
                     transcript_words.append({'word': wrd, 'start': round(w.start, 3), 'end': round(w.end, 3)})
 
-        full_text = ' '.join(t.strip() for t in seg_texts).strip()
-        _real_stdout.write(
-            f'[waivepulse] {label} found {len(transcript_words)} words '
-            f'in {len(seg_texts)} segment(s)\n'
-        )
-        _real_stdout.write(f'[waivepulse]   raw transcript: {full_text[:300]!r}\n')
-        if transcript_words:
-            _real_stdout.write('[waivepulse]   first words: '
-                               + repr(' '.join(w['word'] for w in transcript_words[:25])) + '\n')
-        else:
-            _real_stdout.write('[waivepulse] ⚠ Whisper returned no words — vocals may be near-silent or '
-                               'VAD filtered everything (try the Re-sync button with a larger model)\n')
+        _real_stdout.write(f'[waivepulse] {label} found {len(transcript_words)} words\n')
 
         match_pct = None
         if lyrics and transcript_words:
             lyric_words = _extract_lyric_words(lyrics)
-            _real_stdout.write(
-                f'[waivepulse] {len(lyric_words)} lyric words to align; first: '
-                + repr(' '.join(str(w) for w in lyric_words[:25])) + '\n'
-            )
             alignment   = _lcs_align(lyric_words, transcript_words)
             matched     = sum(1 for a in alignment if a is not None)
             match_pct   = round(matched / len(lyric_words) * 100, 1) if lyric_words else 100.0
             _real_stdout.write(f'[waivepulse] LCS matched {matched}/{len(lyric_words)} words ({match_pct}%)\n')
-            if matched == 0:
-                _real_stdout.write('[waivepulse] ⚠ 0 matched — Whisper heard something but it does not line up '
-                                   'with the lyrics. Compare the raw transcript above to your lyrics: wrong song/stem, '
-                                   'wrong language, or instrumental bleed.\n')
             words = _build_word_timing(lyric_words, alignment, transcript_words)
         else:
             words = [{'word': w['word'], 'start': w['start'], 'end': w['end']} for w in transcript_words]
@@ -787,14 +735,6 @@ def model_status():
         "c2pa":      _C2PA and _CRYPTOGRAPHY,
     }
     return ms
-
-
-@app.get("/favicon.ico", include_in_schema=False)
-def favicon():
-    ico = ASSETS_DIR / "favicon.ico"
-    if ico.exists():
-        return FileResponse(str(ico), media_type="image/x-icon")
-    return FileResponse(str(ASSETS_DIR / "wave small.png"), media_type="image/png")
 
 
 @app.get("/", response_class=HTMLResponse)

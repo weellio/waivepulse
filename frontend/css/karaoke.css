@@ -1,0 +1,51 @@
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#000;color:#fff;font-family:'Segoe UI',system-ui,sans-serif;width:100vw;height:100vh;overflow:hidden;cursor:none}
+body.show-cursor{cursor:default}
+
+/* Visualizer */
+#viz{position:fixed;inset:0;width:100%;height:100%;z-index:0}
+
+/* Top scrim — helps lyrics pop */
+#scrim-top{position:fixed;top:0;left:0;right:0;height:220px;background:linear-gradient(to bottom,rgba(0,0,0,0.72) 0%,transparent 100%);z-index:1;pointer-events:none}
+
+/* Title */
+#title-bar{position:fixed;top:16px;left:24px;font-size:13px;color:rgba(255,255,255,0.45);z-index:3;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45vw;letter-spacing:.3px}
+
+/* 5-word lyric window */
+#lyrics{position:fixed;top:52px;left:50%;transform:translateX(-50%);display:flex;align-items:baseline;gap:18px;z-index:2;white-space:nowrap;pointer-events:none}
+.kw{font-weight:900;color:#fff;opacity:0;transition:opacity .08s;pointer-events:none;user-select:none;text-shadow:0 2px 16px rgba(0,0,0,0.9)}
+#kw0,#kw4{font-size:30px}
+#kw1,#kw3{font-size:46px}
+#kw2{font-size:70px;color:#ffd84a;text-shadow:0 0 40px rgba(255,216,74,0.85),0 2px 16px rgba(0,0,0,0.9)}
+
+/* Status overlay */
+#status{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;z-index:20;background:rgba(0,0,0,0.88)}
+#status.hidden{display:none}
+#status-msg{font-size:18px;color:#8cffff;text-align:center;max-width:500px}
+#status-sub{font-size:13px;color:#555;text-align:center}
+.spinner{width:38px;height:38px;border:3px solid #1a1a1a;border-top:3px solid #8cffff;border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Controls bar */
+#controls{position:fixed;bottom:0;left:0;right:0;padding:20px 24px 24px;background:linear-gradient(to top,rgba(0,0,0,0.9) 0%,transparent 100%);display:flex;align-items:center;gap:10px;z-index:5;transition:opacity .4s}
+#controls.hidden{opacity:0;pointer-events:none}
+.c-btn{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);color:#ccc;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:background .15s,border-color .15s;white-space:nowrap;flex-shrink:0;letter-spacing:.3px}
+.c-btn:hover{background:rgba(255,255,255,0.18);color:#fff}
+.c-btn.active{background:rgba(140,255,255,0.15);border-color:rgba(140,255,255,0.4);color:#8cffff}
+#progress-wrap{flex:1;padding:8px 0;cursor:pointer}
+#progress-bar{height:3px;background:rgba(255,255,255,0.12);border-radius:2px;position:relative}
+#progress-fill{height:100%;background:#8cffff;border-radius:2px;width:0%;transition:width .08s}
+#time-disp{font-size:11px;color:#666;font-family:'Courier New',monospace;white-space:nowrap;min-width:88px;text-align:right}
+
+/* Volume slider */
+#vol-wrap{display:flex;align-items:center;gap:6px;flex-shrink:0}
+#vol-wrap label{font-size:11px;color:#666;white-space:nowrap}
+#vol-slider{-webkit-appearance:none;appearance:none;width:80px;height:3px;border-radius:2px;background:rgba(255,255,255,0.15);outline:none;cursor:pointer}
+#vol-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:13px;height:13px;border-radius:50%;background:#8cffff;cursor:pointer;box-shadow:0 0 6px rgba(140,255,255,0.6)}
+#vol-slider::-moz-range-thumb{width:13px;height:13px;border:none;border-radius:50%;background:#8cffff;cursor:pointer}
+
+/* Preset name flash */
+#preset-name{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);font-size:12px;color:rgba(140,255,255,0.6);letter-spacing:.5px;pointer-events:none;opacity:0;transition:opacity .4s;z-index:6;white-space:nowrap}
+
+/* Help hint */
+#hint{position:fixed;bottom:80px;right:24px;font-size:11px;color:rgba(255,255,255,0.2);pointer-events:none;z-index:6;line-height:1.8}
