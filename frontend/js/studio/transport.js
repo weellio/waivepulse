@@ -36,9 +36,46 @@ export function startPlayback() {
       src.start(S._actx.currentTime + 0.05, offset);
     }
   }
+  scheduleMasterFade(offset);
   S._playing = true;
   const btn = document.getElementById('play-btn');
   btn.classList.add('active'); btn.textContent = '⏸';
+}
+
+// ── Master fade in/out ───────────────────────────────────────────────────────
+// Schedules the fade envelope on the final _fadeGain node (sample-accurate, on the
+// audio clock) for a playback starting at song position `offset`.
+export function scheduleMasterFade(offset) {
+  const fg = S._fadeGain; if (!fg) return;
+  const x = S._actx, T0 = x.currentTime + 0.05, fi = S._fadeIn || 0, fo = S._fadeOut || 0, dur = S._dur;
+  const gAt = s => {
+    let g = 1;
+    if (fi > 0 && s < fi) g = Math.max(0, s / fi);
+    if (fo > 0 && s > dur - fo) g = Math.min(g, Math.max(0, (dur - s) / fo));
+    return Math.max(0.0001, g);
+  };
+  fg.gain.cancelScheduledValues(x.currentTime);
+  fg.gain.setValueAtTime(gAt(offset), T0);
+  if (fi > 0 && offset < fi) fg.gain.linearRampToValueAtTime(1, T0 + (fi - offset));
+  if (fo > 0) {
+    const fStart = dur - fo;
+    if (offset < fStart) fg.gain.setValueAtTime(1, T0 + (fStart - offset));
+    fg.gain.linearRampToValueAtTime(0.0001, T0 + Math.max(0, dur - offset));
+  }
+}
+
+export function setFadeIn(v) {
+  S._fadeIn = Math.max(0, parseFloat(v) || 0);
+  document.getElementById('fade-in-label').textContent = S._fadeIn ? S._fadeIn.toFixed(1) + 's' : 'off';
+  if (S._playing) scheduleMasterFade(currentPosition());
+  else if (S._fadeGain) S._fadeGain.gain.setValueAtTime(1, S._actx.currentTime);
+}
+
+export function setFadeOut(v) {
+  S._fadeOut = Math.max(0, parseFloat(v) || 0);
+  document.getElementById('fade-out-label').textContent = S._fadeOut ? S._fadeOut.toFixed(1) + 's' : 'off';
+  if (S._playing) scheduleMasterFade(currentPosition());
+  else if (S._fadeGain) S._fadeGain.gain.setValueAtTime(1, S._actx.currentTime);
 }
 
 export function pausePlayback() {
@@ -49,6 +86,7 @@ export function pausePlayback() {
 
 export function stopPlayback() {
   S._startOff = 0; stopSources(); S._playing = false;
+  if (S._fadeGain) { S._fadeGain.gain.cancelScheduledValues(S._actx.currentTime); S._fadeGain.gain.setValueAtTime(1, S._actx.currentTime); }
   const btn = document.getElementById('play-btn');
   btn.classList.remove('active'); btn.textContent = '▶';
   updatePlayhead(0); document.getElementById('time-display').textContent = '0:00';

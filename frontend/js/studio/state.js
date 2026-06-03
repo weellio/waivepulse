@@ -31,6 +31,8 @@ export const S = {
   _actx: null, _playing: false, _looping: false,
   _startTime: 0, _startOff: 0, _rafId: null, _sseConn: null,
   _zoom: 1,
+  _fadeGain: null, _fadeIn: 0, _fadeOut: 0,   // master fade in/out (seconds)
+  _cutUndo: null,                              // ripple-cut undo stack
 
   // ── Loop / drag / preset / selection ──
   _loopStart: null, _loopEnd: null, _rulerDrag: null, _activePreset: 'full',

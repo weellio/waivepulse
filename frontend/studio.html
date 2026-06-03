@@ -101,6 +101,14 @@
     <button class="t-btn fx-toggle" id="plate-btn" title="Dattorro plate reverb — lush algorithmic plate (parallel send)" onclick="togglePlate()">PLATE</button>
     <span class="fx-ctl">mix<input type="range" id="plate-mix" min="0" max="100" step="1" value="30" oninput="setPlateMix(this.value)"><span class="fx-rd" id="plate-mix-label">30%</span></span>
   </div>
+
+  <div class="t-divider"></div>
+
+  <div class="fx-cell">
+    <span class="fx-rd" style="color:#8cffff;font-weight:700;letter-spacing:.06em" title="Smoothly ramp the whole mix up at the start and down at the end — cleans up hard AI stops. Fade-out is measured back from the (current) song end, so it follows a Cut.">FADE</span>
+    <span class="fx-ctl">in<input type="range" id="fade-in" min="0" max="15" step="0.5" value="0" title="Fade-in length (seconds)" oninput="setFadeIn(this.value)"><span class="fx-rd" id="fade-in-label">off</span></span>
+    <span class="fx-ctl">out<input type="range" id="fade-out" min="0" max="15" step="0.5" value="0" title="Fade-out length (seconds), measured back from the song end" oninput="setFadeOut(this.value)"><span class="fx-rd" id="fade-out-label">off</span></span>
+  </div>
 </div>
 
 <div id="main">
@@ -240,9 +248,10 @@
           <tr><td><b>VOL slider</b></td><td>Master output volume — scales the entire mix from 0% (silence) to 150% (boost). Affects both live playback and Export Mix. Use it to bring down a mix that's too hot before exporting, or to match levels when A/B comparing. Default is 100%.</td></tr>
           <tr><td><b>RST ALL button</b></td><td>Resets every knob on every track to its default value in one click — VOL back to 100%, PAN to center, all EQ flat, REV/DLY/OFS to zero. Useful for starting fresh after experimenting. Individual tracks also have their own RST button, and pressing <kbd>R</kbd> resets the selected track.</td></tr>
           <tr><td><b>DUP button</b></td><td>Duplicate any stem as its own independent track. Set OFS to 10–20ms on the copy for ADT doubling. Try panning the two copies slightly apart (e.g. L20 and R20) for a wide stereo image.</td></tr>
-          <tr><td><b>EQ button</b></td><td>Opens a per-track visual EQ editor — live spectrum analyzer + draggable points for each of the 4 bands (SUB, BASS, MID, TREB). Drag a point vertically to set gain, scroll the wheel over a point for fine adjustment (hold Shift for 0.1dB steps). Changes sync live with the knobs in the mixer strip. <kbd>Esc</kbd> to close.</td></tr>
+          <tr><td><b>EQ button</b></td><td>Opens the per-track 7-band parametric EQ — live spectrum analyzer + a draggable curve (high-pass · low shelf · three bells · high shelf · low-pass), each with freq/gain/Q. This is the only per-track EQ (the old SUB/BASS/MID/TREB knobs were retired in favour of it). <kbd>Esc</kbd> to close.</td></tr>
+          <tr><td><b>FADE in / out</b></td><td>Master fade sliders (0–15 s) in the FX bar. Smoothly ramps the whole mix up at the start and down at the end — perfect for cleaning up a hard AI stop. The fade-out is measured back from the <i>current</i> song end, so it automatically follows a <b>Cut</b>. Catches reverb/exciter/plate tails too, and is baked into Export Mix.</td></tr>
         </tbody></table>
-        <p class="help-p" style="margin-top:8px">Tip: All mastering settings — master EQ, exciter, limiter, clipper, master volume, per-track knobs — are fully baked into <b>Export Mix</b>. What you hear is what you get.</p>
+        <p class="help-p" style="margin-top:8px">Tip: All mastering settings — master EQ, exciter, limiter, clipper, master volume, fades, per-track EQ — are fully baked into <b>Export Mix</b>. What you hear is what you get.</p>
       </div>
 
       <div class="help-section">

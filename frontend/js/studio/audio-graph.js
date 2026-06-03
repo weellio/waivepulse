@@ -145,11 +145,17 @@ export function setupGlobalFX() {
   S._folderInput.connect(S._folderPreGain); S._folderPreGain.connect(S._folderShaper);
   S._folderShaper.connect(S._folderWetGain); S._folderWetGain.connect(S._fxOut);
 
+  // ── Final master fade node: EVERY output branch passes through it so a fade-out
+  // also catches the reverb / exciter / plate tails, not just the dry mix ──
+  S._fadeGain = x.createGain(); S._fadeGain.gain.value = 1;
+  S._fadeGain.connect(x.destination);
+  const dest = S._fadeGain;
+
   // ── _fxOut feeds the existing parallel destination branches ──
-  S._fxOut.connect(S._compDryGain); S._compDryGain.connect(x.destination);
-  S._fxOut.connect(S._masterComp); S._masterComp.connect(S._compWetGain); S._compWetGain.connect(x.destination);
-  S._fxOut.connect(S._masterClip); S._masterClip.connect(S._clipWetGain); S._clipWetGain.connect(x.destination);
-  S._fxOut.connect(S._exciterHP); S._exciterHP.connect(S._exciterSat); S._exciterSat.connect(S._exciterWet); S._exciterWet.connect(x.destination);
+  S._fxOut.connect(S._compDryGain); S._compDryGain.connect(dest);
+  S._fxOut.connect(S._masterComp); S._masterComp.connect(S._compWetGain); S._compWetGain.connect(dest);
+  S._fxOut.connect(S._masterClip); S._masterClip.connect(S._clipWetGain); S._clipWetGain.connect(dest);
+  S._fxOut.connect(S._exciterHP); S._exciterHP.connect(S._exciterSat); S._exciterSat.connect(S._exciterWet); S._exciterWet.connect(dest);
 
   // ── Dattorro plate reverb: parallel master send tapped post-FX ──
   S._plateSend = x.createGain(); S._plateSend.gain.value = 0;
@@ -160,7 +166,7 @@ export function setupGlobalFX() {
     S._plateNode.parameters.get('damping').value = 0.0008;
     S._plateNode.parameters.get('predelay').value = 0.01;
     S._fxOut.connect(S._plateSend); S._plateSend.connect(S._plateNode);
-    S._plateNode.connect(S._plateReturn); S._plateReturn.connect(x.destination);
+    S._plateNode.connect(S._plateReturn); S._plateReturn.connect(dest);
   }
 
   // Existing convolution reverb send

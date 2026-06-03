@@ -82,6 +82,15 @@ export async function exportMix() {
     const offFxOut = off.createGain();
     chainTail.connect(offFxOut);
 
+    // Final master fade node — every branch feeds it, so a fade-out also catches the
+    // reverb / exciter / plate tails (mirrors the live graph's _fadeGain).
+    const offFade = off.createGain();
+    offFade.connect(off.destination);
+    const fi = S._fadeIn || 0, fo = S._fadeOut || 0;
+    offFade.gain.setValueAtTime(fi > 0 ? 0.0001 : 1, 0);
+    if (fi > 0) offFade.gain.linearRampToValueAtTime(1, fi);
+    if (fo > 0) { offFade.gain.setValueAtTime(1, Math.max(fi, S._dur - fo)); offFade.gain.linearRampToValueAtTime(0.0001, S._dur); }
+
     // Master limiter / clipper (mutually exclusive), exciter in parallel.
     let offMasterOut = offFxOut;
     if (S._compEnabled) {
@@ -94,12 +103,12 @@ export async function exportMix() {
       const offClip = off.createWaveShaper(); offClip.curve = makeClipperCurve(); offClip.oversample = '4x';
       offMasterOut.connect(offClip); offMasterOut = offClip;
     }
-    offMasterOut.connect(off.destination);
+    offMasterOut.connect(offFade);
     if (S._exciterEnabled) {
       const offExcHP = off.createBiquadFilter(); offExcHP.type = 'highpass'; offExcHP.frequency.value = 3000;
       const offExcSat = off.createWaveShaper(); offExcSat.curve = makeSatCurve(200); offExcSat.oversample = '4x';
       const offExcWet = off.createGain(); offExcWet.gain.value = S._exciterWet.gain.value;
-      offFxOut.connect(offExcHP); offExcHP.connect(offExcSat); offExcSat.connect(offExcWet); offExcWet.connect(off.destination);
+      offFxOut.connect(offExcHP); offExcHP.connect(offExcSat); offExcSat.connect(offExcWet); offExcWet.connect(offFade);
     }
 
     // Dattorro plate reverb (worklet) — parallel master send tapped post-FX.
@@ -111,7 +120,7 @@ export async function exportMix() {
         if (p && op) op.value = p.value;
       }
       const offPlateRtn = off.createGain(); offPlateRtn.gain.value = 1;
-      offFxOut.connect(offPlateSend); offPlateSend.connect(offPlate); offPlate.connect(offPlateRtn); offPlateRtn.connect(off.destination);
+      offFxOut.connect(offPlateSend); offPlateSend.connect(offPlate); offPlate.connect(offPlateRtn); offPlateRtn.connect(offFade);
     }
 
     // Per-track render graph.

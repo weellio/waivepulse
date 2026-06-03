@@ -6,6 +6,7 @@ import { boot, toggleAutoTranscribe, openKaraoke } from './boot.js';
 import {
   togglePlay, stopPlayback, toggleLoop, seekTo, currentPosition,
   zoomIn, zoomOut, zoomFit, applyZoom, updateLoopRegion, getCanvasWidth, _bindApplyRangedGains,
+  setFadeIn, setFadeOut,
 } from './transport.js';
 import {
   handleImportFiles, resetAllTracks, applyRangedGains, toggleMute, toggleSolo,
@@ -47,6 +48,8 @@ Object.assign(window, {
   exportMix, downloadZip, handleImportFiles,
   // timeline edit
   cutRegion, undoCut,
+  // master fades
+  setFadeIn, setFadeOut,
   // help
   showHelp, closeHelp,
   // karaoke

@@ -59,6 +59,7 @@ Click the Studio button on any finished song card. Demucs splits the song into s
 - **Master soft clipper (CLP) or limiter (LMT)**, mutually exclusive. The clipper preserves transient punch on AI music that otherwise sounds limp; the limiter glues for a louder, ballad-friendly sound
 - **Harmonic exciter (EXC):** parallel 3 kHz high-pass into a soft saturator at 18% wet, for air and shimmer AI vocals lack
 - **Master FX rack:** a noise gate (with duck mode), a bitcrusher + sample-rate reducer, a 4×-oversampled wavefolder, and a Dattorro plate reverb — each bypassable and baked into Export Mix
+- **Master fade in/out:** smoothly ramps the whole mix up at the start and down at the end (0–15 s each) — cleans up the hard stops AI music often has. The fade-out is measured back from the current song end, so it follows a Cut, and it catches the reverb/exciter/plate tails
 - **MASTER preset:** one click applies a starter mastering chain (drum ADT thickening, per-stem EQ, exciter, clipper, master sub and air EQ boost)
 - **Mute automation:** shift-drag any waveform to draw red mute regions, baked into Export Mix
 - **Track import:** drag any audio file onto the page and it becomes a full mixer track with its own knob set and loop toggle
