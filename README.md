@@ -53,7 +53,7 @@ The main page. Paste lyrics, pick tags from an organised grid (Genre, Timbre, Mo
 
 ![Studio](assets/studio.jpg)
 
-Click the Studio button on any finished song card. Demucs splits the song into six stems (vocals, drums, bass, guitar, piano, other) on your GPU, then drops you into a DAW-style mixer with waveform display, per-track knobs, A-B loop, mute automation, track import, and a full master bus chain.
+Click the Studio button on any finished song card. Demucs splits the song into six stems (vocals, drums, bass, guitar, piano, other) on your GPU, then drops you into a DAW-style mixer with waveform display, per-track knobs, A-B loop, mute automation, ripple cut, track import, and a full master bus chain.
 
 - **7-band parametric EQ on every track:** click the EQ button to open a modal with a live spectrum analyzer and a draggable curve — high-pass, low shelf, three bells, high shelf, and low-pass, each with freq/gain/Q, all backed by the actual biquad responses — it's the single per-track EQ (the old quick SUB/BASS/MID/TREB knobs were retired in favour of it)
 - **Master soft clipper (CLP) or limiter (LMT)**, mutually exclusive. The clipper preserves transient punch on AI music that otherwise sounds limp; the limiter glues for a louder, ballad-friendly sound
@@ -413,6 +413,15 @@ Draw mute regions on any waveform to silence a track for a specific section. Use
 - Regions on the same track auto-merge if they overlap or sit within 50 ms of each other
 - Mute regions play live and bake into Export Mix
 - Sidebar header reminds you: `⇧ drag = mute region`
+
+### Cut (ripple delete)
+
+Where a mute leaves a silent gap, **Cut** removes a section from *every* track at once and closes the gap, so the whole song gets shorter — for trimming dead air, a long intro, or an unwanted section.
+
+- Select a region by dragging on the ruler (or set the `[` / `]` loop points), then click **✂ Cut**
+- It splices that range out of every stem's buffer and ripples everything after it left; imported clips after the cut slide left to stay in time, and clips that straddle the cut are spliced too
+- A confirm dialog shows the new total length first; **↩ Uncut** undoes it (multiple levels)
+- The shortened timeline is what plays and what gets exported
 
 ### Track import
 

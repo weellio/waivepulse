@@ -19,6 +19,7 @@ import {
 } from './audio-graph.js';
 import { openTrackEQ, closeTrackEQ, resetTrackEQ } from './eq-modal.js';
 import { exportMix, downloadZip } from './export.js';
+import { cutRegion, undoCut } from './edit.js';
 import { redrawAll, mergeRanges } from './waveform.js';
 
 // transport.js calls applyRangedGains, which lives in tracks.js — inject it to
@@ -44,6 +45,8 @@ Object.assign(window, {
   closeTrackEQ, resetTrackEQ,
   // export / import
   exportMix, downloadZip, handleImportFiles,
+  // timeline edit
+  cutRegion, undoCut,
   // help
   showHelp, closeHelp,
   // karaoke

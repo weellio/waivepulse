@@ -30,6 +30,9 @@
   <button class="t-btn" id="stop-btn"  title="Stop (Home)"          onclick="stopPlayback()">■</button>
   <button class="t-btn" id="loop-btn"  title="Loop"                 onclick="toggleLoop()">⟳</button>
   <div class="t-divider"></div>
+  <button class="t-btn" id="cut-btn"   style="font-size:10px;width:auto;padding:0 8px" title="Cut the selected ruler region out of ALL tracks and close the gap (shortens the song). Select by dragging on the ruler first." onclick="cutRegion()">✂ Cut</button>
+  <button class="t-btn" id="uncut-btn" disabled style="font-size:10px;width:auto;padding:0 8px" title="Undo the last cut" onclick="undoCut()">↩ Uncut</button>
+  <div class="t-divider"></div>
   <span id="time-display">0:00</span>
   <span id="duration-display">/ 0:00</span>
   <div class="t-divider"></div>
@@ -171,10 +174,7 @@
         <table class="help-table knob-table"><thead><tr><th>Knob</th><th>Range</th><th>What it does</th></tr></thead><tbody>
           <tr><td>VOL</td><td>0 – 150%</td><td>Track volume. 100% = unity. Boosting above 100% can clip if multiple loud tracks are summed — use the limiter (LMT) to catch peaks.</td></tr>
           <tr><td>PAN</td><td>L100 – R100</td><td>Stereo position. C = center. Try panning drums slightly left, guitar slightly right to add width without changing the mix.</td></tr>
-          <tr><td>SUB</td><td>±12 dB @ 60 Hz</td><td>Sub-bass shelf. AI music consistently lacks this frequency range — it's the physical rumble and body you feel in a car or on headphones. Boost the bass and drums stems first.</td></tr>
-          <tr><td>BASS</td><td>±12 dB @ 200 Hz</td><td>Low-mid shelf. Adds warmth and body. Too much makes everything sound muddy. The bass stem benefits most; cut slightly on vocals to clean up the low end.</td></tr>
-          <tr><td>MID</td><td>±12 dB @ 1 kHz</td><td>Presence bell (peaking filter). Vocals and guitars live here. Boost for forward presence; cut to push a track back in the mix without muting it.</td></tr>
-          <tr><td>TREB</td><td>±12 dB @ 4 kHz</td><td>Brightness shelf. Adds clarity and "air." Too much becomes harsh and fatiguing. Vocals and hi-hats respond well. Cut on bass/drums to reduce harshness.</td></tr>
+          <tr><td>EQ</td><td>7-band</td><td>Opens the per-track 7-band parametric EQ (high-pass · low shelf · three bells · high shelf · low-pass) with a live spectrum and draggable curve. This is the only per-track EQ — the old SUB/BASS/MID/TREB knobs were retired in favour of it. AI music consistently lacks sub-bass (~60 Hz) and air (~10 kHz); shape those here.</td></tr>
           <tr><td>REV</td><td>0 – 100%</td><td>Reverb send. Adds acoustic space — room, hall, depth. All tracks share one convolution reverb. A little goes a long way; too much washes out the mix.</td></tr>
           <tr><td>DLY</td><td>0 – 100%</td><td>Delay send. Echo effect (~350ms, ~38% feedback). All tracks share one delay line. Works well on vocals and guitar for rhythmic depth.</td></tr>
           <tr><td>OFS</td><td>0 – 50 ms</td><td>Timing offset — delays this track by up to 50ms. Classic use: duplicate a stem (DUP button), set OFS to 10–20ms on the copy. This is called ADT (automatic double tracking) and makes thin AI audio sound fuller, like it was recorded twice.</td></tr>
@@ -190,6 +190,17 @@
           <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Clear ALL mute regions on the selected track</td></tr>
         </tbody></table>
         <p class="help-p" style="margin-top:8px">Mute regions are active during live playback and are baked into the Export Mix WAV file.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">✂ Cut (ripple delete)</div>
+        <p class="help-p">Mute leaves a silent gap; <b>Cut</b> removes a section from <i>every</i> track at once and closes the gap, so the whole song gets shorter — ideal for trimming dead air, a long intro, or a section you don't want.</p>
+        <table class="help-table"><tbody>
+          <tr><td>1. Select</td><td>Drag across the ruler (or set <kbd>[</kbd> and <kbd>]</kbd>) to highlight the region</td></tr>
+          <tr><td>2. <b>✂ Cut</b></td><td>Removes that region from all tracks and ripples everything after it left. Confirms first and shows the new length.</td></tr>
+          <tr><td><b>↩ Uncut</b></td><td>Undo the last cut (multiple levels)</td></tr>
+        </tbody></table>
+        <p class="help-p" style="margin-top:8px">Imported clips after the cut slide left to stay in time; the shortened song is what gets exported.</p>
       </div>
 
       <div class="help-section">
