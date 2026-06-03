@@ -4,6 +4,7 @@
 // effects (noise gate, bitcrusher, wavefolder, Dattorro plate reverb) — so
 // "what you hear is what you get".
 import { S } from './state.js';
+import { applyEqOffline, snapshotEq, eqIsFlat } from '../shared/eq7.js';
 import { makeSatCurve, makeClipperCurve, makeFolderCurve, makeIR } from './audio-graph.js';
 import { soloCount } from './waveform.js';
 
@@ -132,7 +133,10 @@ export async function exportMix() {
       const src = off.createBufferSource(); src.buffer = t.buffer;
       const ofs = off.createDelay(0.051); ofs.delayTime.value = t.offset || 0;
       src.connect(ofs); ofs.connect(muteGain); muteGain.connect(gain); gain.connect(pan); pan.connect(eqS); eqS.connect(eqB); eqB.connect(eqM); eqM.connect(eqT);
-      eqT.connect(offBus); eqT.connect(revS); revS.connect(offRev); eqT.connect(dlyS); dlyS.connect(offDlyIn);
+      // 7-band parametric EQ after the quick shelves (matches the live chain)
+      let post = eqT;
+      if (t.eq && !eqIsFlat(t.eq)) { const oeq = applyEqOffline(off, snapshotEq(t.eq)); eqT.connect(oeq.input); post = oeq.output; }
+      post.connect(offBus); post.connect(revS); revS.connect(offRev); post.connect(dlyS); dlyS.connect(offDlyIn);
       if (t.isImport && t.loopTrack) { src.loop = true; src.start(0); }
       else if (t.isImport) { src.start(t.startTime || 0); }
       else { src.start(0); }

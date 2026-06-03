@@ -55,7 +55,7 @@ The main page. Paste lyrics, pick tags from an organised grid (Genre, Timbre, Mo
 
 Click the Studio button on any finished song card. Demucs splits the song into six stems (vocals, drums, bass, guitar, piano, other) on your GPU, then drops you into a DAW-style mixer with waveform display, per-track knobs, A-B loop, mute automation, track import, and a full master bus chain.
 
-- **Visual EQ on every track:** click the EQ button to open a modal with a live spectrum analyzer and a draggable four-band curve, all backed by the actual biquad-filter responses
+- **7-band parametric EQ on every track:** click the EQ button to open a modal with a live spectrum analyzer and a draggable curve — high-pass, low shelf, three bells, high shelf, and low-pass, each with freq/gain/Q, all backed by the actual biquad responses (the four quick SUB/BASS/MID/TREB knobs remain on the strip)
 - **Master soft clipper (CLP) or limiter (LMT)**, mutually exclusive. The clipper preserves transient punch on AI music that otherwise sounds limp; the limiter glues for a louder, ballad-friendly sound
 - **Harmonic exciter (EXC):** parallel 3 kHz high-pass into a soft saturator at 18% wet, for air and shimmer AI vocals lack
 - **Master FX rack:** a noise gate (with duck mode), a bitcrusher + sample-rate reducer, a 4×-oversampled wavefolder, and a Dattorro plate reverb — each bypassable and baked into Export Mix
@@ -76,13 +76,16 @@ Open the Looper page at any time — it works independently of the AI generation
 
 - **Drum machine:** 8 pads (Kick, Snare, Hi-Hat, Open HH, Clap, Tom, 808, Perc) synthesized via Web Audio — keys `1`–`8` — plus a **16-step sequencer** with per-step velocity, and a **→ Loop** button that renders a beat straight into a slot with perfect timing
 - **Synth keyboard:** two octaves (C4–C6, keys `A`–`K` / `W E T Y U` / `Z X C V B N M`). Oscillator waveforms, a plucked **guitar** voice, a resonant **low-pass filter** (cutoff + reso), and an **arpeggiator** (rate + up/down/random)
+- **Polyphonic piano roll:** a Keys/Roll toggle swaps the keyboard for a chord-capable step sequencer that renders straight to a loop in perfect time, sharing one transport grid with the drum sequencer
 - **Click-and-drag slide:** hold the mouse and drag across pads or keys for a glissando / drum-roll effect
 - **Full ADSR envelope:** Attack, Decay, Sustain, and Release shape every synth voice (vertical sliders)
 - **Sampler:** import any audio file (or a recorded loop) and pitch it chromatically across the keyboard
 - **Microphone + Autotune:** live input with a clip-guard compressor, plus a stylized hard-tune that snaps your voice to a chosen key/scale
+- **Per-loop 7-band parametric EQ:** click ⚌ EQ on any loop for a spectrum + draggable curve (HPF · shelves · bells · LPF), baked into the export
+- **Recording feedback:** a blinking count-in, a sweep bar, and a beat-pulsing border show you the timing as you play in
 - **Tempo tools:** BPM, tap tempo, metronome, adjustable count-in, quantize, and a per-loop ½-beat nudge
 - **Master FX:** global reverb, delay (tempo-synced), and master volume
-- **F1–F6** record loops hands-free; **Export Mix** renders all loops to a single WAV
+- **F1–F6** record loops hands-free (each card shows its key); **Export Mix** renders all loops to a single WAV
 
 [Detail section below](#looper-in-depth)
 
@@ -423,19 +426,18 @@ Bring any audio file in as an extra mixer track. A sample, a loop, a scratch voc
 - Loop state is respected in Export Mix
 - Imported tracks render in gold in the waveform view so they're easy to spot
 
-### Per-track Visual EQ
+### Per-track 7-band parametric EQ
 
-Click the EQ button on any track strip to open a modal with:
+Click the EQ button on any track strip to open the parametric EQ modal (the same shared component the Looper uses):
 
-- A live spectrum analyzer tapped after the EQ chain, so you see exactly the post-EQ signal
-- The combined EQ curve drawn from each band's actual biquad response via `getFrequencyResponse()` (no approximations)
-- Four coloured draggable points (SUB cyan, BASS blue, MID yellow, TREB orange) sitting at their corner or centre frequencies
-- Drag vertically to set gain, scroll the wheel over a point for fine adjustment, hold Shift for 0.1 dB steps
-- Live readouts under the canvas
-- A "RESET EQ" button to flatten all four bands
-- Hi-DPI canvas (devicePixelRatio scaling) for crisp lines on Retina or 4K
+- **Seven bands:** high-pass · low shelf · three bells · high shelf · low-pass, each with configurable frequency, gain, and Q — for surgical correction, tonal shaping, and removing unwanted content
+- A live spectrum analyzer tapped after the EQ, plus **per-band coloured fill regions** showing each band's individual contribution
+- The combined curve drawn from the actual biquad responses via `getFrequencyResponse()` (no approximations)
+- **Drag** a band point for freq + gain; **scroll** over it for Q
+- A readout row showing each band's filter-type icon, frequency, dB, and Q; a "RESET EQ" button flattens it
+- Inserted after the four quick SUB/BASS/MID/TREB shelf knobs (which stay on the strip as fast tone controls), and baked into Export Mix
 
-Changes sync live with the mixer-strip knobs. Press Escape to close.
+Press Escape to close.
 
 ### Master bus chain
 
@@ -481,7 +483,7 @@ A blank Hotkey cell means the control is mouse-only.
 | Track ops | Normalize | `N` or click `NRM` | Bring peak to ~−0.5 dBFS |
 | Track ops | Reset all knobs on track | `R` or click `RST` | Per-track reset to defaults |
 | Track ops | Duplicate track | `D` or click `DUP` | Independent copy with its own knobs (use OFS for ADT) |
-| Track ops | Visual EQ | click `EQ` | Live spectrum + draggable 4-band curve modal |
+| Track ops | Parametric EQ | click `EQ` | Live spectrum + draggable 7-band parametric curve (HPF · shelves · bells · LPF) |
 | Knobs | Drag VOL / PAN / SUB / Bass / Mid / Treb / Rev / Dly / OFS | | Drag up-down or scroll wheel |
 | Knobs | Reset a single knob | double-click knob | Back to default value |
 | A-B loop | Drag on the ruler | | Mark a loop region (cyan highlight) |
@@ -580,7 +582,13 @@ The **first** slot you record sets the **master loop length** — record freely 
 
 Every **overdub** after that is **quantized**: when you hit Record, the slot *arms* (amber, "ARM"), waits for the master loop's next downbeat, then records exactly one bar and auto-aligns it. So layers are always full-length and on the grid no matter when you press Record — no need to start exactly on beat 1.
 
-Each slot plays back independently in a continuous loop. Slots can be muted (⏸), cleared (✕), or loaded into the sampler keyboard (🎹 Use as Sample). Per-slot volume sliders balance the mix, and a per-slot **SYNC ◀ ▶** nudges a layer ±½ beat (live, non-destructive) to fine-tune a take that landed slightly off.
+Each slot plays back independently in a continuous loop. Slots can be muted (⏸), cleared (✕), loaded into the sampler keyboard (🎹 Use as Sample), or EQ'd (⚌ EQ — see below). Per-slot volume sliders balance the mix, and a per-slot **SYNC ◀ ▶** nudges a layer ±½ beat (live, non-destructive) to fine-tune a take that landed slightly off.
+
+**Recording feedback.** When you hit Record, the loop card shows you the timing: a **blinking count-in number** at the top-left, a **sweep bar** across the top edge (it fills once over the bar for an overdub, or sweeps once per bar as a tempo guide for the first loop), and a **border that pulses on every beat** (brighter on the downbeat). Each card also shows its hotkey — `F1`–`F6` record loops 1–6.
+
+#### Per-loop EQ
+
+Each loop has its own **7-band parametric EQ** (the same shared component as the Studio). Click **⚌ EQ** on a slot to open the modal: high-pass · low shelf · three bells · high shelf · low-pass, each with freq/gain/Q, over a live spectrum with per-band colour fills and a draggable curve (drag = freq + gain, scroll = Q). It's baked into Export Mix.
 
 ### Instruments
 
@@ -670,6 +678,17 @@ Two ways to load a sample:
 2. **Use as Sample:** once a loop slot has a recording, click `🎹 Use as Sample` on that slot. The recorded buffer becomes the sample source immediately.
 
 Once loaded, the sample name appears next to the `🎹 Sample` toggle. Click the toggle to switch between the sample and the last-used oscillator waveform.
+
+#### Piano roll
+
+The **Keys / Roll** toggle in the keyboard header swaps the piano for a **polyphonic step sequencer** — a two-octave (C3–B4) pitch × 16-step grid.
+
+- Click a cell to place or remove a note; **stack cells in a column for chords**
+- It plays through the **current instrument** — waveform / guitar / sample, with the ADSR and filter applied — so it sounds like whatever you've dialled in
+- **▶ Play** runs the pattern locked to BPM (scrolling playhead); **Reset** clears it
+- **→ Loop** renders the roll straight into the next empty loop slot through an OfflineAudioContext — mathematically perfect timing, with the decay tails wrapped around the loop point for a seamless join
+
+The drum sequencer and the piano roll share one transport grid: start one while the other is playing and they lock to the same downbeat.
 
 #### Microphone
 

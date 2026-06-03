@@ -13,6 +13,8 @@ import {
 } from './synth.js';
 import { chBPM, toggleMetro, chCountIn, tapTempo, toggleQuantize } from './transport.js';
 import { toggleMic, toggleAutotune, setAtKey, setAtScaleSel, setAtSpeed } from './mic.js';
+import { setSynthMode, togglePseq, pushPseqToLoop, clearPseq } from './pianoseq.js';
+import { openLoopEq, closeLoopEq, resetLoopEq, loopEqOpen } from './loopeq.js';
 
 // ── Help modal ──────────────────────────────────────────────────────────────────
 function showHelp()   { document.getElementById('help-modal').classList.add('open'); }
@@ -30,6 +32,10 @@ Object.assign(window, {
   // synth
   setWave, toggleGuitar, setGuitarVol, chOctave, setADSR, setFilter,
   toggleArp, setArpRate, setArpMode, loadSample, toggleSampleMode, useAsSample,
+  // piano roll
+  setSynthMode, togglePseq, pushPseqToLoop, clearPseq,
+  // per-loop EQ
+  openLoopEq, closeLoopEq, resetLoopEq,
   // loops
   tapRecord, tapPlay, clearSlot, setVol, nudgeSlot,
   // master fx
@@ -45,7 +51,7 @@ document.addEventListener('keydown', e => {
   if (e.repeat || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   // Help: ? toggles, Esc closes (not bound to a piano key)
   if (e.key === '?')      { e.preventDefault(); toggleHelp(); return; }
-  if (e.key === 'Escape') { closeHelp(); return; }
+  if (e.key === 'Escape') { loopEqOpen() ? closeLoopEq() : closeHelp(); return; }
   // F1–F6 toggle record on loop slots
   if (e.key >= 'F1' && e.key <= 'F6') {
     e.preventDefault();
@@ -70,3 +76,4 @@ buildDrums();
 buildKbd();
 animRings();
 setDrumMode('pads');
+setSynthMode('keys');

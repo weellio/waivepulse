@@ -108,9 +108,10 @@ export function noteOn(n) {
     filt.type  = 'lowpass';
     filt.frequency.setValueAtTime(Math.min(hz * 14, 12000), t);
     filt.frequency.exponentialRampToValueAtTime(hz * 2, t + 0.06);
-    // Instant peak, then natural string decay over ~2.5 s
+    // Fast (but not instant) attack to soften the transient spike, then decay ~2.5 s
     const env  = ctx.createGain();
-    env.gain.setValueAtTime(S.guitarVol, t + 0.001);
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.linearRampToValueAtTime(S.guitarVol, t + 0.006);
     env.gain.exponentialRampToValueAtTime(0.0001, t + 2.5);
     osc.connect(filt); filt.connect(env); env.connect(S.inputBus);
     osc.start(t); osc.stop(t + 2.6);
@@ -189,6 +190,54 @@ export function makeSynthFilter() {
   f.frequency.value = S.filterCutoff;
   f.Q.value = S.filterReso;
   return f;
+}
+
+// Schedule ONE polyphonic voice at absolute time `when` for `gate` seconds, using the
+// current instrument (wave / guitar / sample), ADSR and filter. `actx`/`dest` let the
+// piano-roll render into either the live graph or an OfflineAudioContext (for → Loop).
+export function spawnVoice(hz, { when, gate, vel = 1, actx = S.ctx, dest = S.inputBus }) {
+  const t   = when;
+  const atk = S.attackMs  / 1000;
+  const dec = S.decayMs   / 1000;
+  const rel = S.releaseMs / 1000;
+  const pk  = 0.5 * vel;                 // lower than live single notes — chords stack
+  const sus = pk * S.sustainLevel;
+  const relStart = t + Math.max(gate, atk + 0.01);
+
+  const env = actx.createGain();
+  env.gain.setValueAtTime(0.0001, t);
+  env.gain.linearRampToValueAtTime(pk,  t + atk);
+  env.gain.linearRampToValueAtTime(sus, t + atk + dec);
+  env.gain.setValueAtTime(Math.max(sus, 0.0001), relStart);
+  env.gain.exponentialRampToValueAtTime(0.0001, relStart + rel);
+
+  let src, filt = null;
+  if (S.guitarMode) {
+    const h = [0, 1, 0.5, 0.25, 0.12, 0.06, 0.03, 0.015];
+    const osc = actx.createOscillator();
+    osc.setPeriodicWave(actx.createPeriodicWave(new Float32Array(h), new Float32Array(h.length)));
+    osc.frequency.value = hz;
+    src = osc;
+  } else if (S.sampleMode && S.sampleBuffer) {
+    const s = actx.createBufferSource();
+    s.buffer = S.sampleBuffer;
+    s.playbackRate.value = hz / 261.63;  // sample root assumed C4
+    src = s;
+  } else {
+    const osc = actx.createOscillator();
+    osc.type = S.wave;
+    osc.frequency.value = hz;
+    src = osc;
+  }
+
+  filt = actx.createBiquadFilter();
+  filt.type = 'lowpass';
+  filt.frequency.value = S.filterCutoff;
+  filt.Q.value = S.filterReso;
+
+  src.connect(filt); filt.connect(env); env.connect(dest);
+  src.start(t);
+  try { src.stop(relStart + rel + 0.05); } catch (_) {}
 }
 
 export function setFilter() {

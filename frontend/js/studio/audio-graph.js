@@ -2,6 +2,7 @@
 // master-bus effect chain (existing limiter/clipper/exciter + the four new
 // effects: noise gate, bitcrusher, wavefolder, Dattorro plate reverb).
 import { S } from './state.js';
+import { createEq7 } from '../shared/eq7.js';
 
 // ── Master-chain topology ───────────────────────────────────────────────────
 //
@@ -187,13 +188,16 @@ export function wireTrack(stem) {
   t.eqTreble = x.createBiquadFilter(); t.eqTreble.type = 'highshelf'; t.eqTreble.frequency.value = 4000;
   t.reverbSend = x.createGain(); t.reverbSend.gain.value = 0;
   t.delaySend = x.createGain(); t.delaySend.gain.value = 0;
-  // src → offsetNode → gainNode → panNode → sub→bass→mid→treb → masterBus
+  // 7-band parametric EQ after the 4 quick shelves, before the bus + sends
+  t.eq = createEq7(x);
+  // src → offsetNode → gainNode → panNode → sub→bass→mid→treb → eq7 → masterBus
   t.offsetNode.connect(t.gainNode);
   t.gainNode.connect(t.panNode);
   t.panNode.connect(t.eqSub); t.eqSub.connect(t.eqBass); t.eqBass.connect(t.eqMid); t.eqMid.connect(t.eqTreble);
-  t.eqTreble.connect(S._masterBus);
-  t.eqTreble.connect(t.reverbSend); t.reverbSend.connect(S._reverbNode);
-  t.eqTreble.connect(t.delaySend); t.delaySend.connect(S._delayInput);
+  t.eqTreble.connect(t.eq.input);
+  t.eq.output.connect(S._masterBus);
+  t.eq.output.connect(t.reverbSend); t.reverbSend.connect(S._reverbNode);
+  t.eq.output.connect(t.delaySend); t.delaySend.connect(S._delayInput);
 }
 
 // ── Existing master-effect toggles ──────────────────────────────────────────

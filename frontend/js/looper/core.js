@@ -1,6 +1,19 @@
 // ── Audio context, capture worklets, global FX, bypass, export ────────────────
 import { S } from './state.js';
 import { setStatus } from './util.js';
+import { applyEqOffline, snapshotEq, eqIsFlat } from '../shared/eq7.js';
+
+// Soft-clip curve: transparent (linear) below ±0.7, then soft-knees toward ±1 so
+// extreme peaks are rounded instead of clipped — kills the static the guitar's
+// pluck transient was adding to recordings, without touching normal levels.
+function makeSoftClipCurve() {
+  const n = 2048, c = new Float32Array(n), thr = 0.7;
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1, ax = Math.abs(x), s = Math.sign(x);
+    c[i] = ax <= thr ? x : s * (thr + (1 - thr) * Math.tanh((ax - thr) / (1 - thr)));
+  }
+  return c;
+}
 
 export function ensureCtx() {
   if (S.ctx) return;
@@ -37,9 +50,15 @@ export function ensureCtx() {
   S.masterOut.connect(S.reverbNode); S.reverbNode.connect(S.reverbGain); S.reverbGain.connect(ctx.destination);
   S.masterOut.connect(S.delayFX);    S.delayFX.connect(S.delayGain);    S.delayGain.connect(ctx.destination);
 
+  // Soft clipper on the instrument bus — tames extreme peaks before the recorder
+  S.inputClip = ctx.createWaveShaper();
+  S.inputClip.curve = makeSoftClipCurve();
+  S.inputClip.oversample = '4x';
+  S.inputBus.connect(S.inputClip);
+
   // captureNode wired in async below; bypass path always ready
   S.captureOutGain.connect(S.masterOut);
-  S.inputBus.connect(S.bypassGain);
+  S.inputClip.connect(S.bypassGain);
   S.bypassGain.connect(S.masterOut);
   S.loopBus.connect(S.masterOut);
 
@@ -60,7 +79,7 @@ export async function initCapture() {
         S.captureChunks.R.push(e.data[1]);
       }
     };
-    S.inputBus.connect(S.captureNode);
+    S.inputClip.connect(S.captureNode);
     S.captureNode.connect(S.captureOutGain);
 
     // Autotune processor (best-effort; only affects the mic when enabled)
@@ -85,7 +104,7 @@ export async function initCapture() {
         S.captureChunks.R.push(new Float32Array(R));
       }
     };
-    S.inputBus.connect(sp);
+    S.inputClip.connect(sp);
     sp.connect(S.captureOutGain);
     S.captureNode = {port: {postMessage: () => {}}};
   }
@@ -137,7 +156,13 @@ export async function exportMix() {
     src.buffer = s.buffer; src.loop = true; src.loopEnd = s.buffer.duration;
     const g = offCtx.createGain();
     g.gain.value = s.gainNode ? s.gainNode.gain.value : 1;
-    src.connect(g); g.connect(offCtx.destination); src.start(0);
+    if (s.eq && !eqIsFlat(s.eq)) {                 // bake the per-loop EQ into the render
+      const oeq = applyEqOffline(offCtx, snapshotEq(s.eq));
+      src.connect(oeq.input); oeq.output.connect(g);
+    } else {
+      src.connect(g);
+    }
+    g.connect(offCtx.destination); src.start(0);
   });
   const rendered = await offCtx.startRendering();
   const wav = bufToWav(rendered);

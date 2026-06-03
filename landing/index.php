@@ -36,7 +36,7 @@ $features = [
     'kicker'=> 'Demucs stem mixer',
     'title' => 'A full DAW in your browser.',
     'body'  => 'Every song splits into six stems on your GPU — vocals, drums, bass, guitar, piano, other. Mix them with per-track EQ, a master chain, a live visual EQ, mute automation, a rack of creative effects, and a lossless export.',
-    'points'=> ['Six-stem separation', 'Per-track Visual EQ + master bus', 'Clipper · limiter · exciter · noise gate', 'Dattorro reverb · bitcrusher · wavefolder', 'Export the exact mix you hear'],
+    'points'=> ['Six-stem separation', 'Per-track 7-band parametric EQ', 'Clipper · limiter · exciter · noise gate', 'Dattorro reverb · bitcrusher · wavefolder', 'Export the exact mix you hear'],
   ],
   [
     'tag'   => 'Looper',
@@ -44,8 +44,8 @@ $features = [
     'img'   => 'img/looper.jpg',
     'kicker'=> 'Ed Sheeran in a tab',
     'title' => 'Build a track, layer by layer.',
-    'body'  => 'A full loop station: synthesized drums with a 16-step sequencer, a two-octave synth with filter, arpeggiator and ADSR, a plucked-guitar voice, a sampler, and a mic with autotune — stacked into six loops. Overdubs are auto-quantized, so every layer lands on the beat.',
-    'points'=> ['Six layers with quantized overdub', '16-step sequencer w/ velocity → push to a loop', 'Two-octave synth: filter · arp · guitar · sampler', 'Mic with autotune · reverb · delay', 'Tap tempo, count-in, per-loop nudge'],
+    'body'  => 'A full loop station: synthesized drums with a 16-step sequencer, a two-octave synth with filter, arpeggiator and ADSR, a polyphonic piano roll for chords, a plucked-guitar voice, a sampler, and a mic with autotune — stacked into six loops. Overdubs are auto-quantized, so every layer lands on the beat.',
+    'points'=> ['Six layers with quantized overdub', 'Drum sequencer + polyphonic piano roll → push to a loop', 'Two-octave synth: filter · arp · guitar · sampler', 'Per-loop 7-band parametric EQ + mic autotune', 'Tap tempo, count-in, per-loop nudge'],
   ],
   [
     'tag'   => 'Karaoke',

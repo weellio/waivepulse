@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WAIvePulse Looper</title>
 <link rel="icon" type="image/png" href="/assets/wave small.png">
-<link rel="stylesheet" href="/css/looper.css?v=4">
+<link rel="stylesheet" href="/css/looper.css?v=8">
 </head>
 <body>
 
@@ -111,9 +111,17 @@
       <div class="rcard grow">
         <div class="rcard-hdr">
           Synth Keyboard
-          <span class="sub">— A–K white · W E T Y U black (current octave)</span>
+          <span class="sub">— A–K white · W E T Y U black</span>
+          <div class="rcard-hdr-actions">
+            <button class="ibtn on" id="keysModeBtn" onclick="setSynthMode('keys')">Keys</button>
+            <button class="ibtn"    id="rollModeBtn" onclick="setSynthMode('roll')">Roll</button>
+            <button class="t-btn" id="pseqPlayBtn"  onclick="togglePseq()"     style="display:none;margin-left:6px">▶ Play</button>
+            <button class="t-btn" id="pseqPushBtn"  onclick="pushPseqToLoop()" style="display:none" title="Render the piano roll into the next empty loop — perfectly timed">→ Loop</button>
+            <button class="t-btn" id="pseqResetBtn" onclick="clearPseq()"      style="display:none" title="Clear all notes">Reset</button>
+          </div>
         </div>
-        <div class="kbd-wrap" id="kbdWrap"></div>
+        <div id="keysView"><div class="kbd-wrap" id="kbdWrap"></div></div>
+        <div id="rollView" style="display:none"><div id="pianoRoll"></div></div>
 
         <div class="ctrl-section">
           <span class="sect-label">Instrument &amp; Octave</span>
@@ -263,6 +271,27 @@
   </div><!-- #instruments -->
 </div><!-- #workspace -->
 
+<!-- ── Per-loop EQ modal ───────────────────────────────────── -->
+<div id="loopeq-modal">
+  <div id="loopeq-panel">
+    <div class="help-hdr">
+      <div>
+        <div class="help-hdr-title" id="loopeq-title">Loop EQ</div>
+        <div class="help-hdr-sub">Drag a point = freq + gain · scroll over a point = Q · 7-band parametric</div>
+      </div>
+      <button class="help-close" onclick="closeLoopEq()">×</button>
+    </div>
+    <div class="loopeq-body">
+      <canvas id="loopeq-canvas"></canvas>
+      <div id="loopeq-readout"></div>
+      <div class="loopeq-actions">
+        <button class="t-btn" onclick="resetLoopEq()">Reset EQ</button>
+        <button class="t-btn export" onclick="closeLoopEq()">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Help modal ──────────────────────────────────────────── -->
 <div id="help-modal">
   <div id="help-panel">
@@ -281,9 +310,11 @@
           <tr><td><kbd>F1</kbd>–<kbd>F6</kbd></td><td>Start / stop recording loop 1–6 (or click <b>● Record</b>)</td></tr>
           <tr><td>▶ / ⏸ on a slot</td><td>Play or pause that loop</td></tr>
           <tr><td>✕ on a slot</td><td>Clear that loop</td></tr>
+          <tr><td>⚌ EQ on a slot</td><td>Open the 7-band parametric EQ for that loop (spectrum + draggable curve)</td></tr>
           <tr><td>🎹 Use as Sample</td><td>Load a recorded loop onto the keyboard as a pitched sample</td></tr>
           <tr><td>VOL slider</td><td>Per-loop volume</td></tr>
           <tr><td>SYNC ◀ ▶</td><td>Nudge a loop ½ beat earlier / later to fix an off-the-beat take (live, non-destructive)</td></tr>
+          <tr><td>While recording</td><td>A blinking count-in number, a sweep bar across the card, and a beat-pulsing border show you the timing</td></tr>
           <tr><td>First loop sets the length</td><td>Record freely, tap Record again to set the loop length</td></tr>
           <tr><td>Overdubs are auto-timed</td><td>Once the length is set, a new layer waits for the downbeat then records exactly one bar — always in time, whenever you hit Record</td></tr>
         </tbody></table>
@@ -317,6 +348,17 @@
           <tr><td><kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd> <kbd>V</kbd> <kbd>B</kbd> <kbd>N</kbd> <kbd>M</kbd></td><td>White keys (upper octave)</td></tr>
           <tr><td>Oct − / +</td><td>Shift the keyboard up or down an octave</td></tr>
           <tr><td>Hold &amp; drag across keys</td><td>Glissando across the keys</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">▦ Piano Roll</div>
+        <table class="help-table"><tbody>
+          <tr><td><b>Keys / Roll</b></td><td>Switch the keyboard for a polyphonic piano-roll sequencer (two octaves, C3–B4)</td></tr>
+          <tr><td>Click a cell</td><td>Place / remove a note; stack cells in a column for chords</td></tr>
+          <tr><td><b>▶ Play</b></td><td>Play the pattern with the current instrument (waveform/guitar/sample + ADSR + filter), locked to BPM</td></tr>
+          <tr><td><b>→ Loop</b></td><td>Render the roll into the next empty loop slot — perfectly timed</td></tr>
+          <tr><td><b>Reset</b></td><td>Clear all notes</td></tr>
         </tbody></table>
       </div>
 

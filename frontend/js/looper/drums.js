@@ -314,10 +314,14 @@ export function toggleSeq() {
 }
 
 export function startSeq() {
-  S.seqPlaying = true; S.seqStep = 0;
-  S.seqStartTime = S.ctx.currentTime + 0.05;
-  S.seqNextTime  = S.seqStartTime;
-  S.seqTimerId   = setInterval(runSeq, 22);
+  S.seqPlaying = true;
+  const stepDur = (60 / S.bpm) / 4;
+  // Share the transport grid with the piano roll if it's already running
+  if (!S.pseqPlaying || S.seqAnchor == null) S.seqAnchor = S.ctx.currentTime + 0.05;
+  const stepsAhead = Math.max(0, Math.ceil((S.ctx.currentTime - S.seqAnchor) / stepDur));
+  S.seqNextTime = S.seqAnchor + stepsAhead * stepDur;
+  S.seqStep     = ((stepsAhead % SEQ_STEPS) + SEQ_STEPS) % SEQ_STEPS;
+  S.seqTimerId  = setInterval(runSeq, 22);
   document.getElementById('seqPlayBtn').textContent = '■ Stop';
   seqVisLoop();
 }
@@ -342,7 +346,7 @@ export function runSeq() {
 export function seqVisLoop() {
   if (!S.seqPlaying) return;
   const stepDur = (60 / S.bpm) / 4;
-  const vis = Math.floor(Math.max(0, S.ctx.currentTime - S.seqStartTime) / stepDur) % SEQ_STEPS;
+  const vis = Math.floor(Math.max(0, S.ctx.currentTime - S.seqAnchor) / stepDur) % SEQ_STEPS;
   S.seqCells.forEach((row) => row.forEach((c, ci) => c.el.classList.toggle('cur', ci === vis)));
   requestAnimationFrame(seqVisLoop);
 }

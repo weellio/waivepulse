@@ -11,6 +11,7 @@ export const S = {
   masterOut: undefined,
   captureNode: undefined,
   captureOutGain: undefined,
+  inputClip: undefined,     // soft clipper between inputBus and the recorder
   bypassGain: undefined,
   reverbNode: undefined,
   reverbGain: undefined,
@@ -87,6 +88,17 @@ export const S = {
   seqTimerId: null,
   seqCells: [],
   drumMode: 'pads',
+  seqAnchor: null,          // shared transport grid origin (drum seq + piano roll lock to this)
+
+  // ── Piano-roll sequencer (polyphonic, 24 rows × 16 steps) ──
+  synthMode: 'keys',        // keys | roll
+  pseqPattern: Array.from({ length: 24 }, () => new Array(16).fill(0)),
+  pseqPlaying: false,
+  pseqStep: 0,
+  pseqNextTime: 0,
+  pseqStartTime: 0,
+  pseqTimerId: null,
+  pseqCells: [],
 
   // ── Quantize ──
   quantize: false,

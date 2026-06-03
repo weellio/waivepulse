@@ -78,8 +78,20 @@ body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans
 .slot.counting{border-color:var(--amber);box-shadow:0 0 8px rgba(251,191,36,.1)}
 .slot-hdr{display:flex;align-items:center;justify-content:space-between;min-height:14px}
 .slot-num{font-size:8px;font-weight:700;letter-spacing:.1em;color:var(--txt3);text-transform:uppercase}
+.slot-key{font-family:'Courier New',monospace;font-size:8px;color:var(--accent);background:var(--bg);
+  border:1px solid var(--b2);border-radius:3px;padding:0 4px;margin-left:3px;letter-spacing:0}
 .slot-dur{font-size:9px;color:var(--txt3);font-variant-numeric:tabular-nums}
 .slot-canvas{width:100%;height:52px;border-radius:3px;background:#0a0a0c;display:block;flex-shrink:0}
+/* recording sweep bar (top edge of the card) */
+.rec-bar{position:absolute;top:0;left:0;right:0;height:3px;background:rgba(248,113,113,.18);
+  display:none;border-radius:8px 8px 0 0;overflow:hidden;z-index:3}
+.slot.recording .rec-bar{display:block}
+.rec-bar-fill{height:100%;width:0;background:var(--red);box-shadow:0 0 6px rgba(248,113,113,.7)}
+/* blinking count-in number, top-left */
+.rec-count{position:absolute;top:25px;left:11px;font-size:24px;font-weight:800;line-height:1;
+  color:var(--red);display:none;z-index:4;pointer-events:none;text-shadow:0 1px 6px rgba(0,0,0,.7)}
+.slot.counting .rec-count{display:block;animation:recblink .6s ease-in-out infinite}
+@keyframes recblink{0%,100%{opacity:1}50%{opacity:.2}}
 .slot-btns{display:grid;grid-template-columns:1fr 1fr;gap:3px}
 .slot-btns .rec-btn{grid-column:1/-1}
 .slt-btn{padding:4px 3px;border-radius:4px;border:none;cursor:pointer;font-size:10px;
@@ -187,14 +199,14 @@ input[type=range].vslider::-webkit-slider-thumb{-webkit-appearance:none;width:11
 .seq-beat-line{border-left:1px solid var(--b3)}
 
 /* ── Piano keyboard ─────────────────────────────────────────── */
-.kbd-wrap{position:relative;height:150px;user-select:none;overflow:visible;flex-shrink:0;
+.kbd-wrap{position:relative;height:104px;user-select:none;overflow:visible;flex-shrink:0;
   margin:4px auto 0;width:928px}
 .pkey{position:absolute;bottom:0;cursor:pointer;border-radius:0 0 5px 5px;
   border:1px solid #161618;display:flex;align-items:flex-end;justify-content:center;
-  padding-bottom:6px;transition:background .05s;font-size:9px;font-weight:700}
-.pkey.white{width:60px;height:150px;background:#ccccd6;color:#888;z-index:1}
-.pkey.black{width:34px;height:94px;background:#111115;color:#555;z-index:2;
-  top:0;bottom:auto;border-color:var(--b2);padding-bottom:5px;font-size:8px}
+  padding-bottom:5px;transition:background .05s;font-size:9px;font-weight:700}
+.pkey.white{width:60px;height:104px;background:#ccccd6;color:#888;z-index:1}
+.pkey.black{width:34px;height:64px;background:#111115;color:#555;z-index:2;
+  top:0;bottom:auto;border-color:var(--b2);padding-bottom:4px;font-size:8px}
 .pkey.white:hover,.pkey.white.on{background:#8fa8c8}
 .pkey.black:hover,.pkey.black.on{background:rgba(140,255,255,.22);color:var(--accent);
   border-color:var(--accent)}
@@ -216,18 +228,51 @@ input[type=range].vslider::-webkit-slider-thumb{-webkit-appearance:none;width:11
 .gvol-row{display:flex;align-items:center;gap:5px;margin-left:4px;padding-left:6px;
   border-left:1px solid var(--b2)}
 .gvol-lbl{font-size:9px;color:var(--txt3)}
-.adsr-section{flex:1;min-height:0;display:flex;flex-direction:column}
-.adsr-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;flex:1;min-height:0;margin-top:4px}
-.adsr-col{display:flex;flex-direction:column;align-items:center;gap:6px;min-height:0}
-.adsr-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
-  color:var(--txt3);text-align:center;flex-shrink:0}
-.adsr-val{font-size:10px;font-weight:700;color:var(--accent);text-align:center;
-  font-variant-numeric:tabular-nums;flex-shrink:0}
-.adsr-col .vslider{flex:1;min-height:70px;height:auto;width:8px;
-  writing-mode:vertical-lr;direction:rtl;-webkit-appearance:slider-vertical;appearance:slider-vertical}
+/* Compact horizontal ADSR (frees vertical space for the piano roll) */
+.adsr-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:4px}
+.adsr-col{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:5px}
+.adsr-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--txt3);white-space:nowrap}
+.adsr-val{font-size:10px;font-weight:700;color:var(--accent);text-align:right;min-width:30px;
+  font-variant-numeric:tabular-nums}
+.adsr-col .vslider{width:100%}
 .sample-ctrl{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .sample-name{font-size:10px;color:var(--accent);overflow:hidden;text-overflow:ellipsis;
   max-width:160px;white-space:nowrap}
+
+/* ── Piano roll (polyphonic step sequencer) ─────────────────── */
+#rollView{overflow:auto;max-height:210px;margin:4px 0 2px}
+#rollView::-webkit-scrollbar{width:6px;height:6px}
+#rollView::-webkit-scrollbar-thumb{background:var(--b3);border-radius:3px}
+#pianoRoll{display:grid;width:max-content}
+.proll-lbl{font-size:8px;color:var(--txt3);display:flex;align-items:center;justify-content:flex-end;
+  padding-right:5px;white-space:nowrap;position:sticky;left:0;background:var(--s1);z-index:1}
+.proll-lbl.sharp{opacity:.55}
+.proll-cell{height:14px;border:1px solid var(--b1);background:var(--b1);cursor:pointer;
+  transition:background .05s}
+.proll-cell.sharp{background:#101015}
+.proll-cell:hover{border-color:var(--b3)}
+.proll-cell.on{background:var(--purple);border-color:var(--purple)}
+.proll-cell.cur{box-shadow:inset 0 0 0 2px rgba(255,255,255,.4)}
+.proll-beat{border-left:1px solid var(--b3)}
+
+/* ── Per-loop EQ ─────────────────────────────────────────────── */
+.eq-btn{background:rgba(140,255,255,.06);color:var(--accent);border:1px solid rgba(140,255,255,.2);font-size:10px}
+.eq-btn:hover{background:rgba(140,255,255,.13)}
+#loopeq-modal{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:500;display:none;
+  align-items:center;justify-content:center;padding:20px}
+#loopeq-modal.open{display:flex}
+#loopeq-panel{background:#111;border:1px solid #2a2a2a;border-radius:10px;width:100%;max-width:760px;
+  box-shadow:0 8px 40px rgba(0,0,0,.6)}
+.loopeq-body{padding:14px}
+#loopeq-canvas{width:100%;height:250px;display:block;background:#0a0a0c;border-radius:8px;border:1px solid var(--b1)}
+#loopeq-readout{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:10px}
+.eqr-col{display:flex;flex-direction:column;align-items:center;gap:1px;font-size:9px;font-variant-numeric:tabular-nums}
+.eqr-ic{width:18px;height:18px;margin-bottom:1px}
+.eqr-f{font-weight:700}
+.eqr-g{opacity:.9}
+.eqr-q{opacity:.55}
+.loopeq-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
 
 /* ── Mic card ───────────────────────────────────────────────── */
 #micBar{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
