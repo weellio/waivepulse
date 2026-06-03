@@ -1,0 +1,225 @@
+<!doctype html>
+<!--
+  Standalone verification harness for the Looper "Notation" panel.
+  Mirrors the exact rendering logic in frontend/js/looper/pianoseq.js (renderSheet)
+  so you can eyeball notation correctness on controlled examples without the server.
+  Open this file directly in a browser.  If the staff here looks right, the app will too.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WAIvePulse — sheet music preview</title>
+<style>
+  body{background:#0b0b0e;color:#d2d2d8;font-family:system-ui,Segoe UI,sans-serif;margin:24px}
+  h1{font-size:15px;font-weight:700;letter-spacing:.04em}
+  .case{margin:14px 0 22px}
+  .case h2{font-size:12px;color:#a0a0aa;font-weight:600;margin:0 0 4px}
+  .sheet-wrap{background:#0c0c11;border:1px solid #1c1c24;border-radius:6px;padding:6px 8px;max-width:620px}
+  #x svg, .sheet-wrap svg{width:100%;height:auto;display:block}
+  /* copied verbatim from css/looper.css */
+  .sm-line{stroke:#4a4a58;stroke-width:1}
+  .sm-bar{stroke:#5a5a6a;stroke-width:1}
+  .sm-bar.end{stroke-width:2.5}
+  .sm-brace{stroke:#5a5a6a;stroke-width:2.5;fill:none}
+  .sm-ledger{stroke:#6a6a7a;stroke-width:1.2}
+  .sm-note{fill:#a78bfa}
+  .sm-note.open{fill:none;stroke:#a78bfa;stroke-width:1.7}
+  .sm-stem{stroke:#a78bfa;stroke-width:1.4}
+  .sm-beam{stroke:#a78bfa;stroke-width:2.8;stroke-linecap:butt}
+  .sm-beam2{stroke:#a78bfa;stroke-width:2.4;stroke-linecap:butt}
+  .sm-flag{stroke:#a78bfa;stroke-width:1.7;fill:none}
+  .sm-acc{fill:#cfd2dc;font-size:15px;font-family:"Segoe UI Symbol",serif}
+  .sm-clef{fill:#cfd2dc;font-family:"Segoe UI Symbol","Segoe UI Historic",Symbola,serif}
+  .sm-text{fill:#707078;font-size:10px}
+</style>
+</head>
+<body>
+<h1>WAIvePulse — Notation render check</h1>
+<div id="cases"></div>
+
+<script type="module">
+// ── logic mirrored from frontend/js/looper/pianoseq.js ────────────────────────
+const STEPS = 16, ROWS = 24, LOW_MIDI = 48;
+const SM = { topY: 16, hg: 4.5, leftPad: 60, colW: 30 };
+const PC_LETTER = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6];
+const PC_SHARP  = [0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0];
+const diaOf   = m => (Math.floor(m / 12) - 1) * 7 + PC_LETTER[m % 12];
+const isSharp = m => PC_SHARP[m % 12] === 1;
+const smY     = dia => SM.topY + (38 - dia) * SM.hg;
+const PR = [];
+for (let r = 0; r < ROWS; r++) PR.push({ midi: LOW_MIDI + (ROWS - 1 - r) });
+
+function pseqRuns(pat) {
+  const runs = [];
+  for (let row = 0; row < ROWS; row++) {
+    let s = 0;
+    while (s < STEPS) {
+      if (!pat[row][s]) { s++; continue; }
+      let len = 1;
+      while (s + len < STEPS && pat[row][s + len]) len++;
+      const midi = PR[row].midi;
+      runs.push({ midi, dia: diaOf(midi), sharp: isSharp(midi), start: s, len });
+      s += len;
+    }
+  }
+  return runs;
+}
+const DUR_TABLE = [
+  { n: 16, open: true,  stem: false, beams: 0, dot: false },
+  { n: 12, open: true,  stem: true,  beams: 0, dot: true  },
+  { n: 8,  open: true,  stem: true,  beams: 0, dot: false },
+  { n: 6,  open: false, stem: true,  beams: 0, dot: true  },
+  { n: 4,  open: false, stem: true,  beams: 0, dot: false },
+  { n: 3,  open: false, stem: true,  beams: 1, dot: true  },
+  { n: 2,  open: false, stem: true,  beams: 1, dot: false },
+  { n: 1,  open: false, stem: true,  beams: 2, dot: false },
+];
+function durSpec(len) {
+  let best = DUR_TABLE[0], bd = Infinity;
+  for (const d of DUR_TABLE) { const diff = Math.abs(d.n - len); if (diff < bd) { bd = diff; best = d; } }
+  return best;
+}
+
+function buildSVG(pat, bpm) {
+  const x0 = SM.leftPad, xN = SM.leftPad + SM.colW * STEPS, p = [];
+  for (const d of [30, 32, 34, 36, 38, 18, 20, 22, 24, 26])
+    p.push(`<line class="sm-line" x1="${x0}" y1="${smY(d)}" x2="${xN}" y2="${smY(d)}"/>`);
+  p.push(`<path class="sm-brace" d="M${x0 - 7} ${smY(38)} q-6 ${(smY(18) - smY(38)) / 2} 0 ${smY(18) - smY(38)}"/>`);
+  for (let b = 0; b <= 4; b++) {
+    const x = x0 + b * 4 * SM.colW;
+    p.push(`<line class="sm-bar${b === 4 ? ' end' : ''}" x1="${x}" y1="${smY(38)}" x2="${x}" y2="${smY(18)}"/>`);
+  }
+  p.push(`<text class="sm-clef" x="6" y="${smY(30) + 2}" font-size="36">𝄞</text>`);
+  p.push(`<text class="sm-clef" x="8" y="${smY(20)}" font-size="28">𝄢</text>`);
+  p.push(`<text class="sm-text" x="2" y="11">♩ = ${bpm}</text>`);
+  p.push(`<text class="sm-clef" x="${x0 - 17}" y="${smY(35)}" font-size="15">4</text>`);
+  p.push(`<text class="sm-clef" x="${x0 - 17}" y="${smY(31)}" font-size="15">4</text>`);
+
+  const STEM = 26;
+  const noteX = step => x0 + step * SM.colW + SM.colW / 2;
+  const down  = dia => dia >= 28 ? dia >= 34 : dia >= 22;
+  const runs  = pseqRuns(pat);
+
+  for (const n of runs) {
+    const d = durSpec(n.len);
+    if (d.beams >= 1 || !d.stem) continue;
+    const y = smY(n.dia), x = noteX(n.start), dn = down(n.dia), sx = x + (dn ? -5 : 5);
+    p.push(`<line class="sm-stem" x1="${sx}" y1="${y}" x2="${sx}" y2="${y + (dn ? STEM : -STEM)}"/>`);
+  }
+
+  const groups = {};
+  for (const n of runs) {
+    if (durSpec(n.len).beams < 1) continue;
+    const key = (n.dia >= 28 ? 'T' : 'B') + Math.floor(n.start / 4);
+    const g = (groups[key] = groups[key] || {});
+    (g[n.start] = g[n.start] || []).push(n);
+  }
+  for (const key in groups) {
+    const stepMap = groups[key];
+    const steps = Object.keys(stepMap).map(Number).sort((a, b) => a - b);
+    let sum = 0, cnt = 0, treb = 0;
+    for (const s of steps) for (const n of stepMap[s]) { sum += n.dia; cnt++; if (n.dia >= 28) treb++; }
+    const midLine = treb >= cnt - treb ? 34 : 22;
+    const dn = (sum / cnt) >= midLine, dir = dn ? 1 : -1;
+    const ext = {}, extY = {};
+    for (const s of steps) {
+      const dias = stepMap[s].map(n => n.dia);
+      ext[s]  = dn ? Math.min(...dias) : Math.max(...dias);
+      extY[s] = smY(ext[s]);
+    }
+    const sF = steps[0], sL = steps[steps.length - 1];
+    const xF = noteX(sF), xL = noteX(sL);
+    const MAXSL = 13;
+    let dy = extY[sL] - extY[sF];
+    if (dy >  MAXSL) dy =  MAXSL;
+    if (dy < -MAXSL) dy = -MAXSL;
+    const slope = (xL === xF) ? 0 : dy / (xL - xF);
+    let base;
+    for (const s of steps) {
+      const want = extY[s] + dir * STEM - slope * (noteX(s) - xF);
+      base = base === undefined ? want : (dir < 0 ? Math.min(base, want) : Math.max(base, want));
+    }
+    const beamY = x => base + slope * (x - xF);
+    const sxOf  = x => x + (dn ? -5 : 5);
+
+    if (steps.length === 1) {
+      const s = steps[0], x = noteX(s), ay = smY(ext[s]), by = ay + dir * STEM, sx = sxOf(x);
+      p.push(`<line class="sm-stem" x1="${sx}" y1="${ay}" x2="${sx}" y2="${by}"/>`);
+      const nb = Math.max(...stepMap[s].map(n => durSpec(n.len).beams));
+      for (let f = 0; f < nb; f++) {
+        const fy = by - dir * f * 6;
+        p.push(`<path class="sm-flag" d="M${sx} ${fy} q9 ${-dir * 4} 7 ${-dir * 13}"/>`);
+      }
+    } else {
+      for (const s of steps) {
+        const x = noteX(s), sx = sxOf(x);
+        p.push(`<line class="sm-stem" x1="${sx}" y1="${smY(ext[s])}" x2="${sx}" y2="${beamY(x)}"/>`);
+      }
+      p.push(`<line class="sm-beam" x1="${sxOf(xF)}" y1="${beamY(xF)}" x2="${sxOf(xL)}" y2="${beamY(xL)}"/>`);
+      const is16 = s => stepMap[s].some(n => durSpec(n.len).beams >= 2);
+      const off  = dn ? -4 : 4;
+      for (let i = 0; i < steps.length; i++) {
+        const s = steps[i]; if (!is16(s)) continue;
+        const x = noteX(s), sx = sxOf(x);
+        const next = steps[i + 1], prev = steps[i - 1];
+        if (next != null && is16(next)) {
+          const x2 = noteX(next);
+          p.push(`<line class="sm-beam2" x1="${sx}" y1="${beamY(x) + off}" x2="${sxOf(x2)}" y2="${beamY(x2) + off}"/>`);
+        } else if (!(prev != null && is16(prev))) {
+          const dirStub = next != null ? 1 : -1, xs = x + dirStub * 9;
+          p.push(`<line class="sm-beam2" x1="${sx}" y1="${beamY(x) + off}" x2="${sxOf(xs)}" y2="${beamY(xs) + off}"/>`);
+        }
+      }
+    }
+  }
+
+  for (const n of runs) {
+    const d = durSpec(n.len), y = smY(n.dia), x = noteX(n.start);
+    if (n.dia === 28) p.push(`<line class="sm-ledger" x1="${x - 8}" y1="${y}" x2="${x + 8}" y2="${y}"/>`);
+    if (n.sharp) p.push(`<text class="sm-acc" x="${x - 15}" y="${y + 5}">♯</text>`);
+    p.push(`<ellipse class="sm-note${d.open ? ' open' : ''}" cx="${x}" cy="${y}" rx="${d.open ? 5.4 : 5.2}" ry="3.9" transform="rotate(-20 ${x} ${y})"/>`);
+    if (d.dot) { const dy = (n.dia % 2 === 0) ? y - SM.hg : y; p.push(`<circle class="sm-note" cx="${x + 9}" cy="${dy}" r="1.6"/>`); }
+  }
+  return `<svg viewBox="0 0 548 150" preserveAspectRatio="xMidYMid meet">${p.join('')}</svg>`;
+}
+
+// ── test cases ────────────────────────────────────────────────────────────────
+const blank = () => Array.from({ length: ROWS }, () => new Array(STEPS).fill(0));
+const rowOf = midi => 71 - midi;                  // B4(71)=row0 … C3(48)=row23
+function place(pat, midi, start, len) { for (let i = 0; i < len; i++) pat[rowOf(midi)][start + i] = 1; }
+const N = { C4: 60, D4: 62, E4: 64, F4: 65, G4: 67, A4: 69, B4: 71, Cs4: 61, Fs4: 66,
+            C3: 48, D3: 50, E3: 52, F3: 53, G3: 55, A3: 57, B3: 59 };
+
+const cases = [
+  ['C-major scale, eighth notes (beams should slope UP)', p => {
+    [N.C4, N.D4, N.E4, N.F4, N.G4, N.A4, N.B4, N.A4].forEach((m, i) => place(p, m, i * 2, 2));
+  }],
+  ['Descending run, eighth notes (beams should slope DOWN)', p => {
+    [N.A4, N.G4, N.F4, N.E4, N.D4, N.C4, N.B3, N.A3].forEach((m, i) => place(p, m, i * 2, 2));
+  }],
+  ['Sixteenth run in beat 1, then a half note + two quarters', p => {
+    [N.C4, N.D4, N.E4, N.F4].forEach((m, i) => place(p, m, i, 1));   // four 16ths, double beam
+    place(p, N.G4, 4, 8);                                            // half note (hollow)
+    place(p, N.E4, 12, 2); place(p, N.F4, 14, 2);                    // beamed pair
+  }],
+  ['Durations: whole / dotted-half(?) — whole note fills the bar', p => {
+    place(p, N.C4, 0, 16);                                          // whole note, hollow, no stem
+  }],
+  ['Chord + sharp + bass clef notes', p => {
+    place(p, N.C4, 0, 4); place(p, N.E4, 0, 4); place(p, N.G4, 0, 4);  // C-major triad, quarters
+    place(p, N.Fs4, 4, 4);                                             // F#4 quarter (sharp)
+    place(p, N.C3, 8, 8);                                              // bass half note
+    place(p, N.G3, 8, 4);                                             // bass quarter
+  }],
+];
+
+const root = document.getElementById('cases');
+for (const [label, fill] of cases) {
+  const pat = blank(); fill(pat);
+  const div = document.createElement('div'); div.className = 'case';
+  div.innerHTML = `<h2>${label}</h2><div class="sheet-wrap">${buildSVG(pat, 120)}</div>`;
+  root.appendChild(div);
+}
+</script>
+</body>
+</html>

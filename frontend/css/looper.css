@@ -257,8 +257,8 @@ input[type=range].vslider::-webkit-slider-thumb{-webkit-appearance:none;width:11
 .sm-note{fill:var(--purple)}
 .sm-note.open{fill:none;stroke:var(--purple);stroke-width:1.7}
 .sm-stem{stroke:var(--purple);stroke-width:1.4}
-.sm-beam{stroke:var(--purple);stroke-width:3.4;stroke-linecap:butt}
-.sm-beam2{stroke:var(--purple);stroke-width:3;stroke-linecap:butt}
+.sm-beam{stroke:var(--purple);stroke-width:2.8;stroke-linecap:butt}
+.sm-beam2{stroke:var(--purple);stroke-width:2.4;stroke-linecap:butt}
 .sm-flag{stroke:var(--purple);stroke-width:1.7;fill:none}
 .sm-acc{fill:#cfd2dc;font-size:15px;font-family:"Segoe UI Symbol","Segoe UI Symbol",serif}
 .sm-clef{fill:#cfd2dc;font-family:"Segoe UI Symbol","Segoe UI Historic",Symbola,serif}

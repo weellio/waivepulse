@@ -76,7 +76,7 @@ Open the Looper page at any time — it works independently of the AI generation
 
 - **Drum machine:** 8 pads (Kick, Snare, Hi-Hat, Open HH, Clap, Tom, 808, Perc) synthesized via Web Audio — keys `1`–`8` — plus a **16-step sequencer** with per-step velocity, and a **→ Loop** button that renders a beat straight into a slot with perfect timing
 - **Synth keyboard:** two octaves (C4–C6, keys `A`–`K` / `W E T Y U` / `Z X C V B N M`). Oscillator waveforms, a plucked **guitar** voice, a resonant **low-pass filter** (cutoff + reso), and an **arpeggiator** (rate + up/down/random)
-- **Polyphonic piano roll:** a Keys/Roll toggle swaps the keyboard for a chord-capable step sequencer that renders straight to a loop in perfect time, sharing one transport grid with the drum sequencer
+- **Polyphonic piano roll:** a Keys/Roll toggle swaps the keyboard for a chord-capable step sequencer that renders straight to a loop in perfect time, sharing one transport grid with the drum sequencer. Fill adjacent cells to make **held notes** (16th → whole), and watch them appear on a **live grand-staff notation panel** with real durations and contour-slanted beams
 - **Click-and-drag slide:** hold the mouse and drag across pads or keys for a glissando / drum-roll effect
 - **Full ADSR envelope:** Attack, Decay, Sustain, and Release shape every synth voice (vertical sliders)
 - **Sampler:** import any audio file (or a recorded loop) and pitch it chromatically across the keyboard
@@ -684,11 +684,23 @@ Once loaded, the sample name appears next to the `🎹 Sample` toggle. Click the
 The **Keys / Roll** toggle in the keyboard header swaps the piano for a **polyphonic step sequencer** — a two-octave (C3–B4) pitch × 16-step grid.
 
 - Click a cell to place or remove a note; **stack cells in a column for chords**
+- **Fill adjacent cells in a row to make one held note** of that length — 1 cell = 16th, 2 = 8th, 3 = dotted-8th, 4 = quarter, 6 = dotted-quarter, 8 = half, 12 = dotted-half, 16 = whole. Held notes sustain on playback (one voice per note) instead of re-triggering each step
 - It plays through the **current instrument** — waveform / guitar / sample, with the ADSR and filter applied — so it sounds like whatever you've dialled in
 - **▶ Play** runs the pattern locked to BPM (scrolling playhead); **Reset** clears it
 - **→ Loop** renders the roll straight into the next empty loop slot through an OfflineAudioContext — mathematically perfect timing, with the decay tails wrapped around the loop point for a seamless join
+- Switching to Roll lays the card out in **two columns** — the grid takes the full height on the left (no scrolling for all 24 rows), the voice controls move to the right
 
 The drum sequencer and the piano roll share one transport grid: start one while the other is playing and they lock to the same downbeat.
+
+#### Notation (live sheet music)
+
+Below the voice controls in Roll mode, a **Notation** panel renders the piano roll as a real **grand staff** — a readable score that updates as you place notes:
+
+- **Treble staff** for C4–B4 over a **bass staff** for C3–B3, with **middle C on its own ledger line** between them — every note sits on its true line or space
+- **Real durations** drawn from the held-note lengths above: filled vs. hollow noteheads, stems, augmentation dots
+- **Contour-slanted beams** group eighths/sixteenths within a beat (single beam = 8ths, double = 16ths); the beam tilts up for a rising run and down for a falling one, and an isolated short note keeps a flag
+- A **♩ = tempo** marking, **4/4** time signature, and treble/bass clefs
+- A **playback cursor** sweeps across the staff in time with ▶ Play
 
 #### Microphone
 

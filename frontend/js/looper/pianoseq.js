@@ -86,8 +86,8 @@ export function renderSheet() {
   }
 
   // clefs (Segoe UI Symbol covers the Musical Symbols block on Windows), tempo, 4/4
-  p.push(`<text class="sm-clef" x="6" y="${smY(30) + 2}" font-size="36">𝄞</text>`);   // 𝄞
-  p.push(`<text class="sm-clef" x="8" y="${smY(25)}" font-size="27">𝄢</text>`);        // 𝄢
+  p.push(`<text class="sm-clef" x="6" y="${smY(30) + 2}" font-size="36">𝄞</text>`);   // 𝄞 treble
+  p.push(`<text class="sm-clef" x="8" y="${smY(20)}" font-size="28">𝄢</text>`);        // 𝄢 bass (seated on the bass staff)
   p.push(`<text class="sm-text" x="2" y="11">♩ = ${S.bpm}</text>`);
   p.push(`<text class="sm-clef" x="${x0 - 17}" y="${smY(35)}" font-size="15">4</text>`);
   p.push(`<text class="sm-clef" x="${x0 - 17}" y="${smY(31)}" font-size="15">4</text>`);
@@ -98,7 +98,8 @@ export function renderSheet() {
   // ── notes ──────────────────────────────────────────────────────────────────
   const STEM = 26;                                   // stem length (px)
   const noteX = step => x0 + step * SM.colW + SM.colW / 2;
-  const down  = dia => dia >= 28;                    // ≥ middle C → stem down, else up
+  // stem points away from the staff's middle line: treble mid = B4 (34), bass = D3 (22)
+  const down  = dia => dia >= 28 ? dia >= 34 : dia >= 22;
   const runs  = pseqRuns();
 
   // Stems first, then beams/flags, then noteheads on top — so heads aren't covered.
@@ -110,35 +111,46 @@ export function renderSheet() {
     p.push(`<line class="sm-stem" x1="${sx}" y1="${y}" x2="${sx}" y2="${y + (dn ? STEM : -STEM)}"/>`);
   }
 
-  // (2) beam groups: flagged notes (8th/16th) grouped by the beat of their onset
-  const beats = {};
+  // (2) beam groups: flagged notes (8th/16th) grouped by beat AND staff, so the
+  // treble and bass parts beam as independent voices (no cross-staff beams)
+  const groups = {};
   for (const n of runs) {
     if (durSpec(n.len).beams < 1) continue;
-    const beat = Math.floor(n.start / 4);
-    ((beats[beat] = beats[beat] || {})[n.start] = beats[beat][n.start] || []).push(n);
+    const key = (n.dia >= 28 ? 'T' : 'B') + Math.floor(n.start / 4);
+    const g = (groups[key] = groups[key] || {});
+    (g[n.start] = g[n.start] || []).push(n);
   }
-  for (const beat in beats) {
-    const stepMap = beats[beat];
+  for (const key in groups) {
+    const stepMap = groups[key];
     const steps = Object.keys(stepMap).map(Number).sort((a, b) => a - b);
-    // direction by the group's average pitch
-    let sum = 0, cnt = 0;
-    for (const s of steps) for (const n of stepMap[s]) { sum += n.dia; cnt++; }
-    const dn = (sum / cnt) >= 28, dir = dn ? 1 : -1;
-    // extreme notehead per onset (stem attaches there) + its pre-slope stem end
-    const ext = {}, endY = {};
+    // direction: away from the middle line of whichever staff the group mostly sits in
+    let sum = 0, cnt = 0, treb = 0;
+    for (const s of steps) for (const n of stepMap[s]) { sum += n.dia; cnt++; if (n.dia >= 28) treb++; }
+    const midLine = treb >= cnt - treb ? 34 : 22;     // treble B4 / bass D3
+    const dn = (sum / cnt) >= midLine, dir = dn ? 1 : -1;
+    // nearest notehead to the beam, per onset (this is where each stem attaches)
+    const ext = {}, extY = {};
     for (const s of steps) {
       const dias = stepMap[s].map(n => n.dia);
       ext[s]  = dn ? Math.min(...dias) : Math.max(...dias);
-      endY[s] = smY(ext[s]) + dir * STEM;
+      extY[s] = smY(ext[s]);
     }
     const sF = steps[0], sL = steps[steps.length - 1];
     const xF = noteX(sF), xL = noteX(sL);
-    let yF = endY[sF], yL = endY[sL];
-    // slope follows the run's contour (up/down a scale), gently clamped
-    const MAXSL = 16;
-    if (yL - yF >  MAXSL) yL = yF + MAXSL;
-    if (yL - yF < -MAXSL) yL = yF - MAXSL;
-    const beamY = x => (xL === xF) ? yF : yF + (yL - yF) * (x - xF) / (xL - xF);
+    // gentle slope following the contour of the nearest noteheads, clamped
+    const MAXSL = 13;
+    let dy = extY[sL] - extY[sF];
+    if (dy >  MAXSL) dy =  MAXSL;
+    if (dy < -MAXSL) dy = -MAXSL;
+    const slope = (xL === xF) ? 0 : dy / (xL - xF);
+    // seat the beam exactly STEM away from the closest note (so every stem ≥ STEM,
+    // and the beam hugs the notes instead of floating off the endpoints)
+    let base;
+    for (const s of steps) {
+      const want = extY[s] + dir * STEM - slope * (noteX(s) - xF);
+      base = base === undefined ? want : (dir < 0 ? Math.min(base, want) : Math.max(base, want));
+    }
+    const beamY = x => base + slope * (x - xF);
     const sxOf  = x => x + (dn ? -5 : 5);
 
     if (steps.length === 1) {
@@ -147,8 +159,8 @@ export function renderSheet() {
       p.push(`<line class="sm-stem" x1="${sx}" y1="${ay}" x2="${sx}" y2="${by}"/>`);
       const nb = Math.max(...stepMap[s].map(n => durSpec(n.len).beams));
       for (let f = 0; f < nb; f++) {
-        const fy = by - dir * f * 6;
-        p.push(`<path class="sm-flag" d="M${sx} ${fy} q9 ${dir * 4} 7 ${dir * 13}"/>`);
+        const fy = by - dir * f * 6;                  // successive flags stack toward the head
+        p.push(`<path class="sm-flag" d="M${sx} ${fy} q9 ${-dir * 4} 7 ${-dir * 13}"/>`);  // curls back to the head
       }
     } else {
       // stems to the beam line

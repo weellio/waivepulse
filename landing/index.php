@@ -44,8 +44,8 @@ $features = [
     'img'   => 'img/looper.jpg',
     'kicker'=> 'Ed Sheeran in a tab',
     'title' => 'Build a track, layer by layer.',
-    'body'  => 'A full loop station: synthesized drums with a 16-step sequencer, a two-octave synth with filter, arpeggiator and ADSR, a polyphonic piano roll for chords, a plucked-guitar voice, a sampler, and a mic with autotune — stacked into six loops. Overdubs are auto-quantized, so every layer lands on the beat.',
-    'points'=> ['Six layers with quantized overdub', 'Drum sequencer + polyphonic piano roll → push to a loop', 'Two-octave synth: filter · arp · guitar · sampler', 'Per-loop 7-band parametric EQ + mic autotune', 'Tap tempo, count-in, per-loop nudge'],
+    'body'  => 'A full loop station: synthesized drums with a 16-step sequencer, a two-octave synth with filter, arpeggiator and ADSR, a polyphonic piano roll for chords, a plucked-guitar voice, a sampler, and a mic with autotune — stacked into six loops. Fill cells to make held notes and read them back on a live sheet-music staff. Overdubs are auto-quantized, so every layer lands on the beat.',
+    'points'=> ['Six layers with quantized overdub', 'Piano roll with held notes → live sheet-music notation', 'Drum sequencer + polyphonic piano roll → push to a loop', 'Two-octave synth: filter · arp · guitar · sampler', 'Per-loop 7-band parametric EQ + mic autotune'],
   ],
   [
     'tag'   => 'Karaoke',
