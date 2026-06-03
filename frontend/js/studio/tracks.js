@@ -49,13 +49,15 @@ export function addTrackToUI(stemKey) {
 
   if (isImport) {
     const lBtn = document.createElement('button');
-    lBtn.className = 'tb'; lBtn.textContent = '⟳'; lBtn.title = 'Loop this track';
+    lBtn.className = 'tb'; lBtn.textContent = '⟳ FILL';
+    lBtn.title = 'Fill: loop this clip across the whole song (then shift-drag the waveform to mute sections)';
     lBtn.id = 'lp-' + stemKey;
     lBtn.classList.toggle('active', !!t.loopTrack);
     lBtn.onclick = () => {
       t.loopTrack = !t.loopTrack;
       lBtn.classList.toggle('active', t.loopTrack);
       if (t.source) t.source.loop = t.loopTrack;
+      redrawAll();                         // tile (or un-tile) the clip across the timeline
     };
     const xBtn = document.createElement('button');
     xBtn.className = 'tb'; xBtn.textContent = '×'; xBtn.title = 'Remove track';

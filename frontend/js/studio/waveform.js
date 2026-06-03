@@ -29,41 +29,54 @@ export function drawWaveform(canvas, peaks, color, dimmed) {
   for (let i = 0; i < peaks.length; i++) { const amp = peaks[i] * mid * .9; ctx.fillRect(i * bw, mid - amp, bw * .75, amp * 2); }
 }
 
-export function drawPositionedWaveform(canvas, peaks, color, dimmed, startTime, bufDur, songDur) {
+export function drawPositionedWaveform(canvas, peaks, color, dimmed, startTime, bufDur, songDur, loop = false) {
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth || 800, h = canvas.clientHeight || 72;
   canvas.width = w * dpr; canvas.height = h * dpr;
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
-  // dark void background
-  ctx.fillStyle = '#080808'; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#080808'; ctx.fillRect(0, 0, w, h);   // dark void background
   if (!songDur) return;
-  const xS = Math.round((startTime / songDur) * w);
-  const cw = Math.max(2, Math.round((bufDur / songDur) * w));
-  // clip region background
-  ctx.fillStyle = dimmed ? '#161616' : '#111';
-  ctx.fillRect(xS, 0, cw, h);
-  // waveform bars — subsample peaks to fit within clip pixels
+
+  const xS  = Math.round((startTime / songDur) * w);
+  const cw  = Math.max(2, Math.round((bufDur / songDur) * w));
+  const endX = loop ? w : xS + cw;                        // fill to song end when looping
   const mid = h / 2;
   const grad = ctx.createLinearGradient(0, 0, 0, h);
   grad.addColorStop(0, dimmed ? '#2a2a2a' : color + 'cc');
   grad.addColorStop(.5, dimmed ? '#1a1a1a' : color + '55');
   grad.addColorStop(1, dimmed ? '#2a2a2a' : color + 'cc');
-  ctx.fillStyle = grad;
+
+  // region background
+  ctx.fillStyle = dimmed ? '#161616' : '#111';
+  ctx.fillRect(xS, 0, endX - xS, h);
+
+  // waveform bars, tiled across each repeat
   const numBars = Math.max(1, Math.floor(cw));
-  const step = peaks.length / numBars;
+  const stepP = peaks.length / numBars;
   const bw = cw / numBars;
-  for (let i = 0; i < numBars; i++) {
-    const amp = peaks[Math.floor(i * step)] * mid * .9;
-    ctx.fillRect(xS + i * bw, mid - amp, Math.max(0.5, bw * .75), amp * 2);
+  ctx.fillStyle = grad;
+  for (let tileX = xS; tileX < endX - 0.5; tileX += cw) {
+    for (let i = 0; i < numBars; i++) {
+      const x = tileX + i * bw;
+      if (x >= endX) break;
+      const amp = peaks[Math.floor(i * stepP)] * mid * .9;
+      ctx.fillRect(x, mid - amp, Math.max(0.5, bw * .75), amp * 2);
+    }
+    // faint divider at each loop boundary (skip the very first)
+    if (loop && tileX > xS) {
+      ctx.strokeStyle = dimmed ? '#262626' : color + '33'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(tileX + .5, 2); ctx.lineTo(tileX + .5, h - 2); ctx.stroke();
+    }
   }
-  // border + edge handles
+
+  // outer border + edge handles
   ctx.strokeStyle = dimmed ? '#2a2a2a' : color + '88';
-  ctx.lineWidth = 1; ctx.strokeRect(xS + .5, 1, cw - 1, h - 2);
+  ctx.lineWidth = 1; ctx.strokeRect(xS + .5, 1, (endX - xS) - 1, h - 2);
   ctx.strokeStyle = dimmed ? '#444' : color;
   ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(xS + 1, 4); ctx.lineTo(xS + 1, h - 4); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(xS + cw - 1, 4); ctx.lineTo(xS + cw - 1, h - 4); ctx.stroke();
+  if (!loop) { ctx.beginPath(); ctx.moveTo(xS + cw - 1, 4); ctx.lineTo(xS + cw - 1, h - 4); ctx.stroke(); }
 }
 
 export function redrawAll() {
@@ -72,7 +85,7 @@ export function redrawAll() {
     if (t.canvas && t.peaks) {
       const dimmed = t.muted || (sc > 0 && !t.solo);
       if (t.isImport) {
-        drawPositionedWaveform(t.canvas, t.peaks, IMPORT_COLOR, dimmed, t.startTime || 0, t.buffer.duration, S._dur);
+        drawPositionedWaveform(t.canvas, t.peaks, IMPORT_COLOR, dimmed, t.startTime || 0, t.buffer.duration, S._dur, !!t.loopTrack);
       } else {
         drawWaveform(t.canvas, t.peaks, STEM_COLORS[baseStemOf(key)] || IMPORT_COLOR, dimmed);
       }
