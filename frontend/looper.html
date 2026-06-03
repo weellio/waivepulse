@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WAIvePulse Looper</title>
 <link rel="icon" type="image/png" href="/assets/wave small.png">
-<link rel="stylesheet" href="/css/looper.css?v=8">
+<link rel="stylesheet" href="/css/looper.css?v=11">
 </head>
 <body>
 
@@ -123,6 +123,9 @@
         <div id="keysView"><div class="kbd-wrap" id="kbdWrap"></div></div>
         <div id="rollView" style="display:none"><div id="pianoRoll"></div></div>
 
+        <!-- In Roll mode these move to a right column (see .rcard.roll-layout) so the
+             piano roll gets the full card height; in Keys mode they stack as normal. -->
+        <div class="synth-controls">
         <div class="ctrl-section">
           <span class="sect-label">Instrument &amp; Octave</span>
           <div class="ctrl-row">
@@ -212,6 +215,14 @@
             <span id="sampleName" class="sample-name"></span>
           </div>
         </div>
+
+        <div class="ctrl-section sheet-section">
+          <span class="sect-label">Notation <span class="sub">— live read-out of the piano roll</span></span>
+          <div class="sheet-wrap">
+            <svg id="sheetMusic" viewBox="0 0 548 150" preserveAspectRatio="xMidYMid meet"></svg>
+          </div>
+        </div>
+        </div><!-- /.synth-controls -->
       </div>
     </div>
 
@@ -356,6 +367,8 @@
         <table class="help-table"><tbody>
           <tr><td><b>Keys / Roll</b></td><td>Switch the keyboard for a polyphonic piano-roll sequencer (two octaves, C3–B4)</td></tr>
           <tr><td>Click a cell</td><td>Place / remove a note; stack cells in a column for chords</td></tr>
+          <tr><td>Fill adjacent cells in a row</td><td>Makes one <b>held note</b> of that length — 1 cell = 16th, 2 = 8th, 4 = quarter, 8 = half, 16 = whole (it sustains on playback)</td></tr>
+          <tr><td><b>Notation</b> panel</td><td>Live grand-staff read-out of the roll: real note durations, dots, and contour-slanted beams — updates as you place notes, with a cursor that follows playback</td></tr>
           <tr><td><b>▶ Play</b></td><td>Play the pattern with the current instrument (waveform/guitar/sample + ADSR + filter), locked to BPM</td></tr>
           <tr><td><b>→ Loop</b></td><td>Render the roll into the next empty loop slot — perfectly timed</td></tr>
           <tr><td><b>Reset</b></td><td>Clear all notes</td></tr>

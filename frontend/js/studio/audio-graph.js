@@ -182,19 +182,14 @@ export function wireTrack(stem) {
   const t = S.tracks[stem], x = S._actx;
   t.offsetNode = x.createDelay(0.051); t.offsetNode.delayTime.value = t.offset || 0;
   t.panNode = x.createStereoPanner();
-  t.eqSub = x.createBiquadFilter(); t.eqSub.type = 'lowshelf'; t.eqSub.frequency.value = 60; t.eqSub.gain.value = t.eqS || 0;
-  t.eqBass = x.createBiquadFilter(); t.eqBass.type = 'lowshelf'; t.eqBass.frequency.value = 200;
-  t.eqMid = x.createBiquadFilter(); t.eqMid.type = 'peaking'; t.eqMid.frequency.value = 1000; t.eqMid.Q.value = 1.4;
-  t.eqTreble = x.createBiquadFilter(); t.eqTreble.type = 'highshelf'; t.eqTreble.frequency.value = 4000;
   t.reverbSend = x.createGain(); t.reverbSend.gain.value = 0;
   t.delaySend = x.createGain(); t.delaySend.gain.value = 0;
-  // 7-band parametric EQ after the 4 quick shelves, before the bus + sends
+  // 7-band parametric EQ is the per-track EQ
   t.eq = createEq7(x);
-  // src → offsetNode → gainNode → panNode → sub→bass→mid→treb → eq7 → masterBus
+  // src → offsetNode → gainNode → panNode → eq7 → masterBus (+ sends)
   t.offsetNode.connect(t.gainNode);
   t.gainNode.connect(t.panNode);
-  t.panNode.connect(t.eqSub); t.eqSub.connect(t.eqBass); t.eqBass.connect(t.eqMid); t.eqMid.connect(t.eqTreble);
-  t.eqTreble.connect(t.eq.input);
+  t.panNode.connect(t.eq.input);
   t.eq.output.connect(S._masterBus);
   t.eq.output.connect(t.reverbSend); t.reverbSend.connect(S._reverbNode);
   t.eq.output.connect(t.delaySend); t.delaySend.connect(S._delayInput);

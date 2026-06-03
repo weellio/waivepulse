@@ -244,6 +244,38 @@ input[type=range].vslider::-webkit-slider-thumb{-webkit-appearance:none;width:11
 #rollView{overflow:auto;max-height:210px;margin:4px 0 2px}
 #rollView::-webkit-scrollbar{width:6px;height:6px}
 #rollView::-webkit-scrollbar-thumb{background:var(--b3);border-radius:3px}
+
+/* ── Notation (live sheet-music read-out of the piano roll) ─────────────────── */
+.sheet-wrap{background:#0c0c11;border:1px solid var(--b1);border-radius:6px;
+  padding:6px 8px;margin-top:4px}
+#sheetMusic{width:100%;height:auto;display:block}
+.sm-line{stroke:#4a4a58;stroke-width:1}
+.sm-bar{stroke:#5a5a6a;stroke-width:1}
+.sm-bar.end{stroke-width:2.5}
+.sm-brace{stroke:#5a5a6a;stroke-width:2.5;fill:none}
+.sm-ledger{stroke:#6a6a7a;stroke-width:1.2}
+.sm-note{fill:var(--purple)}
+.sm-note.open{fill:none;stroke:var(--purple);stroke-width:1.7}
+.sm-stem{stroke:var(--purple);stroke-width:1.4}
+.sm-beam{stroke:var(--purple);stroke-width:3.4;stroke-linecap:butt}
+.sm-beam2{stroke:var(--purple);stroke-width:3;stroke-linecap:butt}
+.sm-flag{stroke:var(--purple);stroke-width:1.7;fill:none}
+.sm-acc{fill:#cfd2dc;font-size:15px;font-family:"Segoe UI Symbol","Segoe UI Symbol",serif}
+.sm-clef{fill:#cfd2dc;font-family:"Segoe UI Symbol","Segoe UI Historic",Symbola,serif}
+.sm-text{fill:var(--txt2);font-size:10px;font-family:inherit}
+.sm-cursor{stroke:#22c55e;stroke-width:1.5;opacity:0}
+
+/* ── Roll mode: two-column card (roll left, voice controls right) ───────────── */
+.rcard.roll-layout{display:grid;grid-template-columns:minmax(420px,460px) 1fr;
+  grid-template-rows:auto 1fr;column-gap:18px;align-items:start}
+.rcard.roll-layout > .rcard-hdr{grid-column:1 / -1}
+.rcard.roll-layout > #rollView{grid-column:1;grid-row:2;max-height:none;min-height:0;
+  align-self:stretch;margin:0}
+.rcard.roll-layout > .synth-controls{grid-column:2;grid-row:2;min-height:0;
+  overflow-y:auto;padding-right:4px}
+/* the first control section's divider is redundant once it heads its own column */
+.rcard.roll-layout > .synth-controls > .ctrl-section:first-child{margin-top:0;
+  padding-top:0;border-top:none}
 #pianoRoll{display:grid;width:max-content}
 .proll-lbl{font-size:8px;color:var(--txt3);display:flex;align-items:center;justify-content:flex-end;
   padding-right:5px;white-space:nowrap;position:sticky;left:0;background:var(--s1);z-index:1}

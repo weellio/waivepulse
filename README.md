@@ -55,7 +55,7 @@ The main page. Paste lyrics, pick tags from an organised grid (Genre, Timbre, Mo
 
 Click the Studio button on any finished song card. Demucs splits the song into six stems (vocals, drums, bass, guitar, piano, other) on your GPU, then drops you into a DAW-style mixer with waveform display, per-track knobs, A-B loop, mute automation, track import, and a full master bus chain.
 
-- **7-band parametric EQ on every track:** click the EQ button to open a modal with a live spectrum analyzer and a draggable curve — high-pass, low shelf, three bells, high shelf, and low-pass, each with freq/gain/Q, all backed by the actual biquad responses (the four quick SUB/BASS/MID/TREB knobs remain on the strip)
+- **7-band parametric EQ on every track:** click the EQ button to open a modal with a live spectrum analyzer and a draggable curve — high-pass, low shelf, three bells, high shelf, and low-pass, each with freq/gain/Q, all backed by the actual biquad responses — it's the single per-track EQ (the old quick SUB/BASS/MID/TREB knobs were retired in favour of it)
 - **Master soft clipper (CLP) or limiter (LMT)**, mutually exclusive. The clipper preserves transient punch on AI music that otherwise sounds limp; the limiter glues for a louder, ballad-friendly sound
 - **Harmonic exciter (EXC):** parallel 3 kHz high-pass into a soft saturator at 18% wet, for air and shimmer AI vocals lack
 - **Master FX rack:** a noise gate (with duck mode), a bitcrusher + sample-rate reducer, a 4×-oversampled wavefolder, and a Dattorro plate reverb — each bypassable and baked into Export Mix
@@ -435,7 +435,7 @@ Click the EQ button on any track strip to open the parametric EQ modal (the same
 - The combined curve drawn from the actual biquad responses via `getFrequencyResponse()` (no approximations)
 - **Drag** a band point for freq + gain; **scroll** over it for Q
 - A readout row showing each band's filter-type icon, frequency, dB, and Q; a "RESET EQ" button flattens it
-- Inserted after the four quick SUB/BASS/MID/TREB shelf knobs (which stay on the strip as fast tone controls), and baked into Export Mix
+- The **only** per-track EQ — it sits right after the track's pan in the signal chain (`pan → EQ → bus/sends`) and is fully baked into Export Mix. The one-click MASTER mastering preset shapes each stem through these bands, too
 
 Press Escape to close.
 

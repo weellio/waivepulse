@@ -1,6 +1,7 @@
 // Stem presets (mute combinations) + the one-click MASTER mastering preset.
 import { S, PRESETS } from './state.js';
 import { baseStemOf, applyGains, duplicateTrack } from './tracks.js';
+import { setBand } from '../shared/eq7.js';
 
 export function applyPreset(name) {
   S._activePreset = name;
@@ -29,21 +30,21 @@ export function applyMasterPreset() {
     S.tracks['drums_2'].knobs.vol.set(0.65);
     S.tracks['drums_2'].knobs.rev.set(0.12);
   }
-  // Per-stem EQ + reverb tuning
+  // Per-stem EQ (7-band band gains) + reverb tuning — low=low-shelf, b1=350Hz bell,
+  // b3=1kHz bell, high=high-shelf
   const cfg = {
-    drums: { sub: 2, bass: 1, rev: 0.10 },
-    bass: { sub: 3, bass: 1.5 },
-    vocals: { mid: -1, treb: 2, rev: 0.08 },
-    guitar: { mid: 1, rev: 0.22 },
-    piano: { treb: 1, rev: 0.18 },
-    other: { rev: 0.10 },
+    drums:  { low: 2,  b1: 1,   rev: 0.10 },
+    bass:   { low: 3,  b1: 1.5 },
+    vocals: { b3: -1,  high: 2, rev: 0.08 },
+    guitar: { b3: 1,   rev: 0.22 },
+    piano:  { high: 1, rev: 0.18 },
+    other:  { rev: 0.10 },
   };
   for (const [key, t] of Object.entries(S.tracks)) {
     const s = cfg[baseStemOf(key)]; if (!s) continue;
-    if (s.sub != null) t.knobs.sub?.set(s.sub);
-    if (s.bass != null) t.knobs.bass?.set(s.bass);
-    if (s.mid != null) t.knobs.mid?.set(s.mid);
-    if (s.treb != null) t.knobs.treb?.set(s.treb);
+    if (t.eq) for (const id of ['low', 'b1', 'b3', 'high']) {
+      if (s[id] != null) { const i = t.eq.bands.findIndex(b => b.id === id); if (i >= 0) setBand(t.eq, i, { gain: s[id] }); }
+    }
     if (s.rev != null) t.knobs.rev?.set(s.rev);
   }
   // Master bus

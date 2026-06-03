@@ -124,18 +124,14 @@ export async function exportMix() {
         muteGain.gain.setValueAtTime(1, Math.min(S._dur, r.end));
       }
       const pan = off.createStereoPanner(); pan.pan.value = t.pan;
-      const eqS = off.createBiquadFilter(); eqS.type = 'lowshelf'; eqS.frequency.value = 60; eqS.gain.value = t.eqS || 0;
-      const eqB = off.createBiquadFilter(); eqB.type = 'lowshelf'; eqB.frequency.value = 200; eqB.gain.value = t.eqB;
-      const eqM = off.createBiquadFilter(); eqM.type = 'peaking'; eqM.frequency.value = 1000; eqM.Q.value = 1.4; eqM.gain.value = t.eqM;
-      const eqT = off.createBiquadFilter(); eqT.type = 'highshelf'; eqT.frequency.value = 4000; eqT.gain.value = t.eqT;
       const revS = off.createGain(); revS.gain.value = t.revAmt;
       const dlyS = off.createGain(); dlyS.gain.value = t.dlyAmt;
       const src = off.createBufferSource(); src.buffer = t.buffer;
       const ofs = off.createDelay(0.051); ofs.delayTime.value = t.offset || 0;
-      src.connect(ofs); ofs.connect(muteGain); muteGain.connect(gain); gain.connect(pan); pan.connect(eqS); eqS.connect(eqB); eqB.connect(eqM); eqM.connect(eqT);
-      // 7-band parametric EQ after the quick shelves (matches the live chain)
-      let post = eqT;
-      if (t.eq && !eqIsFlat(t.eq)) { const oeq = applyEqOffline(off, snapshotEq(t.eq)); eqT.connect(oeq.input); post = oeq.output; }
+      src.connect(ofs); ofs.connect(muteGain); muteGain.connect(gain); gain.connect(pan);
+      // 7-band parametric EQ (matches the live chain: pan → eq → bus/sends)
+      let post = pan;
+      if (t.eq && !eqIsFlat(t.eq)) { const oeq = applyEqOffline(off, snapshotEq(t.eq)); pan.connect(oeq.input); post = oeq.output; }
       post.connect(offBus); post.connect(revS); revS.connect(offRev); post.connect(dlyS); dlyS.connect(offDlyIn);
       if (t.isImport && t.loopTrack) { src.loop = true; src.start(0); }
       else if (t.isImport) { src.start(t.startTime || 0); }

@@ -75,21 +75,15 @@ export function addTrackToUI(stemKey) {
     r1.append(nameEl, mBtn, sBtn, nBtn, rBtn, eqBtn, dBtn);
   }
 
-  // Row 2: 9 knobs — VOL, PAN, SUB, BASS, MID, TREB, REV, DLY, OFS
+  // Row 2: 5 knobs — VOL, PAN, REV, DLY, OFS (tone is handled by the 7-band EQ modal)
   const r2 = document.createElement('div'); r2.className = 'ctrl-row2';
   const x = S._actx;
   t.knobs.vol = new Knob(r2, { label: 'VOL', min: 0, max: 1.5, value: t.volume, def: 1, color, bipolar: false,
     onChange: v => { t.volume = v; applyGains(); } });
   t.knobs.pan = new Knob(r2, { label: 'PAN', min: -1, max: 1, value: t.pan, def: 0, color, bipolar: true,
     onChange: v => { t.pan = v; t.panNode.pan.setTargetAtTime(v, x.currentTime, 0.01); } });
-  t.knobs.sub = new Knob(r2, { label: 'SUB', min: -12, max: 12, value: t.eqS || 0, def: 0, color, bipolar: true,
-    onChange: v => { t.eqS = v; if (t.eqSub) t.eqSub.gain.setTargetAtTime(v, x.currentTime, 0.01); } });
-  t.knobs.bass = new Knob(r2, { label: 'BASS', min: -12, max: 12, value: t.eqB, def: 0, color, bipolar: true,
-    onChange: v => { t.eqB = v; t.eqBass.gain.setTargetAtTime(v, x.currentTime, 0.01); } });
-  t.knobs.mid = new Knob(r2, { label: 'MID', min: -12, max: 12, value: t.eqM, def: 0, color, bipolar: true,
-    onChange: v => { t.eqM = v; t.eqMid.gain.setTargetAtTime(v, x.currentTime, 0.01); } });
-  t.knobs.treb = new Knob(r2, { label: 'TREB', min: -12, max: 12, value: t.eqT, def: 0, color, bipolar: true,
-    onChange: v => { t.eqT = v; t.eqTreble.gain.setTargetAtTime(v, x.currentTime, 0.01); } });
+  // Per-track EQ now lives entirely in the 7-band parametric EQ (the "EQ" button) —
+  // the old SUB/BASS/MID/TREB shelf knobs were removed to avoid two redundant EQs.
   t.knobs.rev = new Knob(r2, { label: 'REV', min: 0, max: 1, value: t.revAmt, def: 0, color, bipolar: false,
     onChange: v => { t.revAmt = v; t.reverbSend.gain.setTargetAtTime(v, x.currentTime, 0.01); } });
   t.knobs.dly = new Knob(r2, { label: 'DLY', min: 0, max: 1, value: t.dlyAmt, def: 0, color, bipolar: false,
@@ -191,7 +185,7 @@ export function removeTrack(stemKey) {
   try {
     if (t.offsetNode) t.offsetNode.disconnect();
     t.gainNode.disconnect(); t.panNode.disconnect();
-    t.eqBass.disconnect(); t.eqMid.disconnect(); t.eqTreble.disconnect();
+    if (t.eq) t.eq.output.disconnect();
     t.reverbSend.disconnect(); t.delaySend.disconnect();
   } catch {}
   document.querySelector(`#sidebar-tracks .ctrl-strip[data-stem="${stemKey}"]`)?.remove();

@@ -89,7 +89,7 @@ export function noteOn(n) {
   if (S.activeOsc[uid]) return;
   const t   = ctx.currentTime;
   const hz  = n.hz * Math.pow(2, S.octave - 4);
-  const atk = S.attackMs    / 1000;
+  const atk = Math.max(0.004, S.attackMs / 1000);  // ≥4 ms so the onset can't click
   const dec = S.decayMs     / 1000;
   const pk  = 0.65;
   const sus = pk * S.sustainLevel;
@@ -124,11 +124,13 @@ export function noteOn(n) {
     src.buffer = S.sampleBuffer;
     src.playbackRate.value = rate;
     const env = ctx.createGain();
-    env.gain.setValueAtTime(0.001, t);
+    env.gain.setValueAtTime(0, t);
     env.gain.linearRampToValueAtTime(pk,  t + atk);
     env.gain.linearRampToValueAtTime(sus, t + atk + dec);
     const filt = makeSynthFilter();
-    src.connect(filt); filt.connect(env); env.connect(S.inputBus); src.start(t);
+    // env BEFORE the filter: the filter only ever sees the smoothly ramped signal,
+    // so its cutoff can't ring on the note-onset step (the "clap before the note").
+    src.connect(env); env.connect(filt); filt.connect(S.inputBus); src.start(t);
     S.activeOsc[uid] = {src, env, filt, isSample: true};
 
   } else {
@@ -136,11 +138,13 @@ export function noteOn(n) {
     const osc = ctx.createOscillator(); osc.type = S.wave;
     osc.frequency.value = hz;
     const env = ctx.createGain();
-    env.gain.setValueAtTime(0.001, t);
+    env.gain.setValueAtTime(0, t);
     env.gain.linearRampToValueAtTime(pk,  t + atk);
     env.gain.linearRampToValueAtTime(sus, t + atk + dec);
     const filt = makeSynthFilter();
-    osc.connect(filt); filt.connect(env); env.connect(S.inputBus); osc.start(t);
+    // env BEFORE the filter: a sawtooth/square turns on at a non-zero value, and the
+    // filter would ring on that instantaneous step. Ramping first kills the click/ring.
+    osc.connect(env); env.connect(filt); filt.connect(S.inputBus); osc.start(t);
     S.activeOsc[uid] = {osc, env, filt, isSample: false};
   }
 
@@ -197,7 +201,7 @@ export function makeSynthFilter() {
 // piano-roll render into either the live graph or an OfflineAudioContext (for → Loop).
 export function spawnVoice(hz, { when, gate, vel = 1, actx = S.ctx, dest = S.inputBus }) {
   const t   = when;
-  const atk = S.attackMs  / 1000;
+  const atk = Math.max(0.004, S.attackMs / 1000);   // ≥4 ms so the onset can't click
   const dec = S.decayMs   / 1000;
   const rel = S.releaseMs / 1000;
   const pk  = 0.5 * vel;                 // lower than live single notes — chords stack
@@ -205,10 +209,15 @@ export function spawnVoice(hz, { when, gate, vel = 1, actx = S.ctx, dest = S.inp
   const relStart = t + Math.max(gate, atk + 0.01);
 
   const env = actx.createGain();
-  env.gain.setValueAtTime(0.0001, t);
-  env.gain.linearRampToValueAtTime(pk,  t + atk);
-  env.gain.linearRampToValueAtTime(sus, t + atk + dec);
-  env.gain.setValueAtTime(Math.max(sus, 0.0001), relStart);
+  env.gain.setValueAtTime(0, t);
+  env.gain.linearRampToValueAtTime(pk, t + atk);
+  const decEnd = t + atk + dec;
+  if (decEnd < relStart) {               // normal: attack → decay → hold → release
+    env.gain.linearRampToValueAtTime(sus, decEnd);
+    env.gain.setValueAtTime(Math.max(sus, 0.0001), relStart);
+  } else {                               // gate shorter than A+D: ramp straight to release, no mid-note step
+    env.gain.linearRampToValueAtTime(Math.max(sus, 0.0001), relStart);
+  }
   env.gain.exponentialRampToValueAtTime(0.0001, relStart + rel);
 
   let src, filt = null;
@@ -235,7 +244,9 @@ export function spawnVoice(hz, { when, gate, vel = 1, actx = S.ctx, dest = S.inp
   filt.frequency.value = S.filterCutoff;
   filt.Q.value = S.filterReso;
 
-  src.connect(filt); filt.connect(env); env.connect(dest);
+  // env BEFORE the filter (see noteOn): the filter never sees the onset step, so it
+  // can't ring at its cutoff — that fixed-pitch "clap" you heard on every note.
+  src.connect(env); env.connect(filt); filt.connect(dest);
   src.start(t);
   try { src.stop(relStart + rel + 0.05); } catch (_) {}
 }

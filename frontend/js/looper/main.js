@@ -13,7 +13,7 @@ import {
 } from './synth.js';
 import { chBPM, toggleMetro, chCountIn, tapTempo, toggleQuantize } from './transport.js';
 import { toggleMic, toggleAutotune, setAtKey, setAtScaleSel, setAtSpeed } from './mic.js';
-import { setSynthMode, togglePseq, pushPseqToLoop, clearPseq } from './pianoseq.js';
+import { setSynthMode, togglePseq, pushPseqToLoop, clearPseq, renderSheet } from './pianoseq.js';
 import { openLoopEq, closeLoopEq, resetLoopEq, loopEqOpen } from './loopeq.js';
 
 // ── Help modal ──────────────────────────────────────────────────────────────────
@@ -77,3 +77,4 @@ buildKbd();
 animRings();
 setDrumMode('pads');
 setSynthMode('keys');
+renderSheet();
