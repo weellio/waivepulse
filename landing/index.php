@@ -58,6 +58,18 @@ $features = [
   ],
 ];
 
+// Close-up feature highlights for the gallery strip.
+$gallery = [
+  ['img' => 'img/feat-eq.jpg',       'accent' => 'purple',  'title' => 'Surgical 7-band EQ',
+   'blurb' => 'A FabFilter-style parametric EQ on every track and every loop — live spectrum, draggable curve, per-band fills, ±24 dB.'],
+  ['img' => 'img/feat-notation.png', 'accent' => 'cyan',    'title' => 'Live sheet music',
+   'blurb' => 'The piano roll writes itself out on a grand staff — real note durations, beams, clefs — and updates as you place notes.'],
+  ['img' => 'img/feat-beats.png',    'accent' => 'green',   'title' => 'One-click beats',
+   'blurb' => 'Ten genre presets fill the step sequencer instantly. Tweak them, or save your own grooves as favorites.'],
+  ['img' => 'img/feat-looper.png',   'accent' => 'magenta', 'title' => 'A loop station in a tab',
+   'blurb' => 'Stack drums, synths and chord progressions into six loops — then send any of them straight to the Studio.'],
+];
+
 $compare = [
   ['', 'WAIvePulse', 'Cloud generators', 'Pro DAWs'],
   ['Runs offline',            true,  false, true],
@@ -181,6 +193,23 @@ function cell($v) {
   </div>
 </section>
 <?php endforeach; ?>
+
+<!-- Feature gallery -->
+<section class="gallery reveal" id="gallery">
+  <h2 class="section-title">Built for <span class="grad">tinkering</span></h2>
+  <p class="section-sub">The details that make it feel like a real studio, not a toy.</p>
+  <div class="gallery-grid">
+    <?php foreach ($gallery as $g): ?>
+      <figure class="gcard reveal" data-accent="<?= $g['accent'] ?>">
+        <div class="shot-frame"><img src="<?= $g['img'] ?>" alt="<?= htmlspecialchars($g['title']) ?>" loading="lazy"></div>
+        <figcaption>
+          <h3><?= htmlspecialchars($g['title']) ?></h3>
+          <p><?= htmlspecialchars($g['blurb']) ?></p>
+        </figcaption>
+      </figure>
+    <?php endforeach; ?>
+  </div>
+</section>
 
 <!-- Comparison -->
 <section class="why reveal">

@@ -148,6 +148,20 @@ h1{font-size:clamp(2.8rem,8vw,6rem);line-height:.98;font-weight:700;letter-spaci
 .f-shot:hover .shot-frame{transform:perspective(1000px) rotateY(-4deg) rotateX(2deg) translateY(-4px)}
 .shot-frame img{width:100%;display:block}
 
+/* ---- Feature gallery ---- */
+.gallery{max-width:1180px;margin:0 auto;padding:60px 40px 30px;text-align:center}
+.gallery-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:34px;margin-top:24px;text-align:left}
+.gcard{--accent:var(--cyan);--argb:140,255,255;margin:0}
+.gcard[data-accent="cyan"]   {--accent:var(--cyan);   --argb:140,255,255}
+.gcard[data-accent="green"]  {--accent:var(--green);  --argb:74,222,128}
+.gcard[data-accent="purple"] {--accent:var(--purple); --argb:167,139,250}
+.gcard[data-accent="magenta"]{--accent:var(--magenta);--argb:244,114,182}
+.gcard .shot-frame{transition:transform .25s ease}
+.gcard:hover .shot-frame{transform:translateY(-5px)}
+.gcard figcaption{padding:18px 6px 0}
+.gcard h3{font-size:1.15rem;letter-spacing:-.01em;margin-bottom:6px;color:var(--accent)}
+.gcard figcaption p{color:var(--txt2);font-size:.97rem;line-height:1.55}
+
 /* ---- Why / comparison ---- */
 .why{max-width:920px;margin:40px auto;padding:80px 40px;text-align:center}
 .section-title{font-size:clamp(2rem,5vw,3rem);letter-spacing:-.02em;margin-bottom:12px}
@@ -204,6 +218,8 @@ footer{display:flex;justify-content:space-between;align-items:center;flex-wrap:w
   .feature{grid-template-columns:1fr;gap:36px;padding:70px 24px}
   .feature.flip .f-text{order:0}
   .f-text p{max-width:none}
+  .gallery{padding:40px 24px 20px}
+  .gallery-grid{grid-template-columns:1fr;gap:26px}
   .foot-meta{text-align:left}
   footer{flex-direction:column;align-items:flex-start}
 }
