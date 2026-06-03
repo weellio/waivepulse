@@ -2,6 +2,7 @@
 import { S } from './state.js';
 import { ensureCtx } from './core.js';
 import { setStatus } from './util.js';
+import { refreshRollOctave } from './pianoseq.js';
 
 // `semi` = semitones above C4 (for sample pitch-shifting)
 export const WHITE_KEYS = [
@@ -204,7 +205,9 @@ export function spawnVoice(hz, { when, gate, vel = 1, actx = S.ctx, dest = S.inp
   const atk = Math.max(0.004, S.attackMs / 1000);   // ≥4 ms so the onset can't click
   const dec = S.decayMs   / 1000;
   const rel = S.releaseMs / 1000;
-  const pk  = 0.5 * vel;                 // lower than live single notes — chords stack
+  // guitar honors its Vol slider (as the live keyboard does); other voices use a
+  // reduced peak so polyphonic chords don't stack into clipping
+  const pk  = (S.guitarMode ? S.guitarVol : 0.5) * vel;
   const sus = pk * S.sustainLevel;
   const relStart = t + Math.max(gate, atk + 0.01);
 
@@ -374,6 +377,7 @@ export function chOctave(delta) {
   // Release every held note (both octaves) so nothing sticks at the old pitch
   Object.values(S.activeOsc).forEach(a => { if (a._n) noteOff(a._n); });
   buildKbd();
+  refreshRollOctave();   // transpose the piano roll (pitches + labels + notation) too
 }
 
 // ── Sample import / use-as-sample ────────────────────────────────────────────

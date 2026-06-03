@@ -5,7 +5,10 @@
 import { S } from './state.js';
 import { toggleBypass, setGlobalFX, setMasterVol, exportMix } from './core.js';
 import { DRUMS, buildDrums, hitDrum, setDrumMode, toggleSeq, clearSeq, pushSeqToLoop } from './drums.js';
-import { buildSlots, tapRecord, tapPlay, clearSlot, clearAll, setVol, nudgeSlot, animRings } from './loops.js';
+import { renderBeatBar } from './beats.js';
+import { renderMelodyBar } from './melodies.js';
+import { buildSlots, tapRecord, tapPlay, clearSlot, clearAll, setVol, nudgeSlot, animRings, refreshStudioButtons } from './loops.js';
+import { initStudioBridge, sendLoopToStudio } from './bridge.js';
 import {
   keyMap, buildKbd, noteOn, noteOff, setWave, setGuitarVol, setFilter,
   toggleArp, setArpRate, setArpMode, toggleGuitar, setADSR, chOctave,
@@ -37,7 +40,7 @@ Object.assign(window, {
   // per-loop EQ
   openLoopEq, closeLoopEq, resetLoopEq,
   // loops
-  tapRecord, tapPlay, clearSlot, setVol, nudgeSlot,
+  tapRecord, tapPlay, clearSlot, setVol, nudgeSlot, sendLoopToStudio,
   // master fx
   setGlobalFX, setMasterVol,
   // mic + autotune
@@ -78,3 +81,6 @@ animRings();
 setDrumMode('pads');
 setSynthMode('keys');
 renderSheet();
+renderBeatBar();   // premade-beat buttons + saved favorites under the sequencer
+renderMelodyBar(); // premade chord/melody buttons + favorites under the keyboard
+initStudioBridge(refreshStudioButtons);   // heartbeat: greys the "Send to Studio" buttons when no Studio is open

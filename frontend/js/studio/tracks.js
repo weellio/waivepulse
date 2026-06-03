@@ -201,26 +201,34 @@ export async function handleImportFiles(files) {
     try {
       const ab = await file.arrayBuffer();
       const abuf = await S._actx.decodeAudioData(ab);
-      S._importCounter++;
-      const key = 'import_' + S._importCounter;
-      const gainNode = S._actx.createGain();
-      S.tracks[key] = {
-        buffer: abuf, source: null, gainNode,
-        muted: false, solo: false,
-        volume: 1, pan: 0, eqB: 0, eqM: 0, eqT: 0, revAmt: 0, dlyAmt: 0,
-        offset: 0,
-        isDuplicate: false, isImport: true, baseStem: key,
-        importName: file.name.replace(/\.[^.]+$/, ''), loopTrack: false, startTime: 0,
-        eqS: 0, peaks: null, canvas: null, knobs: {}, muteRanges: [], _inMuteRange: false,
-      };
-      wireTrack(key);
-      addTrackToUI(key);
-      applyZoom();
+      addImportedBuffer(abuf, file.name.replace(/\.[^.]+$/, ''));
     } catch (err) {
       console.warn('Could not import ' + file.name + ':', err);
       alert('Could not import ' + file.name + ':\n' + err.message);
     }
   }
+}
+
+// Create an import track straight from a decoded AudioBuffer (shared by file import
+// and the Looper → Studio bridge). Returns the new track key.
+export function addImportedBuffer(abuf, name) {
+  if (!S._actx) return null;
+  S._importCounter++;
+  const key = 'import_' + S._importCounter;
+  const gainNode = S._actx.createGain();
+  S.tracks[key] = {
+    buffer: abuf, source: null, gainNode,
+    muted: false, solo: false,
+    volume: 1, pan: 0, eqB: 0, eqM: 0, eqT: 0, revAmt: 0, dlyAmt: 0,
+    offset: 0,
+    isDuplicate: false, isImport: true, baseStem: key,
+    importName: name || ('import ' + S._importCounter), loopTrack: false, startTime: 0,
+    eqS: 0, peaks: null, canvas: null, knobs: {}, muteRanges: [], _inMuteRange: false,
+  };
+  wireTrack(key);
+  addTrackToUI(key);
+  applyZoom();
+  return key;
 }
 
 // ── Mix controls ────────────────────────────────────────────────────────────

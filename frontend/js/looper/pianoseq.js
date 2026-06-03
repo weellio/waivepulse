@@ -15,11 +15,24 @@ const ROWS = 24;           // two octaves, C3–B4
 const midiToHz   = m => 440 * Math.pow(2, (m - 69) / 12);
 const midiToName = m => NOTE_NAMES[m % 12] + (Math.floor(m / 12) - 1);
 
-// Rows top→bottom = high→low pitch (piano-roll orientation)
+// Rows top→bottom = high→low pitch (piano-roll orientation). The roll spans two
+// octaves; the OCT control transposes its base so playback, the grid row labels, and
+// the notation all move together. octave 4 → MIDI 48 (C3), the original range.
 const PR = [];
-for (let r = 0; r < ROWS; r++) {
-  const midi = LOW_MIDI + (ROWS - 1 - r);
-  PR.push({ midi, hz: midiToHz(midi), name: midiToName(midi), sharp: NOTE_NAMES[midi % 12].includes('#') });
+function rebuildPR() {
+  const base = S.octave * 12;            // octave 4 → 48 (C3)
+  for (let r = 0; r < ROWS; r++) {
+    const midi = base + (ROWS - 1 - r);
+    PR[r] = { midi, hz: midiToHz(midi), name: midiToName(midi), sharp: NOTE_NAMES[midi % 12].includes('#') };
+  }
+}
+rebuildPR();
+
+// Called by chOctave: retune the roll, relabel the grid, refresh the notation.
+export function refreshRollOctave() {
+  rebuildPR();
+  if (S.pseqCells.length) buildPianoRoll();   // relabel + repaint the pattern at the new octave
+  renderSheet();
 }
 
 // ── Live notation (grand staff) read-out of the piano roll ────────────────────
@@ -31,6 +44,16 @@ const PC_SHARP  = [0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0];     // …and whether it
 const diaOf   = m => (Math.floor(m / 12) - 1) * 7 + PC_LETTER[m % 12];
 const isSharp = m => PC_SHARP[m % 12] === 1;
 const smY     = dia => SM.topY + (38 - dia) * SM.hg;        // F5(dia 38) sits at topY
+
+// Staff-line diatonic positions a note needs ledger lines on: middle C (28), anything
+// above the treble staff (>38), or below the bass staff (<18). Lines are even dia.
+function ledgersFor(dia) {
+  const out = [];
+  if (dia === 28) out.push(28);
+  if (dia > 38) for (let d = 40; d <= dia; d += 2) out.push(d);
+  if (dia < 18) for (let d = 16; d >= dia; d -= 2) out.push(d);
+  return out;
+}
 
 // A run of contiguous filled cells in a row = one held note (start step + length in
 // 16ths). This is the shared truth for both playback and notation.
@@ -191,13 +214,30 @@ export function renderSheet() {
   // (3) noteheads (+ ledger, accidental, dot) — drawn last, on top
   for (const n of runs) {
     const d = durSpec(n.len), y = smY(n.dia), x = noteX(n.start);
-    if (n.dia === 28) p.push(`<line class="sm-ledger" x1="${x - 8}" y1="${y}" x2="${x + 8}" y2="${y}"/>`);
+    for (const ld of ledgersFor(n.dia)) p.push(`<line class="sm-ledger" x1="${x - 8}" y1="${smY(ld)}" x2="${x + 8}" y2="${smY(ld)}"/>`);
     if (n.sharp) p.push(`<text class="sm-acc" x="${x - 15}" y="${y + 5}">♯</text>`);
     p.push(`<ellipse class="sm-note${d.open ? ' open' : ''}" cx="${x}" cy="${y}" rx="${d.open ? 5.4 : 5.2}" ry="3.9" transform="rotate(-20 ${x} ${y})"/>`);
     if (d.dot) { const dy = (n.dia % 2 === 0) ? y - SM.hg : y; p.push(`<circle class="sm-note" cx="${x + 9}" cy="${dy}" r="1.6"/>`); }
   }
 
+  // Fit the viewBox to the staff plus any high/low (transposed) notes so nothing clips.
+  let minY = smY(38), maxY = smY(18);
+  for (const n of runs) { const yy = smY(n.dia); if (yy < minY) minY = yy; if (yy > maxY) maxY = yy; }
+  const vbTop = Math.min(0, minY - 30), vbBot = Math.max(140, maxY + 30);
+  svg.setAttribute('viewBox', `0 ${vbTop.toFixed(1)} 548 ${(vbBot - vbTop).toFixed(1)}`);
+
   svg.innerHTML = p.join('');
+}
+
+// Replace the whole roll pattern (used by the melody presets). Repaints any built
+// cells and refreshes the notation. Works whether or not the grid has been opened yet.
+export function applyPseqPattern(grid) {
+  for (let r = 0; r < ROWS; r++)
+    for (let s = 0; s < STEPS; s++) {
+      S.pseqPattern[r][s] = grid[r] ? (grid[r][s] || 0) : 0;
+      if (S.pseqCells.length) S.pseqCells[r][s].classList.toggle('on', !!S.pseqPattern[r][s]);
+    }
+  renderSheet();
 }
 
 export function setSynthMode(mode) {

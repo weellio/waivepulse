@@ -7,7 +7,7 @@ $YEAR    = date('Y');
 $GH      = 'https://github.com/weellio/waivepulse';
 $DEMO    = 'https://www.youtube.com/watch?v=gKttuxGeLkw';
 
-$badges = ['No cloud', 'No subscription', 'No API keys', 'No usage caps', 'Runs on your GPU'];
+$badges = ['Free & open source', 'No cloud', 'No subscription', 'No API keys', 'No usage caps', 'Runs on your GPU'];
 
 // Each feature -> a full-bleed section. `accent` keys into the CSS color vars.
 $features = [
@@ -83,7 +83,7 @@ function cell($v) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WAIvePulse — Your studio. Your GPU. Your music.</title>
-<meta name="description" content="A local AI music studio. Write a song, generate it with vocals, mix the stems, loop it, and perform it — entirely offline on your own GPU. No cloud, no subscription, no limits.">
+<meta name="description" content="A free, open-source local AI music studio. Write a song, generate it with vocals, mix the stems, loop it, and perform it — entirely offline on your own GPU. No cloud, no subscription, no limits.">
 <meta property="og:title" content="WAIvePulse — local AI music studio">
 <meta property="og:description" content="Write it. Generate it. Mix it. Loop it. Perform it. Entirely on your machine.">
 <meta property="og:image" content="img/generate.jpg">
@@ -124,7 +124,7 @@ function cell($v) {
 <!-- Hero -->
 <section id="top" class="hero">
   <div class="hero-inner">
-    <div class="eyebrow reveal">Local AI music studio · runs on your GPU</div>
+    <div class="eyebrow reveal">Free, local AI music studio · runs on your GPU</div>
     <h1 class="reveal">
       Your studio.<br>
       Your <span class="grad">GPU</span>.<br>
@@ -132,7 +132,7 @@ function cell($v) {
     </h1>
     <p class="lede reveal">
       Write it. Generate it. Mix it. Loop it. Perform it.
-      One app, five tools, <b>zero cloud</b> — every note stays on your machine.
+      One app, five tools, <b>free and offline</b> — every note stays on your machine.
     </p>
     <div class="cta reveal">
       <a class="btn primary" href="<?= $GH ?>" target="_blank" rel="noopener">Get WAIvePulse →</a>

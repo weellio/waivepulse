@@ -75,9 +75,9 @@ External songs work too. Drop an MP3 into the history panel, click Studio, and D
 
 Open the Looper page at any time — it works independently of the AI generation workflow. Record up to six layered loops directly in the browser using synthesized drums, a two-octave keyboard synth, a guitar voice, or your microphone. Overdubs are **quantized**: layers always record a full bar aligned to the beat, no matter when you hit Record.
 
-- **Drum machine:** 8 pads (Kick, Snare, Hi-Hat, Open HH, Clap, Tom, 808, Perc) synthesized via Web Audio — keys `1`–`8` — plus a **16-step sequencer** with per-step velocity, and a **→ Loop** button that renders a beat straight into a slot with perfect timing
+- **Drum machine:** 8 pads (Kick, Snare, Hi-Hat, Open HH, Clap, Tom, 808, Perc) synthesized via Web Audio — keys `1`–`8` — plus a **16-step sequencer** with per-step velocity, **10 premade beat presets** (Four-Floor, Boom Bap, Trap, Rock, Funk, House, Breakbeat, Half-Time, Bossa, Reggaeton) you can load and tweak, **saveable favorites**, and a **→ Loop** button that renders a beat straight into a slot with perfect timing
 - **Synth keyboard:** two octaves (C4–C6, keys `A`–`K` / `W E T Y U` / `Z X C V B N M`). Oscillator waveforms, a plucked **guitar** voice, a resonant **low-pass filter** (cutoff + reso), and an **arpeggiator** (rate + up/down/random)
-- **Polyphonic piano roll:** a Keys/Roll toggle swaps the keyboard for a chord-capable step sequencer that renders straight to a loop in perfect time, sharing one transport grid with the drum sequencer. Fill adjacent cells to make **held notes** (16th → whole), and watch them appear on a **live grand-staff notation panel** with real durations and contour-slanted beams
+- **Polyphonic piano roll:** a Keys/Roll toggle swaps the keyboard for a chord-capable step sequencer that renders straight to a loop in perfect time, sharing one transport grid with the drum sequencer. Fill adjacent cells to make **held notes** (16th → whole), and watch them appear on a **live grand-staff notation panel** with real durations and contour-slanted beams. **Melody/chord presets** (pop I–V–vi–IV, 50s, 6-4-1-5, jazz ii7–V7–I progressions, arp/scale/pentatonic/bass riffs, plus classical homages — a Bach Prelude arpeggio and a Mozart Alberti bass) plus **saveable favorites** sit under the roll
 - **Click-and-drag slide:** hold the mouse and drag across pads or keys for a glissando / drum-roll effect
 - **Full ADSR envelope:** Attack, Decay, Sustain, and Release shape every synth voice (vertical sliders)
 - **Sampler:** import any audio file (or a recorded loop) and pitch it chromatically across the keyboard
@@ -691,7 +691,7 @@ Once loaded, the sample name appears next to the `🎹 Sample` toggle. Click the
 
 #### Piano roll
 
-The **Keys / Roll** toggle in the keyboard header swaps the piano for a **polyphonic step sequencer** — a two-octave (C3–B4) pitch × 16-step grid.
+The **Keys / Roll** toggle in the keyboard header swaps the piano for a **polyphonic step sequencer** — a two-octave (C3–B4 by default) pitch × 16-step grid. The **OCT** control transposes the whole roll — pitches, row labels, and the notation move together.
 
 - Click a cell to place or remove a note; **stack cells in a column for chords**
 - **Fill adjacent cells in a row to make one held note** of that length — 1 cell = 16th, 2 = 8th, 3 = dotted-8th, 4 = quarter, 6 = dotted-quarter, 8 = half, 12 = dotted-half, 16 = whole. Held notes sustain on playback (one voice per note) instead of re-triggering each step

@@ -21,6 +21,7 @@ import {
 import { openTrackEQ, closeTrackEQ, resetTrackEQ } from './eq-modal.js';
 import { exportMix, downloadZip } from './export.js';
 import { cutRegion, undoCut } from './edit.js';
+import { initStudioReceiver } from './bridge.js';
 import { redrawAll, mergeRanges } from './waveform.js';
 
 // transport.js calls applyRangedGains, which lives in tracks.js — inject it to
@@ -188,4 +189,7 @@ document.addEventListener('drop', e => {
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', boot);
+window.addEventListener('DOMContentLoaded', async () => {
+  await boot();
+  initStudioReceiver();   // announce presence + listen for loops once the audio context exists
+});

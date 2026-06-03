@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WAIvePulse Looper</title>
 <link rel="icon" type="image/png" href="/assets/wave small.png">
-<link rel="stylesheet" href="/css/looper.css?v=12">
+<link rel="stylesheet" href="/css/looper.css?v=14">
 </head>
 <body>
 
@@ -102,6 +102,7 @@
         </div>
         <div id="seqView" style="display:none">
           <div id="seqGrid"></div>
+          <div id="beatPresets" class="beat-bar"></div>
         </div>
       </div>
     </div>
@@ -121,7 +122,10 @@
           </div>
         </div>
         <div id="keysView"><div class="kbd-wrap" id="kbdWrap"></div></div>
-        <div id="rollView" style="display:none"><div id="pianoRoll"></div></div>
+        <div id="rollView" style="display:none">
+          <div id="pianoRoll"></div>
+          <div id="rollPresets" class="beat-bar"></div>
+        </div>
 
         <!-- In Roll mode these move to a right column (see .rcard.roll-layout) so the
              piano roll gets the full card height; in Keys mode they stack as normal. -->
@@ -323,6 +327,7 @@
           <tr><td>✕ on a slot</td><td>Clear that loop</td></tr>
           <tr><td>⚌ EQ on a slot</td><td>Open the 7-band parametric EQ for that loop (spectrum + draggable curve)</td></tr>
           <tr><td>🎹 Use as Sample</td><td>Load a recorded loop onto the keyboard as a pitched sample</td></tr>
+          <tr><td>⇪ Send to Studio</td><td>Drop this loop straight into an open Studio window as a new track — no file export needed. Greyed out until a Studio is open (open one via the <b>Looper ↗</b> link from the Studio, or vice-versa)</td></tr>
           <tr><td>VOL slider</td><td>Per-loop volume</td></tr>
           <tr><td>SYNC ◀ ▶</td><td>Nudge a loop ½ beat earlier / later to fix an off-the-beat take (live, non-destructive)</td></tr>
           <tr><td>While recording</td><td>A blinking count-in number, a sweep bar across the card, and a beat-pulsing border show you the timing</td></tr>
@@ -348,6 +353,8 @@
           <tr><td><b>▶ Play</b></td><td>Play the 16-step pattern, locked to BPM</td></tr>
           <tr><td><b>→ Loop</b></td><td>Render the beat into the next empty loop slot — perfectly timed</td></tr>
           <tr><td><b>Reset</b></td><td>Clear all steps for a fresh pattern</td></tr>
+          <tr><td><b>Preset beats</b></td><td>The buttons under the grid (Four-Floor, Boom Bap, Trap, Rock, Funk, House, Breakbeat, Half-Time, Bossa, Reggaeton) fill the sequencer with a ready-made pattern — tweak it from there</td></tr>
+          <tr><td><b>★ Save</b></td><td>Save the current grid as a named favorite (stored in your browser). Saved beats appear as their own buttons; ✕ removes one</td></tr>
         </tbody></table>
       </div>
 
@@ -357,7 +364,7 @@
           <tr><td><kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> <kbd>F</kbd> <kbd>G</kbd> <kbd>H</kbd> <kbd>J</kbd> <kbd>K</kbd></td><td>White keys (lower octave)</td></tr>
           <tr><td><kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd> <kbd>Y</kbd> <kbd>U</kbd></td><td>Black keys (lower octave)</td></tr>
           <tr><td><kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd> <kbd>V</kbd> <kbd>B</kbd> <kbd>N</kbd> <kbd>M</kbd></td><td>White keys (upper octave)</td></tr>
-          <tr><td>Oct − / +</td><td>Shift the keyboard up or down an octave</td></tr>
+          <tr><td>Oct − / +</td><td>Shift the keyboard up or down an octave — also transposes the piano roll (pitches, row labels, and notation all move together)</td></tr>
           <tr><td>Hold &amp; drag across keys</td><td>Glissando across the keys</td></tr>
         </tbody></table>
       </div>
@@ -365,8 +372,9 @@
       <div class="help-section">
         <div class="help-section-title">▦ Piano Roll</div>
         <table class="help-table"><tbody>
-          <tr><td><b>Keys / Roll</b></td><td>Switch the keyboard for a polyphonic piano-roll sequencer (two octaves, C3–B4)</td></tr>
+          <tr><td><b>Keys / Roll</b></td><td>Switch the keyboard for a polyphonic piano-roll sequencer (two octaves, C3–B4 by default — use OCT to transpose)</td></tr>
           <tr><td>Click a cell</td><td>Place / remove a note; stack cells in a column for chords</td></tr>
+          <tr><td><b>Melody presets</b></td><td>The buttons under the roll (Pop I–V–vi–IV, 50s, 6-4-1-5, Jazz ii7–V7–I progressions, Arp, Scale, Pentatonic, Oct Bass, plus classical homages Bach Prelude &amp; Mozart Alberti) fill it with a ready-made chord progression or riff — you'll see it on the notation staff right away. <b>★ Save</b> stores the current roll as a named favorite</td></tr>
           <tr><td>Fill adjacent cells in a row</td><td>Makes one <b>held note</b> of that length — 1 cell = 16th, 2 = 8th, 4 = quarter, 8 = half, 16 = whole (it sustains on playback)</td></tr>
           <tr><td><b>Notation</b> panel</td><td>Live grand-staff read-out of the roll: real note durations, dots, and contour-slanted beams — updates as you place notes, with a cursor that follows playback</td></tr>
           <tr><td><b>▶ Play</b></td><td>Play the pattern with the current instrument (waveform/guitar/sample + ADSR + filter), locked to BPM</td></tr>

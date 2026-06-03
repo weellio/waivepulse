@@ -4,6 +4,7 @@ import { ensureCtx } from './core.js';
 import { fmtSec, setStatus } from './util.js';
 import { quantizeLen, playClick } from './transport.js';
 import { createEq7 } from '../shared/eq7.js';
+import { studioOpen } from './bridge.js';
 
 // ── Loop slots ────────────────────────────────────────────────────────────────
 const N = 6;
@@ -40,6 +41,7 @@ export function buildSlots() {
         <button class="slt-btn clr-btn"  id="cb-${s.id}" onclick="clearSlot(${s.id})" disabled>✕</button>
         <button class="slt-btn eq-btn"   id="eqb-${s.id}" onclick="openLoopEq(${s.id})" style="display:none;grid-column:1/-1">⚌ EQ</button>
         <button class="slt-btn smpl-btn" id="sb-${s.id}" onclick="useAsSample(${s.id})" style="display:none;grid-column:1/-1">🎹 Use as Sample</button>
+        <button class="slt-btn studio-btn" id="stu-${s.id}" onclick="sendLoopToStudio(${s.id})" style="display:none;grid-column:1/-1" title="Send this loop to an open Studio window as a new track">⇪ Send to Studio</button>
       </div>
       <div class="slot-vol">
         <span class="vol-lbl">VOL</span>
@@ -303,11 +305,23 @@ export function slotUI(id) {
   if (sb) sb.style.display = s.buffer ? '' : 'none';
   const eqb = document.getElementById('eqb-' + id);
   if (eqb) eqb.style.display = s.buffer ? '' : 'none';
+  const stu = document.getElementById('stu-' + id);
+  if (stu) { stu.style.display = s.buffer ? '' : 'none'; stu.disabled = !s.buffer || !studioOpen(); }
 
   const nl = document.getElementById('nl-' + id);
   const nr = document.getElementById('nr-' + id);
   if (nl) nl.disabled = !s.buffer;
   if (nr) nr.disabled = !s.buffer;
+}
+
+// Re-evaluate every "Send to Studio" button's enabled state — called by the bridge
+// heartbeat whenever a Studio window opens or closes.
+export function refreshStudioButtons() {
+  const open = studioOpen();
+  S.slots.forEach(s => {
+    const stu = document.getElementById('stu-' + s.id);
+    if (stu) stu.disabled = !s.buffer || !open;
+  });
 }
 
 // Shift a loop's timing by ±half a beat (live) so an off-the-beat take snaps into place.
