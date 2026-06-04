@@ -156,7 +156,9 @@ h1{font-size:clamp(2.8rem,8vw,6rem);line-height:.98;font-weight:700;letter-spaci
 .gcard[data-accent="green"]  {--accent:var(--green);  --argb:74,222,128}
 .gcard[data-accent="purple"] {--accent:var(--purple); --argb:167,139,250}
 .gcard[data-accent="magenta"]{--accent:var(--magenta);--argb:244,114,182}
-.gcard .shot-frame{transition:transform .25s ease}
+.gcard .shot-frame{transition:transform .25s ease;display:flex;align-items:center;
+  justify-content:center;background:#0c0c11;min-height:150px}
+.gcard .shot-frame img{width:auto;max-width:100%;max-height:210px;display:block}
 .gcard:hover .shot-frame{transform:translateY(-5px)}
 .gcard figcaption{padding:18px 6px 0}
 .gcard h3{font-size:1.15rem;letter-spacing:-.01em;margin-bottom:6px;color:var(--accent)}
