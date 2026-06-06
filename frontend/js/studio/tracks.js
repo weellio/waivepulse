@@ -106,7 +106,9 @@ export function addTrackToUI(stemKey) {
   row.addEventListener('mousedown', e => {
     if (e.button !== 0) return;
     selectTrack(stemKey);
-    const pos = (e.offsetX / getCanvasWidth()) * S._dur;
+    // content-x from the row's left edge (robust if the click lands on a child element;
+    // the row scrolls with the content so its rect already accounts for scroll/zoom)
+    const pos = ((e.clientX - row.getBoundingClientRect().left) / getCanvasWidth()) * S._dur;
     const tk = S.tracks[stemKey];
     if (e.shiftKey) {
       e.preventDefault();

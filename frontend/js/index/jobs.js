@@ -61,6 +61,7 @@ export function jobCardHTML(jobId, title, tags, status, message, file, fileSize,
       </div>
       <div class="card-actions">
         <a class="btn-action" href="${file}" download>⬇ Download</a>
+        ${!jobId.startsWith('local_') ? `<button class="btn-action" onclick="openDetails('${jobId}')">ℹ Details</button>` : ''}
         ${!jobId.startsWith('local_') ? `<button class="btn-action" onclick="loadJobToForm('${jobId}')">↺ Use Settings</button>` : ''}
         ${!jobId.startsWith('local_')
           ? `<a class="btn-action" href="/studio?job=${jobId}" target="_blank">🎛 Studio</a>`
@@ -176,6 +177,8 @@ export function updateJobCard(jobId, data) {
     };
   }
 
+  S.jobFull[jobId] = { ...(S.jobFull[jobId] || {}), ...data, job_id: jobId };
+
   const done = data.status === "done" || data.status === "error" || data.status === "cancelled";
   card.className = done ? "job-card" : "job-card active-job";
 
@@ -229,6 +232,7 @@ export async function loadHistory() {
     const list  = document.getElementById("historyList");
     list.innerHTML = "";
     list_data.forEach(j => {
+      S.jobFull[j.job_id] = j;
       if (j.lyrics) {
         S.jobSettings[j.job_id] = {
           lyrics: j.lyrics, tags: j.tags, title: j.title,

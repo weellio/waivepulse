@@ -11,7 +11,7 @@
 
 <header>
   <img src="/assets/wave small.png" alt="WAIvePulse" style="height:38px;width:auto;display:block">
-  <h1>WAIvePulse</h1>
+  <a href="https://waivepulse.com/" target="_blank" rel="noopener" title="Visit waivepulse.com" style="text-decoration:none;color:inherit"><h1>WAIvePulse</h1></a>
   <span>HeartMuLa 3B</span>
   <nav class="topnav">
     <a href="/" class="active">Generate</a>
@@ -126,6 +126,27 @@ Every day the fire burns"></textarea>
 <script type="module" src="/js/index/main.js"></script>
 
 <div id="toast"></div>
+
+<!-- Song details / rename modal -->
+<div id="details-modal" class="dmodal" style="display:none" onclick="if(event.target===this)closeDetails()">
+  <div class="dmodal-card">
+    <div class="dmodal-hdr"><span>Song details</span><button onclick="closeDetails()" title="Close">✕</button></div>
+    <div class="dmodal-body">
+      <label for="dm-title">Title</label>
+      <input id="dm-title" type="text" placeholder="Song title">
+      <label for="dm-artist">Artist</label>
+      <input id="dm-artist" type="text" placeholder="Artist (optional)">
+      <div class="dm-settings" id="dm-settings"></div>
+      <label>Lyrics</label>
+      <pre class="dm-lyrics" id="dm-lyrics"></pre>
+    </div>
+    <div class="dmodal-foot">
+      <span class="dm-note">Only title &amp; artist are editable — the mp3 file isn't renamed.</span>
+      <button onclick="closeDetails()">Cancel</button>
+      <button class="dm-save" onclick="saveDetails()">Save</button>
+    </div>
+  </div>
+</div>
 
 <!-- Fullscreen visualizer overlay -->
 <div id="fs-overlay" style="display:none;position:fixed;inset:0;background:#000;z-index:9999;align-items:center;justify-content:center;flex-direction:column">

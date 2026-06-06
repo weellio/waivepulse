@@ -315,3 +315,35 @@
     font-size: 0.72rem; color: #333; text-align: center;
     margin-top: 12px; pointer-events: none;
   }
+
+/* ── Song details / rename modal ─────────────────────────────── */
+.dmodal { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 10000;
+  display: flex; align-items: center; justify-content: center; padding: 20px; }
+.dmodal-card { background: #14141c; border: 1px solid #2a2a38; border-radius: 14px;
+  max-width: 520px; width: 100%; max-height: 85vh; display: flex; flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+.dmodal-hdr { display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px; border-bottom: 1px solid #232330; font-weight: 600; color: #e6e6ee; }
+.dmodal-hdr button { background: none; border: none; color: #888; font-size: 18px; cursor: pointer; }
+.dmodal-hdr button:hover { color: #ccc; }
+.dmodal-body { padding: 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
+.dmodal-body label { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em;
+  color: #7a7a88; margin-top: 8px; }
+.dmodal-body input { background: #0e0e16; border: 1px solid #2a2a38; border-radius: 8px;
+  padding: 9px 11px; color: #e6e6ee; font-size: .95rem; }
+.dmodal-body input:focus { outline: none; border-color: #2ab8b8; }
+.dm-settings { margin-top: 12px; border-top: 1px solid #232330; padding-top: 12px;
+  display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: .85rem; }
+.dm-settings .k { color: #7a7a88; }
+.dm-settings .v { color: #cfcfda; word-break: break-word; }
+.dm-lyrics { background: #0e0e16; border: 1px solid #232330; border-radius: 8px; padding: 10px;
+  color: #bcbcc8; font-size: .82rem; white-space: pre-wrap; max-height: 180px; overflow-y: auto;
+  font-family: inherit; margin-top: 4px; }
+.dmodal-foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+  padding: 12px 18px; border-top: 1px solid #232330; }
+.dm-note { margin-right: auto; font-size: .72rem; color: #555; }
+.dmodal-foot button { padding: 8px 16px; border-radius: 8px; border: 1px solid #2a2a38;
+  background: #1a1a24; color: #bbb; cursor: pointer; font-size: .85rem; }
+.dmodal-foot button:hover { border-color: #3a3a48; }
+.dmodal-foot .dm-save { background: #0a1e1e; border-color: #1a5a5a; color: #8cffff; font-weight: 600; }
+.dmodal-foot .dm-save:hover { background: #0e2a2a; }

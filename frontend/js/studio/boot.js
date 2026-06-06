@@ -4,7 +4,7 @@ import { S, STEM_ORDER } from './state.js';
 import { getParam, fmtTime, setOverlay, showError, hideOverlay } from './util.js';
 import { setupGlobalFX, wireTrack, loadWorklets } from './audio-graph.js';
 import { addTrackToUI } from './tracks.js';
-import { applyZoom, buildRuler, startRAF } from './transport.js';
+import { applyZoom, buildRuler, startRAF, getCanvasWidth } from './transport.js';
 
 // ── Boot ────────────────────────────────────────────────────────────────────
 export async function boot() {
@@ -148,8 +148,11 @@ function buildUI() {
   // Ruler: click = seek, drag = set A-B loop region
   document.getElementById('ruler-inner').addEventListener('mousedown', e => {
     e.preventDefault();
-    const sc2 = document.getElementById('scroll-content');
-    S._rulerDrag = { startAbs: e.offsetX + sc2.scrollLeft, moved: false };
+    // content-x = pointer relative to the (scrolling) ruler's left edge — matches the
+    // move handler; do NOT add scrollLeft (the rect already reflects the scroll position)
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(getCanvasWidth(), e.clientX - rect.left));
+    S._rulerDrag = { startAbs: x, moved: false };
   });
 
   applyZoom();

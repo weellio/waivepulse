@@ -3,7 +3,7 @@ import { S } from './state.js';
 import { ensureCtx } from './core.js';
 import { fmtSec, setStatus } from './util.js';
 import { quantizeLen, playClick } from './transport.js';
-import { createEq7 } from '../shared/eq7.js';
+import { createEq7, resetEq } from '../shared/eq7.js';
 import { studioOpen } from './bridge.js';
 
 // ── Loop slots ────────────────────────────────────────────────────────────────
@@ -253,6 +253,7 @@ export function clearSlot(id) {
   killSrc(id);
   const s = S.slots[id];
   s.state = 'empty'; s.buffer = null; s.startedAt = null; s.nudge = 0;
+  if (s.eq) resetEq(s.eq);          // flatten the per-loop EQ so a new recording starts clean
   if (id === S.masterSlot) rederiveMaster();
   document.getElementById('dur-' + id).textContent = '—';
   document.getElementById('nudge-' + id).textContent = '0ms';

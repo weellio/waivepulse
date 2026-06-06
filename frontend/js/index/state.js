@@ -88,6 +88,7 @@ export const S = {
   activeJobs:   new Set(),
   openCards:    new Set(),
   jobSettings:  {},   // job_id → {lyrics, tags, title, maxDurationSec, temperature, cfgScale}
+  jobFull:      {},   // job_id → full server record (for the Details modal)
   jobLogLines:  {},   // job_id → string[]
   sseConns:     {},   // job_id → EventSource
   vizStyles:    {},

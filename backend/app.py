@@ -74,9 +74,11 @@ app.mount("/worklets", StaticFiles(directory=str(FRONTEND_DIR / "worklets")), na
 @app.middleware("http")
 async def _no_cache_frontend(request, call_next):
     """Always revalidate the split frontend assets so edits show up on a normal
-    reload (ES-module imports aren't cache-busted, so stale modules would mismatch)."""
+    reload (ES-module imports aren't cache-busted, so stale modules would mismatch),
+    and never cache the dynamic /history list so the song library reflects the server
+    immediately (e.g. after a restart or a manual history.json edit)."""
     resp = await call_next(request)
-    if request.url.path.startswith(("/js/", "/css/", "/worklets/")):
+    if request.url.path.startswith(("/js/", "/css/", "/worklets/", "/history")):
         resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
 
@@ -953,6 +955,31 @@ def history():
         reverse=True,
     )
     return [{"job_id": k, **v} for k, v in sorted_jobs]
+
+
+class MetaUpdate(BaseModel):
+    title:  Optional[str] = None
+    artist: Optional[str] = None
+
+
+@app.patch("/history/{job_id}")
+def update_job_meta(job_id: str, meta: MetaUpdate):
+    """Edit display metadata (title / artist) for a song. Does NOT rename the mp3
+    file — only the history record (and the sep_jobs title copy) is updated."""
+    job = jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if meta.title is not None:
+        job["title"] = meta.title.strip() or "Untitled"
+    if meta.artist is not None:
+        job["artist"] = meta.artist.strip()
+    # keep the duplicate title in any separation record (used by Studio/Karaoke) in sync
+    if meta.title is not None:
+        for sep in sep_jobs.values():
+            if sep.get("job_id") == job_id:
+                sep["title"] = job["title"]
+    _save_history()
+    return {"job_id": job_id, "title": job.get("title"), "artist": job.get("artist", "")}
 
 
 @app.delete("/history/{job_id}")

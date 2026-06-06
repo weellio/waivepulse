@@ -159,6 +159,13 @@ export function applyZoom() {
   redrawAll();
   buildRuler();
   updateLoopRegion();
+  // Reposition the playhead for the new zoom — its absolute `left` is in pixels, so a
+  // stale value (from the old zoom) inflates scroll-content's scrollWidth and leaves the
+  // view stranded in blank space past the end (esp. after zoom-in → scroll → FIT).
+  updatePlayhead(currentPosition());
+  // Clamp horizontal scroll into the new content bounds.
+  const sc = document.getElementById('scroll-content');
+  if (sc) sc.scrollLeft = Math.min(sc.scrollLeft, Math.max(0, sc.scrollWidth - sc.clientWidth));
 }
 
 export function zoomIn() { S._zoom = Math.min(16, S._zoom * 2); applyZoom(); }

@@ -107,10 +107,11 @@ document.addEventListener('keydown', e => {
 // ── Mouse: ruler-drag loop, mute-region paint, import-clip reposition ────────────
 document.addEventListener('mousemove', e => {
   if (S._rulerDrag) {
-    const sc = document.getElementById('scroll-content');
     const ruler = document.getElementById('ruler-inner');
     const rect = ruler.getBoundingClientRect();
-    const absX = Math.max(0, Math.min(getCanvasWidth(), e.clientX - rect.left + sc.scrollLeft));
+    // ruler-inner scrolls with the content, so its rect.left already accounts for the
+    // scroll — adding scrollLeft on top double-counts it (broke selection when zoomed in)
+    const absX = Math.max(0, Math.min(getCanvasWidth(), e.clientX - rect.left));
     if (Math.abs(absX - S._rulerDrag.startAbs) > 5) S._rulerDrag.moved = true;
     if (S._rulerDrag.moved) {
       const cw = getCanvasWidth();

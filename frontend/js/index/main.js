@@ -16,6 +16,7 @@ import {
 import {
   loadFilesAsCards, openStudioForLocal, loadLocalMP3, setupDragDrop,
 } from './mp3.js';
+import { openDetails, closeDetails, saveDetails } from './details.js';
 import {
   getACtx, getAnalyser, cycleVizStyle, startViz, stopViz,
   attachVizListeners, attachMetaListeners,
@@ -39,6 +40,8 @@ Object.assign(window, {
   addJobCard, updateJobCard, deleteJob, pollJob, loadHistory,
   // mp3
   loadFilesAsCards, openStudioForLocal, loadLocalMP3,
+  // details modal
+  openDetails, closeDetails, saveDetails,
   // util
   showToast,
   // viz
