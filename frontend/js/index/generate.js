@@ -51,7 +51,11 @@ export async function checkModelStatus() {
     const data = await res.json();
     const badge = document.getElementById("modelBadge");
     const btn   = document.getElementById("btnGenerate");
-    if (data.ready) {
+    if (data.ready && data.gpu && !data.gpu.available) {
+      badge.textContent = "No CUDA GPU — generation needs one (Looper/Studio still work)";
+      badge.style.color = "#f5a623"; badge.style.borderColor = "#3a3020"; badge.style.background = "#1e1a0e";
+      btn.disabled = true; btn.textContent = "Generation needs an NVIDIA GPU";
+    } else if (data.ready) {
       badge.textContent = "Models ready";
       badge.style.color = "#4caf7d"; badge.style.borderColor = "#2a4a3a"; badge.style.background = "#0e2a1e";
     } else if (data.incomplete_files > 0) {

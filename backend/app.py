@@ -781,6 +781,26 @@ def _models_ready() -> dict:
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
+_gpu_info = None
+def _gpu_status() -> dict:
+    """Cached CUDA check so a GPU-less user is warned BEFORE generating (importing
+    torch is slow, so compute once). Generation needs CUDA; Looper/Studio/Karaoke
+    are pure browser Web Audio and work without a GPU."""
+    global _gpu_info
+    if _gpu_info is None:
+        try:
+            import torch
+            if torch.cuda.is_available():
+                props = torch.cuda.get_device_properties(0)
+                _gpu_info = {"available": True, "name": props.name,
+                             "vram_gb": round(props.total_memory / 1e9, 1)}
+            else:
+                _gpu_info = {"available": False, "name": None, "vram_gb": 0}
+        except Exception as e:
+            _gpu_info = {"available": False, "name": None, "vram_gb": 0, "error": str(e)[:200]}
+    return _gpu_info
+
+
 @app.get("/model-status")
 def model_status():
     ms = _models_ready()
@@ -788,6 +808,7 @@ def model_status():
         "audioseal": _AUDIOSEAL and _TORCHAUDIO and _FFMPEG,
         "c2pa":      _C2PA and _CRYPTOGRAPHY,
     }
+    ms["gpu"] = _gpu_status()
     return ms
 
 

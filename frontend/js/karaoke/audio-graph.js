@@ -3,6 +3,7 @@
 // master bus → (sub/air EQ → exciter → comp) → analyser → destination, with
 // shared reverb + delay sends.
 import { S, setStatus, currentPos } from './state.js';
+import { createEq7 } from '../shared/eq7.js';
 
 function _makeSatCurve(k){
   const n=256,c=new Float32Array(n);
@@ -90,16 +91,14 @@ export async function loadStems(stemUrls){
         const muteNode=x.createGain();muteNode.gain.value=1;
         const offsetNode=x.createDelay(0.051);offsetNode.delayTime.value=s.offset||0;
         const panNode=x.createStereoPanner();panNode.pan.value=s.pan||0;
-        const eqSub=x.createBiquadFilter();eqSub.type='lowshelf';eqSub.frequency.value=60;eqSub.gain.value=s.eqS||0;
-        const eqBass=x.createBiquadFilter();eqBass.type='lowshelf';eqBass.frequency.value=200;eqBass.gain.value=s.eqB||0;
-        const eqMid=x.createBiquadFilter();eqMid.type='peaking';eqMid.frequency.value=1000;eqMid.Q.value=1.4;eqMid.gain.value=s.eqM||0;
-        const eqTreb=x.createBiquadFilter();eqTreb.type='highshelf';eqTreb.frequency.value=4000;eqTreb.gain.value=s.eqT||0;
+        // 7-band per-track EQ rebuilt from the Studio snapshot (flat if none saved)
+        const eq=createEq7(x, (s.eq7&&s.eq7.length)?s.eq7:undefined);
         // src → offsetNode → gainNode → muteNode → panNode → EQ → masterBus
         offsetNode.connect(gainNode);gainNode.connect(muteNode);muteNode.connect(panNode);
-        panNode.connect(eqSub);eqSub.connect(eqBass);eqBass.connect(eqMid);eqMid.connect(eqTreb);
-        eqTreb.connect(masterBus);
-        if(reverbNode&&s.revAmt){const rs=x.createGain();rs.gain.value=s.revAmt;eqTreb.connect(rs);rs.connect(reverbNode);}
-        if(delayInput&&s.dlyAmt){const ds=x.createGain();ds.gain.value=s.dlyAmt;eqTreb.connect(ds);ds.connect(delayInput);}
+        panNode.connect(eq.input);
+        eq.output.connect(masterBus);
+        if(reverbNode&&s.revAmt){const rs=x.createGain();rs.gain.value=s.revAmt;eq.output.connect(rs);rs.connect(reverbNode);}
+        if(delayInput&&s.dlyAmt){const ds=x.createGain();ds.gain.value=s.dlyAmt;eq.output.connect(ds);ds.connect(delayInput);}
         S._stems[name]={buffer:buf,gainNode,muteNode,offsetNode,volume:s.muted?0:s.volume,muteRanges:s.muteRanges||[]};
       }else{
         gainNode.connect(masterBus);

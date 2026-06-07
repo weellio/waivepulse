@@ -5,6 +5,7 @@ import { getParam, fmtTime, setOverlay, showError, hideOverlay } from './util.js
 import { setupGlobalFX, wireTrack, loadWorklets } from './audio-graph.js';
 import { addTrackToUI } from './tracks.js';
 import { applyZoom, buildRuler, startRAF, getCanvasWidth } from './transport.js';
+import { snapshotEq } from '../shared/eq7.js';
 
 // ── Boot ────────────────────────────────────────────────────────────────────
 export async function boot() {
@@ -201,7 +202,7 @@ export function openKaraoke() {
     if (!t) continue;
     stemState[name] = {
       volume: t.volume, pan: t.pan,
-      eqS: t.eqS || 0, eqB: t.eqB || 0, eqM: t.eqM || 0, eqT: t.eqT || 0,
+      eq7: t.eq ? snapshotEq(t.eq) : null,   // 7-band per-track EQ (Karaoke rebuilds it)
       revAmt: t.revAmt || 0, dlyAmt: t.dlyAmt || 0, offset: t.offset || 0,
       muted: t.muted || (soloActive && !t.solo),
       muteRanges: t.muteRanges || [],
