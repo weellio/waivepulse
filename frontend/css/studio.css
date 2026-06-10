@@ -35,6 +35,12 @@ body{background:#0d0d0d;color:#e0e0e0;font-family:'Segoe UI',system-ui,sans-seri
 .preset-btn:hover{border-color:#555;color:#ccc;background:#1e1e1e}
 .preset-btn.active{background:#062828;border-color:#1ab8b8;color:#8cffff}
 
+/* ── Mix Preset bar ── */
+#mix-preset-bar{display:flex;align-items:center;gap:8px;padding:4px 16px;background:#0e0e0e;border-bottom:1px solid #1a1a1a;flex-shrink:0;flex-wrap:wrap}
+#mix-preset-bar .pb-label{font-size:10px;color:#444;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap;margin-right:2px}
+.mp-del{background:none;border:none;color:#555;font-size:13px;cursor:pointer;padding:0 2px;line-height:1;transition:color .12s}
+.mp-del:hover{color:#f87171}
+
 /* ── Master FX bar ── */
 #fx-bar{display:flex;align-items:center;gap:8px;padding:5px 16px;background:#0c0c0c;border-bottom:1px solid #1e1e1e;flex-shrink:0;flex-wrap:wrap}
 #fx-bar .fx-label{font-size:10px;color:#444;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap;margin-right:2px}
@@ -177,6 +183,21 @@ canvas.waveform{
 .help-table.knob-table td:first-child{color:#8cffff;font-family:'Courier New',monospace;font-size:11px}
 .help-table.knob-table td:nth-child(2){color:#555;font-size:11px;white-space:nowrap;min-width:110px}
 kbd{display:inline-block;background:#1c1c1c;border:1px solid #383838;border-bottom-width:2px;border-radius:3px;padding:1px 5px;font-family:'Courier New',monospace;font-size:10px;color:#ccc;white-space:nowrap;line-height:1.4}
+
+/* ── Stem Library modal ── */
+#stem-library-modal{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:500;display:none;align-items:center;justify-content:center;padding:20px}
+#stem-library-modal.open{display:flex}
+#stem-library-panel{background:#111;border:1px solid #2a2a2a;border-radius:10px;width:100%;max-width:620px;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.6)}
+.sl-loading{text-align:center;color:#666;padding:32px 16px;font-size:13px;line-height:1.8}
+.sl-song-card{background:#0e0e0e;border:1px solid #1e1e1e;border-radius:8px;margin-bottom:14px;overflow:hidden}
+.sl-song-card:last-child{margin-bottom:0}
+.sl-song-hdr{display:flex;align-items:baseline;gap:10px;padding:10px 14px 6px;border-bottom:1px solid #1a1a1a}
+.sl-song-title{font-size:13px;font-weight:600;color:#ccc;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sl-song-meta{font-size:10px;color:#555;white-space:nowrap;font-family:'Courier New',monospace}
+.sl-stem-row{display:flex;gap:8px;padding:10px 14px;flex-wrap:wrap}
+.sl-stem-btn{background:#161616;border:1px solid #333;color:#aaa;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;transition:background .15s,border-color .15s,opacity .15s}
+.sl-stem-btn:hover{background:#1e1e1e;border-color:currentColor}
+.sl-stem-btn:disabled{cursor:wait}
 
 /* ── EQ modal ── */
 #eq-modal{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:500;display:none;align-items:center;justify-content:center;padding:20px}

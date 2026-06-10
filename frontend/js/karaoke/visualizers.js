@@ -473,6 +473,52 @@ function drawMask(W,H,p){
   ctx.stroke();ctx.shadowBlur=0;ctx.restore();
 }
 
+// ── Lyrics-on-canvas (for video capture) ─────────────────────────────────────
+// canvas.captureStream() only grabs canvas pixels, not HTML overlays, so we
+// paint the 5-word sliding window directly onto the canvas when recording.
+function drawLyricsOnCanvas(W,H){
+  if(!S._recording||!S._words.length)return;
+  const idx=S._lastWordIdx;
+  if(idx<0)return;
+
+  const OPA=[0.22,0.55,1.0,0.55,0.22];
+  const SIZES=[30,46,70,46,30];
+  const y=H*0.88; // bottom third
+
+  ctx.save();
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+
+  // Measure total width to center the group
+  const GAP=18;
+  const wordData=[];
+  let totalW=0;
+  for(let si=0;si<5;si++){
+    const wi=idx-2+si;
+    const word=(wi>=0&&wi<S._words.length)?S._words[wi].word:'';
+    const size=SIZES[si];
+    ctx.font=`900 ${size}px 'Segoe UI',system-ui,sans-serif`;
+    const m=ctx.measureText(word);
+    wordData.push({word,size,width:m.width,opa:OPA[si]});
+    totalW+=m.width;
+  }
+  totalW+=GAP*(wordData.length-1);
+
+  let x=W/2-totalW/2;
+  for(const d of wordData){
+    ctx.font=`900 ${d.size}px 'Segoe UI',system-ui,sans-serif`;
+    ctx.textAlign='left';
+    // current word (center, index 2) gets gold highlight
+    const isCurrent=d===wordData[2];
+    ctx.shadowColor=isCurrent?'rgba(255,216,74,0.85)':'rgba(0,0,0,0.9)';
+    ctx.shadowBlur=isCurrent?40:16;
+    ctx.fillStyle=isCurrent?`rgba(255,216,74,${d.opa})`:`rgba(255,255,255,${d.opa})`;
+    ctx.fillText(d.word,x,y);
+    x+=d.width+GAP;
+  }
+  ctx.restore();
+}
+
 // ── Main render ───────────────────────────────────────────────────────────────
 export function renderFrame(){
   requestAnimationFrame(renderFrame);
@@ -502,4 +548,7 @@ export function renderFrame(){
   else if(p.engine==='eye')          drawEye(W,H,freq);
   else if(p.engine==='mandala')      drawMandala(W,H,freq);
   else if(p.engine==='mask')         drawMask(W,H,p);
+
+  // Burn lyrics into canvas pixels when recording (captureStream can't see HTML overlays)
+  drawLyricsOnCanvas(W,H);
 }

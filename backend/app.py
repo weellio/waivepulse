@@ -196,6 +196,67 @@ def _detect_bpm_key(mp3_path: str) -> tuple:
         return None, None
 
 
+def _detect_chords(mp3_path: str) -> list:
+    """Return a list of {chord, start, end} spans, or [] if librosa unavailable."""
+    if not _LIBROSA:
+        return []
+    try:
+        import librosa
+        import numpy as np
+
+        y, sr = librosa.load(mp3_path, sr=22050, mono=True)
+        hop = int(sr * 0.5)
+        chroma = librosa.feature.chroma_cqt(y=y, sr=sr, hop_length=hop)
+
+        NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
+        major_tpl = np.array([1,0,0,0,1,0,0,1,0,0,0,0], dtype=float)
+        minor_tpl = np.array([1,0,0,1,0,0,0,1,0,0,0,0], dtype=float)
+
+        n_frames = chroma.shape[1]
+        labels = []
+        for f in range(n_frames):
+            vec = chroma[:, f]
+            best_score, best_label = -1e9, "C"
+            for root in range(12):
+                for tpl, suffix in [(major_tpl, ""), (minor_tpl, "m")]:
+                    rotated = np.roll(tpl, root)
+                    score = float(np.dot(vec, rotated))
+                    if score > best_score:
+                        best_score = score
+                        best_label = f"{NOTES[root]}{suffix}"
+            labels.append(best_label)
+
+        times = librosa.frames_to_time(
+            np.arange(n_frames), sr=sr, hop_length=hop
+        )
+        duration = float(len(y)) / sr
+
+        # Merge consecutive identical chords into spans
+        spans = []
+        if labels:
+            cur_chord = labels[0]
+            cur_start = float(times[0])
+            for i in range(1, len(labels)):
+                if labels[i] != cur_chord:
+                    spans.append({
+                        "chord": cur_chord,
+                        "start": round(cur_start, 2),
+                        "end":   round(float(times[i]), 2),
+                    })
+                    cur_chord = labels[i]
+                    cur_start = float(times[i])
+            spans.append({
+                "chord": cur_chord,
+                "start": round(cur_start, 2),
+                "end":   round(duration, 2),
+            })
+
+        return spans
+    except Exception as e:
+        _real_stderr.write(f"[waivepulse] Chord detection failed: {e}\n")
+        return []
+
+
 def _get_waivepulse_creds():
     """Return (cert_pem_bytes, key_pem_bytes), generating a self-signed cert on first call."""
     global _wp_cert_pem, _wp_key_pem
@@ -762,6 +823,7 @@ class GenerateRequest(BaseModel):
     temperature:      Optional[float] = 1.0
     cfg_scale:        Optional[float] = 1.5
     topk:             Optional[int]   = 50
+    variation_of:     Optional[str]   = None   # job_id of song being varied
 
 
 def _models_ready() -> dict:
@@ -862,6 +924,7 @@ def generate(req: GenerateRequest):
         "key":              None,
         "watermarked_audio":None,
         "watermarked_c2pa": None,
+        "variation_of":    req.variation_of,
     }
     cancel_flags[job_id] = threading.Event()
     _job_queue.put(("generate", job_id, {
@@ -923,6 +986,27 @@ def status(job_id: str):
     if job_id not in jobs and not _recover_job(job_id):
         raise HTTPException(status_code=404, detail="Job not found")
     return jobs[job_id]
+
+
+@app.get("/chords/{job_id}")
+def chords(job_id: str):
+    if job_id not in jobs and not _recover_job(job_id):
+        raise HTTPException(status_code=404, detail="Job not found")
+    job = jobs[job_id]
+    if job["status"] != "done":
+        raise HTTPException(status_code=400, detail="Job is not done yet")
+    if "chords" in job:
+        return {"chords": job["chords"]}
+    # Find the source MP3 file
+    file_path = job.get("file", "")
+    mp3_name  = file_path.split("/")[-1] if file_path else ""
+    mp3_path  = OUTPUTS_DIR / mp3_name if mp3_name else None
+    if not mp3_path or not mp3_path.exists():
+        raise HTTPException(status_code=404, detail="MP3 file not found")
+    detected = _detect_chords(str(mp3_path))
+    job["chords"] = detected
+    _save_history()
+    return {"chords": detected}
 
 
 @app.post("/cancel/{job_id}")
@@ -1098,6 +1182,31 @@ async def sep_progress_stream(sep_id: str):
     )
 
 
+@app.get("/stems/library")
+def stem_library():
+    """List all available stems across all separations, for cross-song stem swapping."""
+    library = []
+    for sep_id, sep in sep_jobs.items():
+        if sep.get("status") != "done" or not sep.get("stems"):
+            continue
+        job_id = sep.get("job_id")
+        job = jobs.get(job_id, {})
+        title = job.get("title") or sep.get("title") or "Unknown"
+        for stem_name, stem_url in sep.get("stems", {}).items():
+            library.append({
+                "sep_id": sep_id,
+                "job_id": job_id,
+                "title": title,
+                "stem": stem_name,
+                "url": stem_url,
+                "bpm": job.get("bpm"),
+                "key": job.get("key"),
+            })
+    stem_order = {"vocals": 0, "drums": 1, "bass": 2, "guitar": 3, "piano": 4, "other": 5}
+    library.sort(key=lambda x: (x.get("title", ""), stem_order.get(x["stem"], 9)))
+    return {"stems": library}
+
+
 @app.get("/stems/{sep_id}/{filename}")
 def serve_stem(sep_id: str, filename: str):
     if sep_id not in sep_jobs:
@@ -1159,6 +1268,100 @@ def download_stems_zip(sep_id: str):
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{slug}_stems.zip"'},
     )
+
+
+# ── Time-stretch (librosa phase vocoder) ──────────────────────────────────────
+
+def _time_stretch_audio(audio_path: str, factor: float) -> bytes:
+    """Load audio, time-stretch by *factor*, return WAV bytes.
+    factor > 1 = speed up (shorter), factor < 1 = slow down (longer)."""
+    import librosa, numpy as np, struct
+    y, sr = librosa.load(audio_path, sr=None, mono=False)
+    mono = y.ndim == 1
+    if mono:
+        ys = librosa.effects.time_stretch(y, rate=factor)
+    else:
+        # stretch each channel separately, stack back
+        ys = np.stack([librosa.effects.time_stretch(y[ch], rate=factor)
+                       for ch in range(y.shape[0])])
+    # Encode as 16-bit PCM WAV
+    nc = 1 if mono else ys.shape[0]
+    if mono:
+        samples = ys
+    else:
+        # interleave channels
+        samples = ys.T.flatten()
+    samples = np.clip(samples, -1.0, 1.0)
+    pcm = (samples * 32767).astype(np.int16).tobytes()
+    ns = len(samples) // nc
+    # WAV header
+    dl = len(pcm)
+    hdr = struct.pack('<4sI4s', b'RIFF', 36 + dl, b'WAVE')
+    fmt = struct.pack('<4sIHHIIHH', b'fmt ', 16, 1, nc, sr, sr * nc * 2, nc * 2, 16)
+    dat = struct.pack('<4sI', b'data', dl)
+    return hdr + fmt + dat + pcm
+
+
+@app.post("/timestretch/{sep_id}/{stem_name}")
+def timestretch_stem(sep_id: str, stem_name: str, factor: float = Query(...)):
+    """Time-stretch an existing separated stem. factor>1=faster, <1=slower."""
+    if not _LIBROSA:
+        raise HTTPException(status_code=501, detail="librosa is not installed")
+    if factor < 0.25 or factor > 4.0:
+        raise HTTPException(status_code=400, detail="factor must be between 0.25 and 4.0")
+    if sep_id not in sep_jobs and not _recover_sep(sep_id):
+        raise HTTPException(status_code=404, detail="Separation not found")
+    # Locate the stem file on disk
+    ext = "mp3" if _FFMPEG else "wav"
+    out_dir = OUTPUTS_DIR / f"sep_{sep_id}"
+    candidates = list(out_dir.rglob(f"{stem_name}.{ext}"))
+    if not candidates:
+        candidates = list(out_dir.rglob(f"{stem_name}.wav"))
+    if not candidates:
+        raise HTTPException(status_code=404, detail=f"Stem '{stem_name}' not found")
+    wav_bytes = _time_stretch_audio(str(candidates[0]), factor)
+    return StreamingResponse(io.BytesIO(wav_bytes), media_type="audio/wav",
+                             headers={"Content-Disposition": f'attachment; filename="{stem_name}_stretched.wav"'})
+
+
+@app.post("/timestretch")
+async def timestretch_upload(file: UploadFile = FastAPIFile(...), factor: float = Query(...)):
+    """Time-stretch an uploaded audio file. factor>1=faster, <1=slower."""
+    if not _LIBROSA:
+        raise HTTPException(status_code=501, detail="librosa is not installed")
+    if factor < 0.25 or factor > 4.0:
+        raise HTTPException(status_code=400, detail="factor must be between 0.25 and 4.0")
+    # Save to temp file
+    import tempfile
+    content = await file.read()
+    suffix = Path(file.filename or "audio.wav").suffix or ".wav"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+    try:
+        wav_bytes = _time_stretch_audio(tmp_path, factor)
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+    return StreamingResponse(io.BytesIO(wav_bytes), media_type="audio/wav",
+                             headers={"Content-Disposition": 'attachment; filename="stretched.wav"'})
+
+
+@app.post("/detect-bpm")
+async def detect_bpm_upload(file: UploadFile = FastAPIFile(...)):
+    """Detect BPM and key of an uploaded audio file."""
+    if not _LIBROSA:
+        raise HTTPException(status_code=501, detail="librosa is not installed")
+    import tempfile
+    content = await file.read()
+    suffix = Path(file.filename or "audio.wav").suffix or ".wav"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+    try:
+        bpm, key = _detect_bpm_key(tmp_path)
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+    return {"bpm": bpm, "key": key}
 
 
 @app.post("/upload")

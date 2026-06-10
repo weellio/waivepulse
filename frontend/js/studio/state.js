@@ -26,6 +26,7 @@ export const PRESETS = {
 export const S = {
   // ── Job / song ──
   _jobId: null, _sepId: null, _title: '', _dur: 0,
+  _jobMeta: null,   // full job record for variation
 
   // ── Audio context / transport ──
   _actx: null, _playing: false, _looping: false,
@@ -70,11 +71,25 @@ export const S = {
   _reverbNode: null, _reverbReturn: null, _reverbIRData: null,
   _delayInput: null, _delayNode: null, _delayFeedback: null, _delayReturn: null,
 
+  // ── Sidechain ducking (per-track worklet, not master chain) ──
+  _sidechainNode: null,
+  _sidechainEnabled: false,
+  _sidechainKeyTrack: null,
+  _sidechainTargetTrack: null,
+  _sidechainKeyGain: null,
+
   // ── Worklet availability ──
   _workletsReady: false,
 
   // ── Tracks ──
   tracks: {},
+
+  // ── Chords overlay ──
+  _chords: null,          // [{chord, start, end}, ...] from /chords endpoint
+  _showChords: true,      // toggle chord overlay visibility
+
+  // ── Stem library ──
+  _stemLibraryData: null,  // cached response from /stems/library
 
   // ── Visual EQ ──
   _eqState: null,

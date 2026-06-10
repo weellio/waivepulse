@@ -95,6 +95,7 @@ export function redrawAll() {
       drawMuteRanges(t.canvas, ranges, S._dur);
     }
   }
+  drawChords();
 }
 
 export function drawMuteRanges(canvas, ranges, dur) {
@@ -123,3 +124,45 @@ export function mergeRanges(ranges) {
 }
 
 export function soloCount() { return Object.values(S.tracks).filter(t => t.solo).length; }
+
+// ── Chord overlay ─────────────────────────────────────────────────────────────
+export function drawChords() {
+  let row = document.getElementById('chord-row');
+  if (!row) {
+    row = document.createElement('div');
+    row.id = 'chord-row';
+    row.style.cssText = 'position:relative;height:20px;width:100%;pointer-events:none;overflow:hidden;flex-shrink:0';
+    // Insert between ruler-inner and the first track-row
+    const sc = document.getElementById('scroll-content');
+    const firstTrack = sc.querySelector('.track-row');
+    if (firstTrack) sc.insertBefore(row, firstTrack);
+    else sc.appendChild(row);
+  }
+  row.innerHTML = '';
+  row.style.display = S._showChords && S._chords?.length ? '' : 'none';
+  if (!S._showChords || !S._chords?.length || !S._dur) return;
+
+  const cw = document.getElementById('content-area').clientWidth * S._zoom;
+  for (const c of S._chords) {
+    const lbl = document.createElement('span');
+    lbl.textContent = c.chord;
+    const x = (c.start / S._dur) * cw;
+    const w = ((c.end - c.start) / S._dur) * cw;
+    lbl.style.cssText =
+      `position:absolute;left:${x}px;width:${Math.max(w, 20)}px;top:1px;` +
+      'font-size:10px;color:#e8cc4a;font-weight:700;text-align:center;' +
+      'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' +
+      'font-family:"Courier New",monospace;letter-spacing:.3px';
+    row.appendChild(lbl);
+  }
+}
+
+export function toggleChords() {
+  S._showChords = !S._showChords;
+  const btn = document.getElementById('chord-btn');
+  if (btn) {
+    btn.classList.toggle('active', S._showChords);
+    btn.textContent = S._showChords ? 'CHORDS ON' : 'CHORDS';
+  }
+  drawChords();
+}

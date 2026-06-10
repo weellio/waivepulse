@@ -57,7 +57,7 @@ function ledgersFor(dia) {
 
 // A run of contiguous filled cells in a row = one held note (start step + length in
 // 16ths). This is the shared truth for both playback and notation.
-function pseqRuns() {
+export function pseqRuns() {
   const runs = [];
   for (let row = 0; row < ROWS; row++) {
     let s = 0;

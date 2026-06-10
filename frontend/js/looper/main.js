@@ -15,8 +15,9 @@ import {
   loadSample, toggleSampleMode, useAsSample,
 } from './synth.js';
 import { chBPM, toggleMetro, chCountIn, tapTempo, toggleQuantize } from './transport.js';
-import { toggleMic, toggleAutotune, setAtKey, setAtScaleSel, setAtSpeed } from './mic.js';
+import { toggleMic, toggleAutotune, setAtKey, setAtScaleSel, setAtSpeed, toggleHarmonizer, setHarmInterval, toggleHarmVoice2 } from './mic.js';
 import { setSynthMode, togglePseq, pushPseqToLoop, clearPseq, renderSheet } from './pianoseq.js';
+import { exportMIDI } from './midi-export.js';
 import { openLoopEq, closeLoopEq, resetLoopEq, loopEqOpen } from './loopeq.js';
 
 // ── Help modal ──────────────────────────────────────────────────────────────────
@@ -36,15 +37,16 @@ Object.assign(window, {
   setWave, toggleGuitar, setGuitarVol, chOctave, setADSR, setFilter,
   toggleArp, setArpRate, setArpMode, loadSample, toggleSampleMode, useAsSample,
   // piano roll
-  setSynthMode, togglePseq, pushPseqToLoop, clearPseq,
+  setSynthMode, togglePseq, pushPseqToLoop, clearPseq, exportMIDI,
   // per-loop EQ
   openLoopEq, closeLoopEq, resetLoopEq,
   // loops
   tapRecord, tapPlay, clearSlot, setVol, nudgeSlot, sendLoopToStudio,
   // master fx
   setGlobalFX, setMasterVol,
-  // mic + autotune
+  // mic + autotune + harmonizer
   toggleMic, toggleAutotune, setAtKey, setAtScaleSel, setAtSpeed,
+  toggleHarmonizer, setHarmInterval, toggleHarmVoice2,
 });
 
 // ── Keyboard input ──────────────────────────────────────────────────────────────

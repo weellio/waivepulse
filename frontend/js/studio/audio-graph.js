@@ -26,6 +26,7 @@ const WORKLET_FILES = [
   '/worklets/studio-gate.js',
   '/worklets/studio-bitcrusher.js',
   '/worklets/studio-dattorro.js',
+  '/worklets/studio-sidechain.js',
 ];
 
 export async function loadWorklets(ctx) {
@@ -315,4 +316,115 @@ export function setPlateMix(v) {
   S._plateMix = Math.max(0, Math.min(1, +v / 100));
   if (S._plateSend && S._plateEnabled) S._plateSend.gain.setTargetAtTime(S._plateMix, S._actx.currentTime, 0.05);
   const lbl = document.getElementById('plate-mix-label'); if (lbl) lbl.textContent = (+v).toFixed(0) + '%';
+}
+
+// ── Sidechain ducking (per-track worklet) ────────────────────────────────────
+export function applySidechain(keyTrack, targetTrack) {
+  if (!S._workletsReady) { console.warn('Sidechain worklet unavailable'); return; }
+  if (!S.tracks[keyTrack] || !S.tracks[targetTrack]) { console.warn('Sidechain: invalid track names'); return; }
+  // Remove any existing sidechain first.
+  if (S._sidechainEnabled) removeSidechain();
+
+  const x = S._actx;
+  const tgt = S.tracks[targetTrack];
+  const key = S.tracks[keyTrack];
+
+  // Create the sidechain worklet node: 2 inputs, 1 output (stereo).
+  S._sidechainNode = new AudioWorkletNode(x, 'studio-sidechain', {
+    numberOfInputs: 2, numberOfOutputs: 1, outputChannelCount: [2],
+  });
+
+  // Disconnect target's eq.output from masterBus (reverb/delay sends are separate connections and untouched).
+  tgt.eq.output.disconnect(S._masterBus);
+
+  // Connect target's eq.output → sidechain input 0.
+  tgt.eq.output.connect(S._sidechainNode, 0, 0);
+
+  // Connect sidechain output → masterBus.
+  S._sidechainNode.connect(S._masterBus);
+
+  // Create a gain node for the key tap so we can disconnect cleanly later.
+  S._sidechainKeyGain = x.createGain();
+  S._sidechainKeyGain.gain.value = 1;
+  key.eq.output.connect(S._sidechainKeyGain);
+  S._sidechainKeyGain.connect(S._sidechainNode, 0, 1);
+
+  // Store state.
+  S._sidechainKeyTrack = keyTrack;
+  S._sidechainTargetTrack = targetTrack;
+  S._sidechainEnabled = true;
+
+  _setEffectButton('sc-btn', true, 'SC');
+}
+
+export function removeSidechain() {
+  if (!S._sidechainEnabled || !S._sidechainNode) return;
+
+  const tgt = S.tracks[S._sidechainTargetTrack];
+  const key = S.tracks[S._sidechainKeyTrack];
+
+  // Disconnect the sidechain node.
+  try { S._sidechainNode.disconnect(); } catch {}
+
+  // Disconnect the key tap.
+  if (S._sidechainKeyGain && key) {
+    try { key.eq.output.disconnect(S._sidechainKeyGain); } catch {}
+    try { S._sidechainKeyGain.disconnect(); } catch {}
+  }
+
+  // Disconnect target from sidechain input (it was already disconnected from masterBus).
+  if (tgt) {
+    try { tgt.eq.output.disconnect(S._sidechainNode); } catch {}
+    // Re-establish the target's eq.output → masterBus connection.
+    tgt.eq.output.connect(S._masterBus);
+  }
+
+  // Clean up state.
+  S._sidechainNode = null;
+  S._sidechainKeyGain = null;
+  S._sidechainKeyTrack = null;
+  S._sidechainTargetTrack = null;
+  S._sidechainEnabled = false;
+
+  _setEffectButton('sc-btn', false, 'SC');
+}
+
+export function toggleSidechain() {
+  if (S._sidechainEnabled) {
+    removeSidechain();
+  } else {
+    const keySel = document.getElementById('sc-key-sel');
+    const tgtSel = document.getElementById('sc-tgt-sel');
+    if (!keySel || !tgtSel) return;
+    const keyTrack = keySel.value;
+    const targetTrack = tgtSel.value;
+    if (!keyTrack || !targetTrack) { console.warn('Sidechain: select key and target tracks'); return; }
+    if (keyTrack === targetTrack) { console.warn('Sidechain: key and target must be different tracks'); return; }
+    applySidechain(keyTrack, targetTrack);
+  }
+}
+
+export function setSidechainParam(name, value) {
+  if (!S._sidechainNode) return;
+  const p = S._sidechainNode.parameters.get(name);
+  if (p) p.setValueAtTime(+value, S._actx.currentTime);
+}
+
+export function populateSidechainDropdowns() {
+  const keySel = document.getElementById('sc-key-sel');
+  const tgtSel = document.getElementById('sc-tgt-sel');
+  if (!keySel || !tgtSel) return;
+
+  keySel.innerHTML = '';
+  tgtSel.innerHTML = '';
+
+  const trackNames = Object.keys(S.tracks);
+  for (const name of trackNames) {
+    const ko = document.createElement('option'); ko.value = name; ko.textContent = name; keySel.appendChild(ko);
+    const to = document.createElement('option'); to.value = name; to.textContent = name; tgtSel.appendChild(to);
+  }
+
+  // Default: key=drums, target=bass (if available).
+  if (S.tracks['drums']) keySel.value = 'drums';
+  if (S.tracks['bass'])  tgtSel.value = 'bass';
 }

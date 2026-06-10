@@ -36,16 +36,20 @@ export async function toggleMic() {
       micComp.attack.value    = 0.003;
       micComp.release.value   = 0.12;
       S.micSrc.connect(micComp);
-      // Insert autotune between the compressor and the bus (mix=0 = transparent until enabled)
+      // Build the mic chain: micComp -> [autotune] -> [harmonizer] -> micAna + inputBus
+      let chainTail = micComp;
       if (S.autotuneNode) {
-        micComp.connect(S.autotuneNode);
-        S.autotuneNode.connect(S.micAna);
-        S.autotuneNode.connect(S.inputBus);
+        chainTail.connect(S.autotuneNode);
         S.autotuneNode.parameters.get('mix').setValueAtTime(S.autotuneOn ? 1 : 0, ctx.currentTime);
-      } else {
-        micComp.connect(S.micAna);
-        micComp.connect(S.inputBus);
+        chainTail = S.autotuneNode;
       }
+      if (S.harmonizerNode) {
+        chainTail.connect(S.harmonizerNode);
+        S.harmonizerNode.parameters.get('mix').setValueAtTime(S.harmonizerOn ? 0.6 : 0, ctx.currentTime);
+        chainTail = S.harmonizerNode;
+      }
+      chainTail.connect(S.micAna);
+      chainTail.connect(S.inputBus);
       S.micOn = true;
       document.getElementById('micBtn').classList.add('on');
       document.getElementById('micStat').textContent = 'Live — voice goes into loops';
@@ -87,4 +91,32 @@ export function setAtSpeed(v) {
 }
 export function sendAt() {
   if (S.autotuneNode) S.autotuneNode.port.postMessage({ scale: S.atScale, root: S.atRoot });
+}
+
+// ── Harmonizer ───────────────────────────────────────────────────────────────
+export function toggleHarmonizer() {
+  ensureCtx();
+  S.harmonizerOn = !S.harmonizerOn;
+  document.getElementById('harmBtn').classList.toggle('on', S.harmonizerOn);
+  if (S.harmonizerNode) S.harmonizerNode.parameters.get('mix').setValueAtTime(S.harmonizerOn ? 0.6 : 0, S.ctx.currentTime);
+  setStatus(S.harmonizerOn
+    ? 'Harmony ON — enable the mic and sing; harmony voices follow your pitch'
+    : 'Harmony off');
+}
+
+export function setHarmInterval(voice, semitones) {
+  const semi = parseInt(semitones);
+  if (voice === 1 || voice === '1') {
+    S.harmVoice1Semi = semi;
+    if (S.harmonizerNode) S.harmonizerNode.parameters.get('voice1Semi').setValueAtTime(semi, S.ctx.currentTime);
+  } else {
+    S.harmVoice2Semi = semi;
+    if (S.harmonizerNode) S.harmonizerNode.parameters.get('voice2Semi').setValueAtTime(semi, S.ctx.currentTime);
+  }
+}
+
+export function toggleHarmVoice2() {
+  S.harmVoice2On = !S.harmVoice2On;
+  document.getElementById('harmV2Btn').classList.toggle('on', S.harmVoice2On);
+  if (S.harmonizerNode) S.harmonizerNode.parameters.get('voice2On').setValueAtTime(S.harmVoice2On ? 1 : 0, S.ctx.currentTime);
 }

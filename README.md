@@ -6,7 +6,7 @@
 
 Write a song. Generate it. Mix it. Perform it. On your own GPU.
 
-WAIvePulse is a local AI music studio that runs five connected tools in one browser. You write lyrics (or have Llama write them for you), describe the style you want with tags, and the **HeartMuLa 3B** model generates a complete song with vocals as an MP3. You then open that song in a browser DAW that separates it into six stems, gives you a per-track mixer with mastering chain and Visual EQ, and a karaoke performance mode synced to your original lyrics. A built-in loop station lets you build original ideas layer by layer — drums, keyboard, guitar, microphone — entirely in the browser with no plugins.
+WAIvePulse is a local AI music studio that runs five connected tools in one browser. You write lyrics (or have Llama write them for you), describe the style you want with tags, and the **HeartMuLa 3B** model generates a complete song with vocals as an MP3. You then open that song in a browser DAW that separates it into six stems, gives you a per-track mixer with mastering chain and Visual EQ, and a karaoke performance mode synced to your original lyrics. A built-in loop station lets you build original ideas layer by layer — drums, keyboard, guitar, microphone — entirely in the browser with no plugins. Mix presets and genre templates save and recall full mixer snapshots, chord detection overlays harmonic analysis on the timeline, a stem library lets you swap stems between songs, side-chain ducking and server-side time-stretch give you production-grade dynamics and tempo matching, MIDI export turns piano-roll patterns into Standard MIDI Files, a vocal harmonizer adds pitch-shifted harmony voices to the mic chain, and the Karaoke page can now record lyric videos directly as WebM — no external screen recorder needed.
 
 No cloud. No subscription. No API keys. No usage caps.
 
@@ -64,6 +64,13 @@ Click the Studio button on any finished song card. Demucs splits the song into s
 - **Mute automation:** shift-drag any waveform to draw red mute regions, baked into Export Mix
 - **Track import:** drag any audio file onto the page and it becomes a full mixer track with its own knob set and loop toggle
 - **Export Mix** renders a lossless WAV with every knob, EQ band, mute region, and master-chain stage baked in. What you hear is what you get
+- **Mix presets / genre templates:** save and load full mixer configurations as named presets. Four built-in genre templates (Radio Pop, Lo-Fi Hip Hop, Rock, EDM) plus user-saved presets with one-click recall and delete
+- **Chord detection overlay:** backend chroma analysis identifies chords (major/minor across all 12 roots) and displays yellow labels on the timeline between the ruler and the first track, toggleable via the CHORDS button
+- **Stem swap between songs:** a stem library modal lists every stem across all completed separations with BPM and key metadata — click any stem to load it as an import track, mixing parts from different songs
+- **Side-chain ducking:** an AudioWorklet-based compressor where one track (key, default drums) ducks another (target, default bass) with threshold, ratio, attack, and release controls
+- **BPM/key display:** the audio info bar now shows detected BPM and musical key alongside sample rate and channel count (e.g. "44.1 kHz · stereo · 120 BPM · C major")
+- **Time-stretch:** server-side phase-vocoder stretching (pitch-preserved) on any stem or imported track, with auto-BPM detection on drag-and-drop import and an auto-stretch prompt when importing stems at a different tempo
+- **Section variation + splice:** "Variation" opens the Generate page pre-filled with the same lyrics and tags at a bumped temperature for a fresh take; "Splice" replaces audio in a ruler-selected region with audio from a file, crossfaded at boundaries, with full undo support
 
 External songs work too. Drop an MP3 into the history panel, click Studio, and Demucs runs on it the same way. The full Studio feature set is available on imports.
 
@@ -87,6 +94,8 @@ Open the Looper page at any time — it works independently of the AI generation
 - **Tempo tools:** BPM, tap tempo, metronome, adjustable count-in, quantize, and a per-loop ½-beat nudge
 - **Master FX:** global reverb, delay (tempo-synced), and master volume
 - **F1–F6** record loops hands-free (each card shows its key); **Export Mix** renders all loops to a single WAV
+- **MIDI export:** a "MIDI" button next to Export renders the piano roll and drum pattern as a Standard MIDI File (.mid) — SMF Format 1, 480 PPQN, melody track + drum track on channel 9 with GM percussion mapping
+- **Vocal harmonizer:** an AudioWorklet adds pitch-shifted harmony voices to the mic input — two configurable voices (default +4 and +7 semitones, major 3rd and perfect 5th) with per-voice volume and semitone controls, wired after autotune in the mic chain
 
 [Detail section below](#looper-in-depth)
 
@@ -96,7 +105,7 @@ Open the Looper page at any time — it works independently of the AI generation
 
 After separation, click the Karaoke button. faster-whisper transcribes the vocals stem on demand, an LCS algorithm aligns the transcript to your original lyrics (correcting misheard words), and a fullscreen performance page opens with a five-word sliding lyric window, 20+ visualizer styles, and your Studio mix carried over intact.
 
-Capture the Karaoke playback with a screen recorder (OBS, Windows Game Bar, NVIDIA ShadowPlay, QuickTime) and you have a lyric video with synced words and a tuned mix, ready to upload to YouTube. WAIvePulse does not record video itself; it produces the visual and audio you record.
+You can also record lyric videos directly from the browser — no external screen recorder needed. A built-in recorder captures the canvas visuals and the full audio mix as a WebM file (VP9 + Opus). Press the record button (or `R`), playback starts from the beginning, lyrics render onto the video frame via a five-word sliding window, and when the song ends the recording auto-stops and downloads. For manual capture, OBS, Windows Game Bar, NVIDIA ShadowPlay, and QuickTime still work as before.
 
 [Detail section below](#karaoke-in-depth)
 
@@ -110,7 +119,12 @@ Capture the Karaoke playback with a screen recorder (OBS, Windows Game Bar, NVID
 | Open source | Yes | No | No |
 | Generates songs from lyrics | Yes | Yes | No |
 | Browser-based stem mixer | Yes | No (or extra fee) | N/A (native) |
-| Karaoke or lyric video output | Yes | No | No (manual) |
+| Karaoke or lyric video output | Yes (built-in WebM recorder) | No | No (manual) |
+| Chord detection overlay | Yes (librosa chroma analysis) | No | Plugin or manual |
+| MIDI export from sequencer | Yes (SMF Format 1) | No | Native |
+| Side-chain ducking | Yes (AudioWorklet) | No | Native or plugin |
+| Stem swap between songs | Yes (built-in library) | No | Manual import |
+| Time-stretch (pitch-preserved) | Yes (server-side phase vocoder) | No | Native or plugin |
 | Loop station (drums, synth, guitar, mic) | Yes | No | External plugin |
 | Subscription | None | Monthly | Monthly or one-time |
 | Usage cap | None | Tokens or credits | None |
@@ -389,7 +403,7 @@ Click the Studio button on any finished song card. The Studio page runs Demucs (
 | Piano | Piano and keys |
 | Other | Everything else |
 
-### Presets
+### Stem presets
 
 One-click buttons above the mixer apply common stem combinations:
 
@@ -400,6 +414,17 @@ One-click buttons above the mixer apply common stem combinations:
 | Acappella | Vocals only |
 | Drums Only | Drums only |
 | No Drums | Everything except drums |
+
+### Mix presets / genre templates
+
+Save and load full mixer configurations as named presets. A bar below the FX bar holds genre template buttons and user-saved presets.
+
+- **Four built-in genre templates:** Radio Pop, Lo-Fi Hip Hop, Rock, EDM — each applies a curated starting point for that style
+- **User presets:** click "Save" to snapshot the current mixer state under a name; click a preset chip to restore it; click × to delete. Stored in `localStorage`, so they persist across sessions
+- **What a snapshot captures:** per-stem volume, pan, 7-band EQ, reverb amount, delay amount, and offset, plus the full master chain state — all effect toggles and parameters including gate (with duck mode), bitcrusher, wavefolder, plate reverb, exciter, limiter/clipper, and fade in/out times
+- **Restoring a preset** sets every knob, toggles every effect, and syncs the UI to match — the mixer looks and sounds exactly as it did when the snapshot was taken
+
+File: `frontend/js/studio/presets.js`
 
 ### A-B loop
 
@@ -454,13 +479,16 @@ Press Escape to close.
 Signal path on the master bus:
 
 ```
+                        [Side-chain ducking]
+                         key track ──→ envelope
+                                        ↓ gain reduction
 Track sends -> Master Bus -> Sub EQ (60 Hz lowshelf) -> Air EQ (10 kHz highshelf)
             -> [Gate] -> [Crusher] -> [Wavefolder] -> FX Out -> [LMT or CLP] -> Master Volume -> Output
                                                             |-> Exciter (parallel) ------------------^
                                                             \-> Plate reverb (parallel send) --------^
 ```
 
-The gate, crusher and wavefolder are serial inserts (off by default, bypassed when off); the exciter and plate reverb are parallel sends. All of them, plus the limiter/clipper, are reproduced exactly in Export Mix.
+The gate, crusher, wavefolder, and side-chain ducker are serial inserts (off by default, bypassed when off); the exciter and plate reverb are parallel sends. Side-chain ducking operates per-track before the master bus (the key track's envelope controls gain on the target track). All of them, plus the limiter/clipper, are reproduced exactly in Export Mix.
 
 **LMT vs CLP, pick one.** They sit at the same point and target the same problem (peaks) with different methods.
 
@@ -514,6 +542,15 @@ A blank Hotkey cell means the control is mouse-only.
 | Master FX | Bitcrusher | click `CRUSH` | Bit-depth + sample-rate reduction (`bits` / `rate` sliders) |
 | Master FX | Wavefolder | click `FOLD` | 4×-oversampled wavefolder (`drive` slider) for added harmonics |
 | Master FX | Plate reverb | click `PLATE` | Dattorro plate reverb, parallel send (`mix` slider) |
+| Master FX | Side-chain ducking | click `SC` | Key/target track ducking with threshold + ratio sliders |
+| Presets | Save mix preset | click `Save` in preset bar | Snapshot all mixer state to a named preset |
+| Presets | Load genre template | click template button | Apply a built-in genre starting point (Radio Pop, Lo-Fi Hip Hop, Rock, EDM) |
+| Presets | Delete user preset | click `×` on preset chip | Remove a saved preset |
+| Chords | Toggle chord overlay | click `CHORDS` | Show/hide chord labels on the timeline |
+| Stem swap | Open stem library | click `Stem Swap` | Browse and import stems from other separations |
+| Variation | Generate variation | click `Variation` | Open Generate page with same settings, temperature +0.1 |
+| Splice | Splice region | select region + click `Splice` | Replace audio in the selected region with a file, crossfaded |
+| Time-stretch | Stretch imported track | click `STRETCH` on import | Server-side pitch-preserved tempo change |
 | Master bus | Apply mastering preset | `Ctrl+Shift+M` or click `MASTER` | Full one-click mastering chain across stems |
 | Master bus | Master volume slider | drag slider | 0 to 150%, baked into Export Mix |
 | Master bus | Reset every track | click `RST ALL` | All knobs on all tracks to defaults |
@@ -531,10 +568,10 @@ Pressing `?` or `H` inside Studio opens the same reference in-app.
 
 ### Export Mix (what's baked in)
 
-Everything you hear in the Studio is rendered into the exported WAV, including the limiter and clipper:
+Everything you hear in the Studio is rendered into the exported WAV, including every effect in the chain:
 
-- Per-track: volume, pan, SUB/Bass/Mid/Treb EQ, reverb send, delay send, offset (OFS), mute regions, looped imports, clip start position
-- Master bus: Sub EQ, Air EQ, exciter, limiter (LMT), clipper (CLP), master volume
+- Per-track: volume, pan, 7-band parametric EQ, reverb send, delay send, offset (OFS), mute regions, looped imports, clip start position, time-stretched buffers
+- Master bus: Sub EQ, Air EQ, exciter, limiter (LMT), clipper (CLP), gate, bitcrusher, wavefolder, plate reverb, side-chain ducking, fade in/out, master volume
 
 Solo and mute states are honoured. Imported tracks that are short and have loop enabled loop for the full render duration.
 
@@ -544,6 +581,76 @@ Solo and mute states are honoured. Imported tracks that are short and have loop 
 - Stems are cached. Clicking Studio again on the same song loads instantly.
 - The `?sep=` URL parameter lets you bookmark or share a direct link to a finished separation.
 - The MASTER preset enables the clipper (CLP), not the limiter. Click LMT manually if you prefer the glued limiter sound.
+
+### Chord detection overlay
+
+A backend chord-analysis endpoint computes chords on demand using `librosa.feature.chroma_cqt()` and template matching against 24 chord templates (12 roots × major/minor). Results are cached in the job record so subsequent loads are instant.
+
+- **Yellow chord labels** (e.g. "C major", "Am") appear in a dedicated row between the ruler and the first track
+- Labels scale with zoom level — zoom in and they spread out; zoom out and they compress
+- Toggle the overlay with the **CHORDS** button in the transport bar
+- Fetch is non-blocking: the frontend requests chords after stems have loaded, so it never delays the initial Studio open
+
+### Stem swap between songs
+
+The stem library lets you pull stems from any completed separation into the current mix.
+
+- **Backend:** `GET /stems/library` returns all stems across all completed separations, with metadata per source song (title, BPM, key)
+- **Frontend:** a "Stem Swap" button in the transport bar opens a modal that groups stems by song. Each stem is a clickable button coloured by type (vocals = purple, drums = orange, bass = blue, etc.)
+- Clicking a stem loads it as an import track via `addImportedBuffer()` — it appears in the mixer with the full knob set (VOL, PAN, EQ, REV, DLY, OFS)
+- BPM and key are shown per source song so you can pick stems that are harmonically and rhythmically compatible with the current mix
+
+File: `frontend/js/studio/stem-library.js`
+
+### Side-chain ducking
+
+An AudioWorklet-based side-chain compressor where one track (the "key") controls the gain applied to another (the "target").
+
+- **Worklet:** peak envelope follower on the key signal drives a gain-reduction curve applied to the target audio. Two inputs: target audio (input 0) and key signal (input 1)
+- **Parameters:**
+  | Parameter | Range | Default | Description |
+  |---|---|---|---|
+  | Threshold | −60 to 0 dB | −24 dB | Level above which the key signal triggers ducking |
+  | Ratio | 1:1 to 20:1 | 4:1 | Compression ratio applied to the target |
+  | Attack | 0.1 to 100 ms | 5 ms | How fast gain reduction kicks in |
+  | Release | 10 to 1000 ms | 100 ms | How fast gain recovers after key drops below threshold |
+- **UI:** an "SC" cell in the FX bar with dropdowns for key and target track, plus threshold and ratio sliders
+- **Defaults:** key = drums, target = bass (the classic kick-ducking-bass pattern)
+- Dropdowns auto-populate when tracks are added or removed (including imports)
+
+Worklet: `frontend/worklets/studio-sidechain.js`
+
+### BPM/key display
+
+The audio info bar below the transport now shows detected BPM and musical key alongside the existing sample rate and channel count:
+
+```
+44.1 kHz · stereo · 120 BPM · C major
+```
+
+BPM and key detection already existed on the backend (displayed as chips on the Generate page). This surfaces the same data in Studio. For separation-only loads (external songs imported directly into Studio), the frontend auto-fetches the parent job's metadata to populate the display.
+
+### Time-stretch (phase vocoder)
+
+Server-side pitch-preserved time-stretching using `librosa.effects.time_stretch()`. Tempo changes without pitch changes.
+
+- **Backend endpoints:**
+  | Route | Method | Purpose |
+  |---|---|---|
+  | `/timestretch/{sep_id}/{stem_name}?factor=X` | POST | Stretch a server-side stem by the given factor (>1 = slower, <1 = faster). Returns the stretched audio file. |
+  | `/timestretch` | POST | Stretch an uploaded audio file (multipart form, `file` + `factor` fields). |
+  | `/detect-bpm` | POST | Detect BPM of an uploaded audio file. Returns `{"bpm": 120.0}`. |
+
+- **Frontend per-track UI:** imported tracks show a stretch control — a source BPM label (auto-detected or manual), a target BPM input, and a STRETCH button. Clicking STRETCH sends the audio to the server and replaces the track buffer with the result.
+- **Auto-BPM on import:** when you drag-and-drop an audio file, a background fetch to `/detect-bpm` fills in the source BPM label automatically.
+- **Auto-stretch prompt:** when importing a stem from the Stem Library whose source BPM differs from the current song, a prompt offers to time-stretch it to match.
+
+### Section regeneration / variation + splice
+
+Two buttons for reworking sections of a mix:
+
+- **Variation:** opens the Generate page pre-filled with the same lyrics, tags, and settings as the current song, but with the temperature bumped by +0.1. The backend stores a `variation_of` link in the job record so you can trace provenance back to the original.
+- **Splice:** select a region by dragging on the ruler, click Splice, and choose an audio file. The selected region's audio is replaced with the file's audio, crossfaded at both boundaries for a smooth transition. The operation integrates with the existing undo system — click Undo to revert.
 
 ---
 
@@ -562,9 +669,20 @@ Click the Karaoke button in the Studio transport bar (enabled once separation is
 | Intro handling | Lyrics stay hidden during instrumental intros and slide into view about 3 seconds before the first sung word |
 | Visual styles | 20+ styles including Galaxy, Aurora, Bars, Scope, Hypertube, Kaleidoscope, Bubbles, Lasers. Press N to cycle. |
 | Auto-transcribe | "AUTO TX" toggle in the Studio transport. When on, Whisper runs in the background right after separation so Karaoke opens instantly. |
-| Keyboard | Space play/pause, V vocals toggle, N next style, Left/Right seek ±5s, Esc back to Studio |
+| Keyboard | Space play/pause, V vocals toggle, N next style, R start/stop recording, Left/Right seek ±5s, Esc back to Studio |
 
-**Screen-recording flow:** dial in your mix in Studio, open Karaoke, then record your screen with OBS, Windows Game Bar, NVIDIA ShadowPlay, or QuickTime. You get a lyric video with synced sliding words and a fully tuned mix that you can upload to YouTube. WAIvePulse does not record video itself; it produces the visual and audio you record.
+### Lyric video export (built-in recorder)
+
+Record the Karaoke playback as a WebM video file directly from the browser — no external screen recorder required.
+
+- **How it works:** `canvas.captureStream(30)` captures the visualizer canvas at 30 fps; `AudioContext.createMediaStreamDestination()` captures the full audio mix (all stems through the master chain). A `MediaRecorder` (VP9 video + Opus audio, WebM container) combines them.
+- **Recording flow:** press the record button (●) or the `R` key. Playback seeks to the start and begins automatically. The REC indicator pulses in the transport bar. Lyrics are rendered onto the canvas via `ctx.fillText()` during recording using the same five-word sliding window as live playback. When the song ends, recording auto-stops, the Blob is assembled, and the browser triggers a `.webm` download.
+- **Manual stop:** press ● or `R` again to stop recording early. The partial video still downloads.
+- **What's captured:** the full visualizer animation, the synced lyric overlay, and the complete Studio mix (per-track volume/pan/EQ/reverb/delay/offset, mute regions, master bus chain, fade in/out). What you hear and see in Karaoke is what ends up in the file.
+
+File: `frontend/js/karaoke/recorder.js`
+
+**External screen-recording** still works as before. Dial in your mix in Studio, open Karaoke, then record with OBS, Windows Game Bar, NVIDIA ShadowPlay, or QuickTime. The built-in recorder is simpler for most cases; external capture gives you more control over resolution, codec, and bitrate.
 
 ### Setup
 
@@ -729,6 +847,45 @@ A stylized hard-tune effect for the mic, running in its own AudioWorklet (autoco
 - **Key** + **Scale** (Major / Minor / Chromatic) define which notes the pitch snaps to
 - **Retune** sets the snap speed — fast for the robotic effect, slower for a natural glide
 
+#### Vocal harmonizer
+
+An AudioWorklet-based pitch-shifted harmony generator that adds one or two harmony voices to the mic input. Wired after autotune in the mic chain, so the harmony tracks the corrected pitch if autotune is on.
+
+- **Pitch detection:** autocorrelation on the incoming mic signal to find the fundamental frequency
+- **Dual-grain pitch shifting:** two independent grain-based pitch shifters, each producing a shifted copy of the input
+- **Two voices:**
+  | Voice | Default interval | Semitones | Toggle |
+  |---|---|---|---|
+  | Voice 1 | Major 3rd up | +4 | Always on when harmonizer is active |
+  | Voice 2 | Perfect 5th up | +7 | Toggleable (off by default) |
+- **Parameters:**
+  | Parameter | Range | Description |
+  |---|---|---|
+  | Mix | 0–100% | Wet/dry balance of the harmony blend |
+  | Voice 1 Semi | −12 to +12 | Pitch shift in semitones for voice 1 |
+  | Voice 2 Semi | −12 to +12 | Pitch shift in semitones for voice 2 |
+  | Voice 1 Vol | 0–100% | Level of voice 1 |
+  | Voice 2 Vol | 0–100% | Level of voice 2 |
+  | Voice 2 On | on/off | Enable or disable the second voice |
+- **UI:** a "Harmony" button in the mic section toggles the harmonizer. When active, interval selectors for each voice appear below the autotune controls.
+
+Worklet: `frontend/worklets/looper-harmonizer.js`
+
+#### MIDI export
+
+Export the piano roll and drum pattern as a Standard MIDI File (.mid).
+
+- **Format:** SMF Format 1 (multi-track), 480 PPQN. Each step = 120 ticks (16th note at 480 PPQN).
+- **Tracks:**
+  | Track | Source | Channel | Notes |
+  |---|---|---|---|
+  | Melody | Piano roll | 0 | Pitches from the roll grid, held-note durations preserved |
+  | Drums | Step sequencer | 9 | GM percussion mapping (kick = 36, snare = 38, hi-hat = 42, etc.) |
+- **Button:** "MIDI" appears next to the Export button in the looper transport bar. Click it to download a `.mid` file.
+- The MIDI file includes tempo (from the current BPM setting) and is ready to open in any DAW.
+
+File: `frontend/js/looper/midi-export.js`
+
 #### Master FX
 
 A panel on the right applies global effects to the whole mix off the master bus:
@@ -763,6 +920,8 @@ A panel on the right applies global effects to the whole mix off the master bus:
 | `W E T Y U` | Piano black keys, lower octave (C# D# F# G# A#) |
 | `Z X C V B N M` | Piano white keys, upper octave (D–C) |
 | `?` | Open / close the in-app help & shortcut reference |
+
+The "MIDI" button next to Export downloads the current piano roll + drum pattern as a `.mid` file. The "Harmony" button in the mic section toggles the vocal harmonizer.
 
 ### Audio architecture
 
@@ -814,8 +973,13 @@ waivepulse/
 │   ├── css/                    One stylesheet per page (index.css, studio.css, …)
 │   ├── js/                     ES modules per page: js/<page>/state.js (shared state),
 │   │                           main.js (entry), + focused modules (audio, ui, transport…)
+│   │   ├── studio/presets.js        Mix presets / genre template save/load
+│   │   ├── studio/stem-library.js   Stem swap modal (browse & import stems from other songs)
+│   │   ├── looper/midi-export.js    MIDI export (piano roll + drum pattern → .mid)
+│   │   └── karaoke/recorder.js      Built-in lyric video recorder (WebM export)
 │   └── worklets/               AudioWorkletProcessor files (looper-capture, looper-autotune,
-│                               studio-dattorro, studio-bitcrusher, studio-gate)
+│                               studio-dattorro, studio-bitcrusher, studio-gate,
+│                               studio-sidechain, looper-harmonizer)
 │
 ├── scripts/
 │   ├── test_generate.py        Standalone end-to-end test (bypasses the web server)
@@ -981,6 +1145,26 @@ Multipart file upload (`file` field) for external audio. Saves to `outputs/`, ru
 | `GET /separate/progress/{sep_id}` | SSE stream of Demucs log lines, ends with `__done__`. |
 | `GET /stems/{sep_id}/{filename}` | Direct stem audio (vocals/drums/bass/guitar/piano/other; MP3 if ffmpeg, else WAV). |
 | `GET /stems/{sep_id}/zip` | All six stems as a single ZIP. Used by the Studio "Stems" button. |
+
+### Chord detection
+
+| Route | Purpose |
+|---|---|
+| `GET /chords/{job_id}` | Compute chords for a finished song using `librosa.feature.chroma_cqt()` and template matching (24 templates: 12 roots × major/minor). Returns an array of `{time, duration, chord}` objects. Computed on demand, cached in the job record — subsequent requests return instantly. |
+
+### Stem library
+
+| Route | Purpose |
+|---|---|
+| `GET /stems/library` | List all stems across all completed separations. Each entry includes the stem name, file path, and source song metadata (title, BPM, key). Used by the Stem Swap modal to browse and import stems from other songs. |
+
+### Time-stretch
+
+| Route | Purpose |
+|---|---|
+| `POST /timestretch/{sep_id}/{stem_name}?factor=X` | Stretch a server-side stem by the given factor using `librosa.effects.time_stretch()`. Pitch is preserved; only tempo changes. Returns the stretched audio file. |
+| `POST /timestretch` | Stretch an uploaded audio file. Multipart form with `file` and `factor` fields. Returns the stretched audio. |
+| `POST /detect-bpm` | Detect BPM of an uploaded audio file using librosa. Returns `{"bpm": <float>}`. Used by the frontend for auto-BPM detection on drag-and-drop import. |
 
 ### Lyric transcription (Karaoke)
 

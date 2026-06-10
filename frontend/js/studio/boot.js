@@ -2,9 +2,10 @@
 // and the Karaoke hand-off. This is the studio's bootstrap entry logic.
 import { S, STEM_ORDER } from './state.js';
 import { getParam, fmtTime, setOverlay, showError, hideOverlay } from './util.js';
-import { setupGlobalFX, wireTrack, loadWorklets } from './audio-graph.js';
+import { setupGlobalFX, wireTrack, loadWorklets, populateSidechainDropdowns } from './audio-graph.js';
 import { addTrackToUI } from './tracks.js';
 import { applyZoom, buildRuler, startRAF, getCanvasWidth } from './transport.js';
+import { renderMixPresetBar } from './presets.js';
 import { snapshotEq } from '../shared/eq7.js';
 
 // ── Boot ────────────────────────────────────────────────────────────────────
@@ -26,6 +27,7 @@ async function fetchJobAndSeparate() {
     if (!res.ok) throw new Error(`Job not found (${res.status})`);
     const job = await res.json();
     S._title = job.title || 'Untitled';
+    S._jobMeta = job;
     document.getElementById('song-title').textContent = S._title;
 
     const dres = await fetch('/demucs-status');
@@ -52,6 +54,13 @@ async function checkSepStatus() {
     if (sep.status === 'done') {
       document.getElementById('karaoke-btn').disabled = false;
       maybeAutoTranscribe();
+      // If opened via ?sep= without ?job=, resolve the parent job for BPM/key metadata
+      if (!S._jobMeta && sep.job_id) {
+        try {
+          const jr = await fetch(`/status/${sep.job_id}`);
+          if (jr.ok) { S._jobMeta = await jr.json(); S._jobId = sep.job_id; }
+        } catch {}
+      }
       await loadStems(sep.stems); return;
     }
     if (sep.status === 'error') { showError(sep.message || 'Separation failed'); return; }
@@ -110,12 +119,21 @@ async function loadStems(stems) {
 
   const first = Object.values(S.tracks)[0].buffer;
   const lat = Math.round((S._actx.baseLatency || 0) * 1000);
+  const bpmStr = S._jobMeta?.bpm ? ` · ${S._jobMeta.bpm} BPM` : '';
+  const keyStr = S._jobMeta?.key ? ` · ${S._jobMeta.key}` : '';
   document.getElementById('audio-info').textContent =
     `${(first.sampleRate / 1000).toFixed(1)} kHz · ${first.numberOfChannels === 2 ? 'stereo' : 'mono'}` +
-    (lat ? ` · latency ${lat} ms` : '');
+    (lat ? ` · latency ${lat} ms` : '') + bpmStr + keyStr;
 
   buildUI();
   hideOverlay();
+
+  // Fetch chord data in background (non-blocking)
+  if (S._jobId) {
+    fetch(`/chords/${S._jobId}`).then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.chords) { S._chords = d.chords; import('./waveform.js').then(m => m.drawChords()); } })
+      .catch(() => {});
+  }
 }
 
 // ── Build UI ──────────────────────────────────────────────────────────────
@@ -159,6 +177,8 @@ function buildUI() {
   applyZoom();
   buildRuler();
   startRAF();
+  renderMixPresetBar();
+  populateSidechainDropdowns();
 }
 
 // ── Karaoke ───────────────────────────────────────────────────────────────

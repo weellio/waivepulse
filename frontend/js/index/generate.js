@@ -19,10 +19,12 @@ export async function generate() {
   btn.disabled = true; btn.textContent = "Sending...";
 
   try {
+    const payload = { lyrics, tags, title, artist, max_duration_sec: maxDur, temperature: temp, cfg_scale: cfg, topk: 50 };
+    if (window._variationOf) payload.variation_of = window._variationOf;
     const res = await fetch("/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lyrics, tags, title, artist, max_duration_sec: maxDur, temperature: temp, cfg_scale: cfg, topk: 50 })
+      body: JSON.stringify(payload)
     });
     const data = await res.json();
     if (data.job_id) {

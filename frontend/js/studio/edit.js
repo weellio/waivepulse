@@ -105,3 +105,128 @@ export function undoCut() {
   S._loopStart = S._loopEnd = null;
   refreshTimeline();
 }
+
+// ── Splice Region ────────────────────────────────────────────────────────────
+// Replace the selected ruler region in every non-import track with audio from
+// another file, crossfading at the boundaries for a smooth transition.
+export function spliceRegion() {
+  if (!S._actx || !Object.keys(S.tracks).length) return;
+  if (S._loopStart === null || S._loopEnd === null) {
+    alert('Select a region first by dragging across the ruler.');
+    return;
+  }
+  const a = Math.max(0, Math.min(S._loopStart, S._loopEnd));
+  const b = Math.min(S._dur, Math.max(S._loopStart, S._loopEnd));
+  const regionLen = b - a;
+  if (regionLen < 0.05) { alert('That region is too short — drag a wider selection.'); return; }
+
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'audio/*';
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
+    try {
+      const arrBuf = await file.arrayBuffer();
+      let replaceBuf = await S._actx.decodeAudioData(arrBuf);
+
+      // Resample replacement if its sample rate differs from the context
+      if (replaceBuf.sampleRate !== S._actx.sampleRate) {
+        const offCtx = new OfflineAudioContext(
+          replaceBuf.numberOfChannels, Math.ceil(replaceBuf.duration * S._actx.sampleRate), S._actx.sampleRate
+        );
+        const src = offCtx.createBufferSource();
+        src.buffer = replaceBuf;
+        src.connect(offCtx.destination);
+        src.start();
+        replaceBuf = await offCtx.startRendering();
+      }
+
+      if (S._playing) stopPlayback();
+      (S._cutUndo = S._cutUndo || []).push(snapshot());
+
+      const sr = S._actx.sampleRate;
+      // Crossfade length: 10% of region or max 0.5s
+      const xfadeSec = Math.min(regionLen * 0.1, 0.5);
+      const xfadeSamples = Math.floor(xfadeSec * sr);
+
+      for (const [, t] of Object.entries(S.tracks)) {
+        if (t.isImport) continue;  // skip imported tracks
+
+        const buf = t.buffer;
+        const total = buf.length;
+        const nCh = buf.numberOfChannels;
+        const spliceStart = Math.max(0, Math.floor(a * sr));
+        const spliceEnd = Math.min(total, Math.floor(b * sr));
+        const spliceLen = spliceEnd - spliceStart;
+        if (spliceLen <= 0) continue;
+
+        // Match channel count: mono replacement → duplicate to stereo if needed
+        const repNCh = replaceBuf.numberOfChannels;
+
+        const out = S._actx.createBuffer(nCh, total, sr);
+        for (let ch = 0; ch < nCh; ch++) {
+          const orig = buf.getChannelData(ch);
+          const rep = replaceBuf.getChannelData(Math.min(ch, repNCh - 1));
+          const dst = out.getChannelData(ch);
+
+          // Copy original before splice region
+          dst.set(orig.subarray(0, spliceStart), 0);
+
+          // Fill the splice region with replacement audio (loop or truncate)
+          for (let i = 0; i < spliceLen; i++) {
+            const repIdx = i < rep.length ? i : i % Math.max(1, rep.length);
+            const repSample = repIdx < rep.length ? rep[repIdx] : 0;
+
+            // Crossfade at boundaries
+            if (i < xfadeSamples) {
+              // Fade in: blend original out, replacement in
+              const fade = i / xfadeSamples;
+              dst[spliceStart + i] = orig[spliceStart + i] * (1 - fade) + repSample * fade;
+            } else if (i >= spliceLen - xfadeSamples) {
+              // Fade out: blend replacement out, original in
+              const fade = (spliceLen - 1 - i) / xfadeSamples;
+              dst[spliceStart + i] = orig[spliceStart + i] * (1 - fade) + repSample * fade;
+            } else {
+              // Full replacement in the middle
+              dst[spliceStart + i] = repSample;
+            }
+          }
+
+          // Copy original after splice region
+          dst.set(orig.subarray(spliceEnd), spliceEnd);
+        }
+
+        t.buffer = out;
+        t.peaks = computePeaks(out);
+      }
+
+      redrawAll();
+    } catch (err) {
+      alert('Failed to decode the audio file: ' + err.message);
+    }
+  };
+  input.click();
+}
+
+// ── Generate Variation ───────────────────────────────────────────────────────
+// Open the Generate page in a new tab pre-filled with the current song's
+// settings, with temperature bumped slightly for creative variation.
+export function generateVariation() {
+  const meta = S._jobMeta;
+  if (!meta) { alert('No song metadata available for variation.'); return; }
+
+  const params = new URLSearchParams();
+  if (meta.lyrics)          params.set('lyrics', meta.lyrics);
+  if (meta.tags)            params.set('tags', meta.tags);
+  if (meta.title)           params.set('title', meta.title);
+  if (meta.artist)          params.set('artist', meta.artist);
+  if (meta.max_duration_sec != null) params.set('max_duration_sec', String(meta.max_duration_sec));
+  // Bump temperature by +0.1 for creative variation (clamped to 2.0 max)
+  const temp = Math.min(2.0, (meta.temperature || 1.0) + 0.1);
+  params.set('temperature', temp.toFixed(2));
+  if (meta.cfg_scale != null) params.set('cfg_scale', String(meta.cfg_scale));
+  if (S._jobId)             params.set('variation_of', S._jobId);
+
+  window.open('/?' + params.toString(), '_blank');
+}

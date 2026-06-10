@@ -32,6 +32,8 @@
   <div class="t-divider"></div>
   <button class="t-btn" id="cut-btn"   style="font-size:10px;width:auto;padding:0 8px" title="Cut the selected ruler region out of ALL tracks and close the gap (shortens the song). Select by dragging on the ruler first." onclick="cutRegion()">✂ Cut</button>
   <button class="t-btn" id="uncut-btn" disabled style="font-size:10px;width:auto;padding:0 8px" title="Undo the last cut" onclick="undoCut()">↩ Uncut</button>
+  <button class="t-btn" id="splice-btn" style="font-size:10px;width:auto;padding:0 8px;color:#e8c84a;border-color:#6b5200" title="Replace the selected ruler region with audio from another file (crossfaded). Select a region first by dragging on the ruler." onclick="spliceRegion()">⇄ Splice</button>
+  <button class="t-btn" id="variation-btn" style="font-size:10px;width:auto;padding:0 8px;color:#c8a832;border-color:#6b5200" title="Open the Generate page pre-filled with this song's settings to create a variation" onclick="generateVariation()">♻ Variation</button>
   <div class="t-divider"></div>
   <span id="time-display">0:00</span>
   <span id="duration-display">/ 0:00</span>
@@ -57,6 +59,8 @@
   <div class="t-divider"></div>
   <button class="t-btn" style="font-size:10px;width:auto;padding:0 9px" title="Import audio track (or drag & drop)" onclick="document.getElementById('_importInput').click()">＋ Track</button>
   <input type="file" id="_importInput" accept="audio/*" multiple style="display:none" onchange="handleImportFiles(this.files);this.value=''">
+  <button class="t-btn" style="font-size:10px;width:auto;padding:0 9px;color:#c8a832;border-color:#6b5200" title="Import a stem from another separated song" onclick="openStemLibrary()">Stem Swap</button>
+  <button class="t-btn" id="chord-btn" style="font-size:10px;width:auto;padding:0 8px;color:#e8cc4a;border-color:#6b5200" title="Toggle chord detection overlay" onclick="toggleChords()">CHORDS</button>
   <div class="t-divider"></div>
   <button class="t-btn" id="karaoke-btn" disabled style="font-size:10px;width:auto;padding:0 9px;color:#c8a832;border-color:#6b5200" title="Open Karaoke mode — fullscreen visualizer with synced lyrics" onclick="openKaraoke()">🎤 Karaoke</button>
   <button class="t-btn" id="autotx-btn" style="font-size:10px;width:auto;padding:0 8px;display:none" title="Auto-transcribe lyrics after separation completes" onclick="toggleAutoTranscribe()">AUTO TX</button>
@@ -69,6 +73,12 @@
   <button class="preset-btn"        id="pb-acappella"onclick="applyPreset('acappella')">Acappella</button>
   <button class="preset-btn"        id="pb-drumsonly"onclick="applyPreset('drumsonly')">Drums Only</button>
   <button class="preset-btn"        id="pb-nodrums"  onclick="applyPreset('nodrums')">No Drums</button>
+</div>
+
+<!-- ── Mix Presets bar (genre templates + user-saved presets) ── -->
+<div id="mix-preset-bar">
+  <span class="pb-label">Mix</span>
+  <button class="preset-btn" style="color:#6be87c;border-color:#2a6b33" onclick="saveMixPreset()">+ Save</button>
 </div>
 
 <!-- ── Master FX bar (gate · bitcrusher · wavefolder · plate reverb) ── -->
@@ -108,6 +118,15 @@
     <span class="fx-rd" style="color:#8cffff;font-weight:700;letter-spacing:.06em" title="Smoothly ramp the whole mix up at the start and down at the end — cleans up hard AI stops. Fade-out is measured back from the (current) song end, so it follows a Cut.">FADE</span>
     <span class="fx-ctl">in<input type="range" id="fade-in" min="0" max="15" step="0.5" value="0" title="Fade-in length (seconds)" oninput="setFadeIn(this.value)"><span class="fx-rd" id="fade-in-label">off</span></span>
     <span class="fx-ctl">out<input type="range" id="fade-out" min="0" max="15" step="0.5" value="0" title="Fade-out length (seconds), measured back from the song end" oninput="setFadeOut(this.value)"><span class="fx-rd" id="fade-out-label">off</span></span>
+  </div>
+
+  <div class="t-divider"></div>
+  <div class="fx-cell">
+    <button class="t-btn fx-toggle" id="sc-btn" title="Sidechain ducking" onclick="toggleSidechain()">SC</button>
+    <span class="fx-ctl">key<select id="sc-key-sel" class="fx-sel" style="font-size:10px;background:#1a1a1a;color:#aaa;border:1px solid #333;border-radius:3px;padding:1px 4px"></select></span>
+    <span class="fx-ctl">tgt<select id="sc-tgt-sel" class="fx-sel" style="font-size:10px;background:#1a1a1a;color:#aaa;border:1px solid #333;border-radius:3px;padding:1px 4px"></select></span>
+    <span class="fx-ctl">thresh<input type="range" id="sc-thresh" min="-60" max="0" step="1" value="-20" oninput="setSidechainParam('threshold',this.value);document.getElementById('sc-thresh-label').textContent=this.value+'dB'"><span class="fx-rd" id="sc-thresh-label">-20dB</span></span>
+    <span class="fx-ctl">ratio<input type="range" id="sc-ratio" min="1" max="20" step="0.5" value="4" oninput="setSidechainParam('ratio',this.value);document.getElementById('sc-ratio-label').textContent=this.value+':1'"><span class="fx-rd" id="sc-ratio-label">4:1</span></span>
   </div>
 </div>
 
@@ -255,6 +274,30 @@
       </div>
 
       <div class="help-section">
+        <div class="help-section-title">🎛 Mix Presets &amp; Genre Templates</div>
+        <p class="help-p">Save and recall full mixer configurations — all per-track knobs, EQ, effects, and master chain settings in one click.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>Genre templates</b></td><td>Four built-in starting points: Radio Pop, Lo-Fi Hip Hop, Rock, EDM. Each sets per-stem volumes, reverb, master EQ, exciter, and other chain settings to suit the genre.</td></tr>
+          <tr><td><b>SAVE</b></td><td>Snapshot the current full mixer state as a named preset. Saved to browser localStorage — persists across sessions.</td></tr>
+          <tr><td>Click a saved preset</td><td>Restores every knob, EQ band, effect toggle, and master chain parameter to the saved values.</td></tr>
+          <tr><td><b>×</b> on a preset</td><td>Delete that saved preset.</td></tr>
+        </tbody></table>
+        <p class="help-p" style="margin-top:8px">Presets gracefully skip missing stems — a preset saved from a 6-stem song works on one with fewer.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">🔗 Side-Chain Ducking</div>
+        <p class="help-p">Automatically duck one track when another plays — classic technique for making bass duck on kick hits.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>SC</b> toggle in FX bar</td><td>Enable/disable sidechain ducking.</td></tr>
+          <tr><td><b>Key</b> dropdown</td><td>The track that triggers ducking (default: drums).</td></tr>
+          <tr><td><b>Target</b> dropdown</td><td>The track that gets ducked (default: bass).</td></tr>
+          <tr><td><b>Threshold</b> slider</td><td>Level the key signal must exceed to trigger ducking (-60 to 0 dB).</td></tr>
+          <tr><td><b>Ratio</b> slider</td><td>How much to duck (1:1 = no ducking, 20:1 = heavy ducking).</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
         <div class="help-section-title">📥 Importing Tracks</div>
         <p class="help-p">Bring in any audio file as a full mixer track — samples, loops, scratch vocals, backing tracks.</p>
         <table class="help-table"><tbody>
@@ -263,12 +306,59 @@
           <tr><td><b>Drag the clip block</b></td><td>Click and drag the gold waveform block left or right on the timeline to set where in the song it plays. The cursor turns to a grab hand when hovering over the block. The clip is clamped so it can't go past the song boundaries. Works at any zoom level.</td></tr>
           <tr><td><b>⟳ button</b></td><td>Loop this track. A short sample will repeat continuously for the full song duration. Loop state is baked into Export Mix. (Looping disables clip positioning — the clip plays from time 0.)</td></tr>
           <tr><td><b>× button</b></td><td>Remove the imported track permanently</td></tr>
+          <tr><td><b>BPM auto-detection</b></td><td>When you drag-drop a file, its BPM is auto-detected in the background and displayed on the track strip.</td></tr>
+          <tr><td><b>Time-stretch controls</b></td><td>Enter the current BPM and a target BPM, then click <b>STRETCH</b> to tempo-match the imported track without changing pitch.</td></tr>
+          <tr><td><b>Auto-stretch prompt</b></td><td>When importing a stem from the Stem Library whose BPM differs from the current song, you're automatically prompted to time-stretch it to match.</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">🎵 Chord Detection</div>
+        <p class="help-p">Automatic chord analysis displayed above the timeline.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>CHORDS</b> button</td><td>Toggle the chord overlay on/off. When on, detected chords (e.g. C major, Am, G) appear as yellow labels between the ruler and the first track.</td></tr>
+          <tr><td>How it works</td><td>The server analyzes the song using librosa chroma analysis and template matching (24 chord templates). Results are cached after the first request.</td></tr>
+          <tr><td>Zoom</td><td>Chord labels scale with the zoom level so they stay aligned with the timeline.</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">🔄 Stem Swap</div>
+        <p class="help-p">Import individual stems from other songs you've separated — mix vocals from one song with the backing track of another.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>Stem Swap</b> button</td><td>Opens the Stem Library modal showing all stems from other separated songs.</td></tr>
+          <tr><td>Song cards</td><td>Each song shows its title, BPM, and key. Stems are colored buttons (green = vocals, orange = drums, etc.).</td></tr>
+          <tr><td>Click a stem</td><td>Imports it as a new track with full mixer controls.</td></tr>
+          <tr><td>Auto-stretch prompt</td><td>If the imported stem's BPM differs from the current song, you're prompted to time-stretch it to match (pitch preserved).</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Close the Stem Library modal.</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">⏩ Time-Stretch</div>
+        <p class="help-p">Change the tempo of an imported track without affecting pitch — essential for matching vocals from one song to the backing track of another.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>BPM label</b></td><td>Imported tracks show their detected BPM (auto-detected in the background when you drag-drop a file).</td></tr>
+          <tr><td><b>Target BPM</b></td><td>Enter the desired tempo (pre-filled with the current song's BPM).</td></tr>
+          <tr><td><b>STRETCH</b> button</td><td>Sends the audio to the server for phase-vocoder time-stretching. The stretched audio replaces the track buffer — pitch is preserved, only tempo changes.</td></tr>
+          <tr><td>Stretch range</td><td>0.25× to 4.0× (quarter speed to quadruple speed).</td></tr>
+          <tr><td>Re-stretching</td><td>The original buffer is kept, so re-stretching doesn't compound quality loss.</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">🔁 Variation &amp; Splice</div>
+        <p class="help-p">Generate variations of a song and splice sections into the current mix.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>Variation</b> button</td><td>Opens the Generate page pre-filled with the same lyrics and tags but slightly higher temperature (+0.1) for a fresh take on the same song.</td></tr>
+          <tr><td><b>Splice</b> button</td><td>Select a region on the ruler, click Splice, then choose an audio file. The selected region is replaced with the new audio, crossfaded at the boundaries. Works on all stems simultaneously.</td></tr>
         </tbody></table>
       </div>
 
       <div class="help-section">
         <div class="help-section-title">💾 Export</div>
         <table class="help-table"><tbody>
+          <tr><td><b>Audio info bar</b></td><td>Displays sample rate, channel count, and — when available — detected BPM and musical key (e.g. "44.1 kHz · stereo · 120 BPM · C major").</td></tr>
           <tr><td><b>⬇ Export Mix</b></td><td>Renders the full mix to a lossless 16-bit WAV file. All knobs, EQ, reverb, delay, mute regions, looped imports, and the master chain are baked in. This is your final output — use it for sharing, uploading, or loading into a DAW.</td></tr>
           <tr><td><b>⬇ Stems</b></td><td>Download the six raw separated stems as a ZIP. Use them in any DAW (Pro Tools, Logic, Ableton, etc.) for full professional editing.</td></tr>
           <tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Export Mix shortcut</td></tr>
@@ -318,6 +408,18 @@
       <canvas id="eq-canvas" width="720" height="340"></canvas>
       <div class="eq-readouts" id="eq-readouts"></div>
       <button class="eq-reset" onclick="resetTrackEQ()">RESET EQ</button>
+    </div>
+  </div>
+</div>
+
+<div id="stem-library-modal">
+  <div id="stem-library-panel">
+    <div class="help-hdr">
+      <div><div class="help-hdr-title">Stem Library — Swap Stems Between Songs</div><div class="help-hdr-sub">Click a stem to import it as a new track · <kbd>Esc</kbd> to close</div></div>
+      <button class="help-close" onclick="closeStemLibrary()">×</button>
+    </div>
+    <div class="help-body" id="stem-library-body">
+      <div class="sl-loading">Loading...</div>
     </div>
   </div>
 </div>

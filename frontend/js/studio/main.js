@@ -10,19 +10,24 @@ import {
 } from './transport.js';
 import {
   handleImportFiles, resetAllTracks, applyRangedGains, toggleMute, toggleSolo,
-  normalizeTrack, resetTrack, duplicateTrack, cycleTrack,
+  normalizeTrack, resetTrack, duplicateTrack, cycleTrack, stretchTrack,
 } from './tracks.js';
-import { applyPreset, applyMasterPreset, setMasterVolume } from './presets.js';
+import {
+  applyPreset, applyMasterPreset, setMasterVolume,
+  saveMixPreset, loadMixPreset, loadGenreTemplate, deleteMixPreset, renderMixPresetBar,
+} from './presets.js';
 import {
   toggleCompressor, toggleClipper, toggleExciter,
   toggleGate, toggleGateDuck, toggleCrusher, setCrusherBits, setCrusherRate,
   toggleFolder, setFolderDrive, togglePlate, setPlateMix,
+  toggleSidechain, setSidechainParam, populateSidechainDropdowns,
 } from './audio-graph.js';
 import { openTrackEQ, closeTrackEQ, resetTrackEQ } from './eq-modal.js';
 import { exportMix, downloadZip } from './export.js';
-import { cutRegion, undoCut } from './edit.js';
+import { cutRegion, undoCut, spliceRegion, generateVariation } from './edit.js';
+import { openStemLibrary, closeStemLibrary } from './stem-library.js';
 import { initStudioReceiver } from './bridge.js';
-import { redrawAll, mergeRanges } from './waveform.js';
+import { redrawAll, mergeRanges, toggleChords } from './waveform.js';
 
 // transport.js calls applyRangedGains, which lives in tracks.js — inject it to
 // break the circular import.
@@ -38,21 +43,29 @@ Object.assign(window, {
   togglePlay, stopPlayback, toggleLoop, zoomIn, zoomOut, zoomFit,
   // presets / master
   applyPreset, applyMasterPreset, setMasterVolume, resetAllTracks,
+  // mix presets
+  saveMixPreset, loadMixPreset, loadGenreTemplate, deleteMixPreset,
   // master FX (existing)
   toggleCompressor, toggleClipper, toggleExciter,
   // master FX (new)
   toggleGate, toggleGateDuck, toggleCrusher, setCrusherBits, setCrusherRate,
   toggleFolder, setFolderDrive, togglePlate, setPlateMix,
+  // sidechain ducking
+  toggleSidechain, setSidechainParam, populateSidechainDropdowns,
   // EQ modal
   closeTrackEQ, resetTrackEQ,
-  // export / import
-  exportMix, downloadZip, handleImportFiles,
+  // export / import / stretch
+  exportMix, downloadZip, handleImportFiles, stretchTrack,
   // timeline edit
-  cutRegion, undoCut,
+  cutRegion, undoCut, spliceRegion, generateVariation,
   // master fades
   setFadeIn, setFadeOut,
   // help
   showHelp, closeHelp,
+  // stem library
+  openStemLibrary, closeStemLibrary,
+  // chords
+  toggleChords,
   // karaoke
   openKaraoke, toggleAutoTranscribe,
 });
@@ -67,6 +80,7 @@ document.addEventListener('keydown', e => {
   }
 
   if (e.code === 'Escape') {
+    if (document.getElementById('stem-library-modal').classList.contains('open')) { closeStemLibrary(); return; }
     if (document.getElementById('eq-modal').classList.contains('open')) { closeTrackEQ(); return; }
     if (document.getElementById('help-modal').classList.contains('open')) { closeHelp(); return; }
     S._loopStart = null; S._loopEnd = null; updateLoopRegion(); return;

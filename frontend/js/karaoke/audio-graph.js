@@ -73,6 +73,10 @@ export async function loadStems(stemUrls){
 
   chainTail.connect(S._analyser);
 
+  // ── Recording tap (captures master output without affecting playback) ──
+  S._recAudioDest = x.createMediaStreamDestination();
+  S._analyser.connect(S._recAudioDest);
+
   // ── Load and wire each stem ──
   const names=Object.keys(stemUrls);
   for(let i=0;i<names.length;i++){

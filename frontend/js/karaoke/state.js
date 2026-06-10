@@ -62,6 +62,9 @@ export const S = {
 
   // canvas (set up by visualizer module)
   canvas: null, ctx: null,
+
+  // recording
+  _recorder: null, _recChunks: [], _recAudioDest: null, _recording: false,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

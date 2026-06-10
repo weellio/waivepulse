@@ -54,6 +54,7 @@
   <div class="tg tg-actions">
     <button class="t-btn" id="bypassBtn" onclick="toggleBypass()">⚡ Bypass</button>
     <button class="t-btn export" onclick="exportMix()">⬇ Export</button>
+    <button class="t-btn export" onclick="exportMIDI()" title="Export piano roll + drum pattern as MIDI file">⬇ MIDI</button>
     <button class="t-btn danger" onclick="clearAll()">✕ Clear All</button>
   </div>
 </div>
@@ -259,6 +260,23 @@
                    class="vslider" oninput="setAtSpeed(this.value)">
           </div>
         </div>
+        <div class="mic-row" style="margin-top:6px">
+          <button id="harmBtn" class="t-btn" onclick="toggleHarmonizer()" title="Add harmony voices">Harmony</button>
+          <label style="font-size:10px;color:#888">V1</label>
+          <select id="harmV1Sel" onchange="setHarmInterval(1,this.value)" style="font-size:11px;background:#1a1a1a;color:#aaa;border:1px solid #333;border-radius:3px;padding:1px 4px">
+            <option value="-12">-Oct</option><option value="-7">-5th</option>
+            <option value="-5">-4th</option><option value="-3">-m3</option>
+            <option value="3">+m3</option><option value="4" selected>+M3</option>
+            <option value="5">+4th</option><option value="7">+5th</option>
+            <option value="12">+Oct</option>
+          </select>
+          <button id="harmV2Btn" class="t-btn" onclick="toggleHarmVoice2()" title="Enable second harmony voice" style="font-size:10px;padding:0 6px">V2</button>
+          <select id="harmV2Sel" onchange="setHarmInterval(2,this.value)" style="font-size:11px;background:#1a1a1a;color:#aaa;border:1px solid #333;border-radius:3px;padding:1px 4px">
+            <option value="-12">-Oct</option><option value="-7">-5th</option>
+            <option value="3">+m3</option><option value="7" selected>+5th</option>
+            <option value="12">+Oct</option>
+          </select>
+        </div>
       </div>
       <div id="masterFX">
         <div class="fx-hdr">Master FX</div>
@@ -404,6 +422,18 @@
       </div>
 
       <div class="help-section">
+        <div class="help-section-title">🎶 Vocal Harmonizer</div>
+        <p class="help-p">Add harmony voices to your microphone input — sing one note and hear up to two pitch-shifted harmony parts.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>Harmony</b> button</td><td>Toggle the harmonizer on/off (requires microphone to be enabled).</td></tr>
+          <tr><td><b>Voice 1</b></td><td>Always active when harmonizer is on. Default: +4 semitones (major 3rd). Adjustable interval.</td></tr>
+          <tr><td><b>Voice 2</b></td><td>Optional second harmony voice. Default: +7 semitones (perfect 5th). Toggle on/off independently.</td></tr>
+          <tr><td>Intervals</td><td>Set each voice to any interval from -12 to +12 semitones. Common choices: +3 (minor 3rd), +4 (major 3rd), +5 (perfect 4th), +7 (perfect 5th), +12 (octave).</td></tr>
+          <tr><td>How it works</td><td>Runs as an AudioWorklet after the autotune stage. Uses autocorrelation pitch detection and dual-grain pitch shifting for real-time harmony generation.</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
         <div class="help-section-title">⏱ Transport &amp; Master FX</div>
         <table class="help-table"><tbody>
           <tr><td>BPM − / + · Tap</td><td>Set tempo by buttons or by tapping the beat</td></tr>
@@ -413,6 +443,17 @@
           <tr><td>Master FX</td><td>Global Reverb, Delay (tempo-synced), and Volume</td></tr>
           <tr><td>⬇ Export</td><td>Render all loops to a single WAV</td></tr>
           <tr><td>⚡ Bypass</td><td>Diagnostic — route audio straight to output</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">🎹 MIDI Export</div>
+        <p class="help-p">Export your piano roll melody and drum pattern as a Standard MIDI File (.mid) for use in any DAW.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>MIDI</b> button</td><td>Downloads the current piano roll + drum sequencer as a .mid file. The file contains a tempo track, a melody track (from the piano roll), and a drum track (channel 10, GM percussion mapping).</td></tr>
+          <tr><td>Format</td><td>Standard MIDI File Format 1, 480 PPQN. Each sequencer step = one 16th note (120 ticks).</td></tr>
+          <tr><td>Drums</td><td>Mapped to General MIDI percussion: Kick=36, Snare=38, Hi-Hat=42, Open HH=46, Clap=39, Tom=45, 808=36 (low), Perc=56.</td></tr>
+          <tr><td>Melody</td><td>Notes from the piano roll with correct MIDI note numbers, durations from held-note lengths.</td></tr>
         </tbody></table>
       </div>
 

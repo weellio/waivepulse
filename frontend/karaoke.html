@@ -41,10 +41,15 @@
   <button class="c-btn" id="resync-btn" style="display:none" onclick="retranscribe()" title="Re-run transcription with a better model">🔄 Re-sync</button>
   <button class="c-btn" id="vocals-btn" onclick="toggleVocals()">🎤 Vocals ON</button>
   <button class="c-btn" onclick="nextPreset()" title="Cycle visual style (N)">🎨 Style</button>
+  <button class="c-btn" id="rec-btn" onclick="toggleRecord()" title="Record lyric video (R)">&#x23FA; Record</button>
+</div>
+
+<div id="rec-indicator" style="display:none">
+  <span class="rec-dot"></span> REC
 </div>
 
 <div id="preset-name"></div>
-<div id="hint">Space play/pause &nbsp;·&nbsp; V vocals &nbsp;·&nbsp; N style &nbsp;·&nbsp; Esc back</div>
+<div id="hint">Space play/pause &nbsp;·&nbsp; V vocals &nbsp;·&nbsp; N style &nbsp;·&nbsp; R record &nbsp;·&nbsp; Esc back</div>
 
 <script type="module" src="/js/karaoke/main.js"></script>
 </body>

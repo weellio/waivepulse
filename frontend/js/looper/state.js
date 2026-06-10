@@ -29,6 +29,13 @@ export const S = {
   atSpeed: 0.92,
   atScale: null,            // set to AT_SCALES.major in mic.js init
 
+  // ── Harmonizer ──
+  harmonizerNode: null,
+  harmonizerOn: false,
+  harmVoice1Semi: 4,
+  harmVoice2Semi: 7,
+  harmVoice2On: false,
+
   // ── Loop slots ──
   masterLen: null,          // seconds
   masterAnchor: null,       // ctx.currentTime when master loop t=0

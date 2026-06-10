@@ -92,6 +92,42 @@ export function addTrackToUI(stemKey) {
     onChange: v => { t.offset = v / 1000; if (t.offsetNode) t.offsetNode.delayTime.setTargetAtTime(v / 1000, x.currentTime, 0.005); } });
 
   strip.append(r1, r2);
+
+  // Row 3 (import tracks only): BPM + time-stretch controls
+  if (isImport) {
+    const r3 = document.createElement('div');
+    r3.className = 'ctrl-row3';
+    r3.style.cssText = 'display:flex;align-items:center;gap:4px;margin-top:2px;font-size:10px';
+    const bpmLbl = document.createElement('span');
+    bpmLbl.id = 'bpm-label-' + stemKey;
+    bpmLbl.style.cssText = 'color:#999;min-width:50px';
+    bpmLbl.textContent = t.sourceBpm ? `${t.sourceBpm} BPM` : '? BPM';
+    const arrow = document.createElement('span');
+    arrow.textContent = '→'; arrow.style.color = '#555';
+    const tgtInput = document.createElement('input');
+    tgtInput.type = 'number'; tgtInput.id = 'stretch-target-' + stemKey;
+    tgtInput.placeholder = S._jobMeta?.bpm || 'BPM';
+    tgtInput.value = S._jobMeta?.bpm || '';
+    tgtInput.min = 20; tgtInput.max = 999; tgtInput.step = 1;
+    tgtInput.style.cssText = 'width:48px;background:#1a1a1a;border:1px solid #333;color:#ddd;border-radius:3px;padding:1px 3px;font-size:10px;text-align:center';
+    const strBtn = document.createElement('button');
+    strBtn.className = 'tb tb-norm'; strBtn.textContent = 'STRETCH';
+    strBtn.id = 'stretch-btn-' + stemKey;
+    strBtn.title = 'Time-stretch to match target BPM (preserves pitch)';
+    strBtn.style.cssText = 'font-size:9px;padding:1px 4px;color:#4ae8d4';
+    strBtn.onclick = e => {
+      e.stopPropagation();
+      const srcBpm = t.sourceBpm;
+      const tgtBpm = parseInt(tgtInput.value);
+      if (!srcBpm) { alert('Source BPM unknown. Drag-drop an audio file — BPM will be auto-detected.'); return; }
+      if (!tgtBpm || tgtBpm < 20) { alert('Enter a valid target BPM.'); return; }
+      const factor = srcBpm / tgtBpm;
+      stretchTrack(stemKey, factor);
+    };
+    r3.append(bpmLbl, arrow, tgtInput, strBtn);
+    strip.appendChild(r3);
+  }
+
   strip.addEventListener('mousedown', () => selectTrack(stemKey));
 
   // Insert strip after last sibling with same baseStem, otherwise append
@@ -195,6 +231,71 @@ export function removeTrack(stemKey) {
   delete S.tracks[stemKey];
 }
 
+// ── Time-stretch ──────────────────────────────────────────────────────────
+export async function stretchTrack(stemKey, factor) {
+  const t = S.tracks[stemKey];
+  if (!t || !t.buffer) return;
+  if (factor < 0.25 || factor > 4.0) { alert('Stretch factor must be between 0.25 and 4.0'); return; }
+  if (Math.abs(factor - 1.0) < 0.005) return;   // no-op
+
+  // Keep original buffer for re-stretching without quality loss
+  if (!t._originalBuffer) t._originalBuffer = t.buffer;
+
+  const btn = document.getElementById('stretch-btn-' + stemKey);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+
+  try {
+    let res;
+    if (t._stemRef) {
+      // Server-side stem — use the efficient path
+      res = await fetch(`/timestretch/${t._stemRef.sepId}/${t._stemRef.stemName}?factor=${factor}`, { method: 'POST' });
+    } else {
+      // Upload the original buffer as WAV
+      const wav = _bufferToWav(t._originalBuffer);
+      const form = new FormData();
+      form.append('file', new Blob([wav], { type: 'audio/wav' }), 'track.wav');
+      res = await fetch(`/timestretch?factor=${factor}`, { method: 'POST', body: form });
+    }
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || `Server error ${res.status}`); }
+    const ab = await res.arrayBuffer();
+    const abuf = await S._actx.decodeAudioData(ab);
+    t.buffer = abuf;
+    t.stretchFactor = factor;
+    t.peaks = computePeaks(abuf);
+    redrawAll();
+
+    // Update BPM label if we know the source BPM
+    const bpmEl = document.getElementById('bpm-label-' + stemKey);
+    if (bpmEl && t.sourceBpm) {
+      const newBpm = Math.round(t.sourceBpm * factor);
+      bpmEl.textContent = `${newBpm} BPM`;
+    }
+  } catch (err) {
+    console.warn('Time-stretch failed:', err);
+    alert('Time-stretch failed: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'STRETCH'; }
+  }
+}
+
+function _bufferToWav(buffer) {
+  const nc = buffer.numberOfChannels, sr = buffer.sampleRate, ns = buffer.length;
+  const dl = ns * nc * 2;
+  const view = new DataView(new ArrayBuffer(44 + dl));
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, 'RIFF'); view.setUint32(4, 36 + dl, true); ws(8, 'WAVE');
+  ws(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, nc, true);
+  view.setUint32(24, sr, true); view.setUint32(28, sr * nc * 2, true); view.setUint16(32, nc * 2, true); view.setUint16(34, 16, true);
+  ws(36, 'data'); view.setUint32(40, dl, true);
+  let o = 44;
+  const ch = []; for (let c = 0; c < nc; c++) ch.push(buffer.getChannelData(c));
+  for (let i = 0; i < ns; i++) for (let c = 0; c < nc; c++) {
+    const s = Math.max(-1, Math.min(1, ch[c][i]));
+    view.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true); o += 2;
+  }
+  return view.buffer;
+}
+
 // ── Import ──────────────────────────────────────────────────────────────────
 export async function handleImportFiles(files) {
   if (!files || !files.length) return;
@@ -203,7 +304,21 @@ export async function handleImportFiles(files) {
     try {
       const ab = await file.arrayBuffer();
       const abuf = await S._actx.decodeAudioData(ab);
-      addImportedBuffer(abuf, file.name.replace(/\.[^.]+$/, ''));
+      const key = addImportedBuffer(abuf, file.name.replace(/\.[^.]+$/, ''));
+      // Detect BPM in background (non-blocking)
+      if (key) {
+        const form = new FormData();
+        form.append('file', file);
+        fetch('/detect-bpm', { method: 'POST', body: form })
+          .then(r => r.ok ? r.json() : null)
+          .then(d => {
+            if (d?.bpm && S.tracks[key]) {
+              S.tracks[key].sourceBpm = d.bpm;
+              const lbl = document.getElementById('bpm-label-' + key);
+              if (lbl) lbl.textContent = d.bpm + ' BPM';
+            }
+          }).catch(() => {});
+      }
     } catch (err) {
       console.warn('Could not import ' + file.name + ':', err);
       alert('Could not import ' + file.name + ':\n' + err.message);

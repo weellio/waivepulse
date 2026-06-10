@@ -9,6 +9,7 @@ import {
 import { padLyrics, updateLyrics } from './lyric-sync.js';
 import { nextPreset, renderFrame } from './visualizers.js';
 import { _updateResyncBtn, retranscribe, waitForTranscription } from './transcription.js';
+import { startRecording, stopRecording, isRecording } from './recorder.js';
 
 // ── Controls auto-hide ───────────────────────────────────────────────────────
 document.addEventListener('mousemove',()=>{
@@ -28,7 +29,7 @@ function rafLoop(){
   requestAnimationFrame(rafLoop);
   if(!S._actx||!S._playing)return;
   const pos=currentPos();
-  if(pos>=S._dur){pausePlayback();return;}
+  if(pos>=S._dur){if(isRecording())stopRecording();pausePlayback();return;}
   updateLyrics(pos);
   document.getElementById('progress-fill').style.width=(S._dur?pos/S._dur*100:0)+'%';
   document.getElementById('time-disp').textContent=fmtTime(pos)+' / '+fmtTime(S._dur);
@@ -40,6 +41,7 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape')goBack();
   if(e.key==='v'||e.key==='V')toggleVocals();
   if(e.key==='n'||e.key==='N')nextPreset();
+  if(e.key==='r'||e.key==='R')toggleRecord();
   if(e.key==='ArrowLeft')seekTo(Math.max(0,currentPos()-5));
   if(e.key==='ArrowRight')seekTo(Math.min(S._dur,currentPos()+5));
 });
@@ -47,6 +49,11 @@ document.addEventListener('keydown',e=>{
 function goBack(){
   const base='/studio?sep='+S._sepId;
   window.location.href=base;
+}
+
+function toggleRecord(){
+  if(isRecording())stopRecording();
+  else startRecording();
 }
 
 // ── Main init ────────────────────────────────────────────────────────────────
@@ -107,7 +114,7 @@ async function init(){
 
 // ── Expose inline-handler functions on window ────────────────────────────────
 Object.assign(window,{
-  togglePlay, seekClick, setVolume, retranscribe, toggleVocals, nextPreset, goBack,
+  togglePlay, seekClick, setVolume, retranscribe, toggleVocals, nextPreset, goBack, toggleRecord,
 });
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────

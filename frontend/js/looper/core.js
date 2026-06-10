@@ -90,6 +90,13 @@ export async function initCapture() {
       S.autotuneNode.parameters.get('speed').value = S.atSpeed;
       S.autotuneNode.port.postMessage({ scale: S.atScale, root: S.atRoot });
     } catch (e) { console.warn('Autotune unavailable:', e); S.autotuneNode = null; }
+
+    // Harmonizer processor (best-effort; only affects the mic when enabled)
+    try {
+      await ctx.audioWorklet.addModule('/worklets/looper-harmonizer.js');
+      S.harmonizerNode = new AudioWorkletNode(ctx, 'harmonizer');
+      S.harmonizerNode.parameters.get('mix').value = 0;
+    } catch (e) { console.warn('Harmonizer unavailable:', e); S.harmonizerNode = null; }
   } catch (err) {
     // Fallback: ScriptProcessor with larger buffer to reduce (not eliminate) main-thread glitches
     console.warn('AudioWorklet unavailable, falling back to ScriptProcessor:', err);
