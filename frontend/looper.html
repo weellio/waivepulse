@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WAIvePulse Looper</title>
 <link rel="icon" type="image/png" href="/assets/wave small.png">
-<link rel="stylesheet" href="/css/looper.css?v=14">
+<link rel="stylesheet" href="/css/looper.css?v=15">
 </head>
 <body>
 
@@ -325,6 +325,29 @@
   </div>
 </div>
 
+<!-- ── Per-loop Trim-start modal ───────────────────────────── -->
+<div id="trim-modal">
+  <div id="trim-panel">
+    <div class="help-hdr">
+      <div>
+        <div class="help-hdr-title" id="trim-title">Trim start</div>
+        <div class="help-hdr-sub">Drag the marker to where the loop should begin — the first hit, or a downbeat. Everything before it moves to the silent tail, so the loop stays one bar and in time.</div>
+      </div>
+      <button class="help-close" onclick="closeLoopTrim()">×</button>
+    </div>
+    <div class="loopeq-body">
+      <canvas id="trim-canvas"></canvas>
+      <div id="trim-readout">Start at 0 ms</div>
+      <div class="trim-actions">
+        <button class="t-btn" onclick="snapTrimToSound()">↦ Snap to first sound</button>
+        <button class="t-btn" onclick="resetTrim()">Reset</button>
+        <button class="t-btn" onclick="applyTrim()">✂ Trim start</button>
+        <button class="t-btn export" onclick="closeLoopTrim()">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Help modal ──────────────────────────────────────────── -->
 <div id="help-modal">
   <div id="help-panel">
@@ -344,6 +367,7 @@
           <tr><td>▶ / ⏸ on a slot</td><td>Play or pause that loop</td></tr>
           <tr><td>✕ on a slot</td><td>Clear that loop</td></tr>
           <tr><td>⚌ EQ on a slot</td><td>Open the 7-band parametric EQ for that loop (spectrum + draggable curve)</td></tr>
+          <tr><td>✂ Trim Start on a slot</td><td>Couldn't nail the downbeat? Set where the loop begins on the waveform — drag the marker (or "Snap to first sound") to the first hit or a chosen beat. Everything before it wraps to the silent tail, so the loop stays one bar and in time.</td></tr>
           <tr><td>🎹 Use as Sample</td><td>Load a recorded loop onto the keyboard as a pitched sample</td></tr>
           <tr><td>⇪ Send to Studio</td><td>Drop this loop straight into an open Studio window as a new track — no file export needed. Greyed out until a Studio is open (open one via the <b>Looper ↗</b> link from the Studio, or vice-versa)</td></tr>
           <tr><td>VOL slider</td><td>Per-loop volume</td></tr>

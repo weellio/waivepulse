@@ -40,6 +40,7 @@ export function buildSlots() {
         <button class="slt-btn play-btn" id="pb-${s.id}" onclick="tapPlay(${s.id})" disabled>▶</button>
         <button class="slt-btn clr-btn"  id="cb-${s.id}" onclick="clearSlot(${s.id})" disabled>✕</button>
         <button class="slt-btn eq-btn"   id="eqb-${s.id}" onclick="openLoopEq(${s.id})" style="display:none;grid-column:1/-1">⚌ EQ</button>
+        <button class="slt-btn trim-btn" id="trb-${s.id}" onclick="openLoopTrim(${s.id})" style="display:none;grid-column:1/-1" title="Trim leading dead air — set where the loop starts (first hit, or a chosen beat)">✂ Trim Start</button>
         <button class="slt-btn smpl-btn" id="sb-${s.id}" onclick="useAsSample(${s.id})" style="display:none;grid-column:1/-1">🎹 Use as Sample</button>
         <button class="slt-btn studio-btn" id="stu-${s.id}" onclick="sendLoopToStudio(${s.id})" style="display:none;grid-column:1/-1" title="Send this loop to an open Studio window as a new track">⇪ Send to Studio</button>
       </div>
@@ -306,6 +307,8 @@ export function slotUI(id) {
   if (sb) sb.style.display = s.buffer ? '' : 'none';
   const eqb = document.getElementById('eqb-' + id);
   if (eqb) eqb.style.display = s.buffer ? '' : 'none';
+  const trb = document.getElementById('trb-' + id);
+  if (trb) trb.style.display = s.buffer ? '' : 'none';
   const stu = document.getElementById('stu-' + id);
   if (stu) { stu.style.display = s.buffer ? '' : 'none'; stu.disabled = !s.buffer || !studioOpen(); }
 
