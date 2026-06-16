@@ -1,7 +1,7 @@
 docs/
 outputs/
 lyrics/
-history.json
+history.json*
 .claude/
 .credentials/
 .waivepulse.bat
@@ -15,3 +15,7 @@ __pycache__/
 dist/
 build/
 backup_v1_*/
+
+# Godzilla music-video scratch / test assets — working material, not part of the app
+artwork/
+**/godzilla_mv/

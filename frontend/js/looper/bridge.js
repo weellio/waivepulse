@@ -27,9 +27,19 @@ export function initStudioBridge(refreshCb) {
 export function sendLoopToStudio(id) {
   const s = S.slots[id];
   if (!s || !s.buffer) { setStatus('That loop is empty — record something first'); return; }
-  if (!studioOpen()) { setStatus('Open the Studio in another window first'); return; }
-  const buf = s.buffer, chans = [];
-  for (let c = 0; c < buf.numberOfChannels; c++) chans.push(buf.getChannelData(c).slice());
-  ch.postMessage({ type: 'loop', name: 'Loop ' + (id + 1), sampleRate: buf.sampleRate, length: buf.length, ch: chans });
-  setStatus('Sent Loop ' + (id + 1) + ' to the Studio →');
+  sendBufferToStudio(s.buffer, 'Loop ' + (id + 1));
 }
+
+// Ship any rendered AudioBuffer to the Studio as a new track (used by the Song
+// Builder to send the full arrangement or individual stems).
+export function sendBufferToStudio(buf, name) {
+  if (!buf) return false;
+  if (!studioOpen()) { setStatus('Open the Studio in another window first'); return false; }
+  const chans = [];
+  for (let c = 0; c < buf.numberOfChannels; c++) chans.push(buf.getChannelData(c).slice());
+  ch.postMessage({ type: 'loop', name: name || 'Looper clip', sampleRate: buf.sampleRate, length: buf.length, ch: chans });
+  setStatus('Sent "' + (name || 'clip') + '" to the Studio →');
+  return true;
+}
+
+export { studioOpen as isStudioOpen };

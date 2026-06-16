@@ -751,24 +751,27 @@ def _run_separation(sep_id, source_file, job_id):
         log.append(f"Output dir: {out_dir}")
         log.append(f"Using {'MP3' if _FFMPEG else 'WAV'} output")
 
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
+        def _run(c):
+            proc = subprocess.Popen(
+                c, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, encoding="utf-8", errors="replace",
+            )
+            for line in proc.stdout:
+                clean = _ANSI_RE.sub('', line).strip()
+                if clean:
+                    log.append(clean)
+            proc.wait()
+            return proc.returncode
 
-        for line in proc.stdout:
-            clean = _ANSI_RE.sub('', line).strip()
-            if clean:
-                log.append(clean)
-
-        proc.wait()
-
-        if proc.returncode != 0:
-            raise RuntimeError(f"Demucs exited with code {proc.returncode}")
+        rc = _run(cmd)
+        # GPU run failed on a memory/CUDA error? The generator (HeartMuLa) is probably
+        # still holding VRAM — fall back to CPU automatically (slower, but it works).
+        if rc != 0 and re.search(r"cuda|out of memory|gpu|cudnn", "\n".join(log[-12:]), re.I):
+            log.append("⚠ GPU separation failed (VRAM likely in use by the song generator) — retrying on CPU; this is slower…")
+            rc = _run(cmd + ["-d", "cpu"])
+        if rc != 0:
+            tail = "\n".join(log[-15:]) or "(no output captured)"
+            raise RuntimeError(f"Demucs exited with code {rc}.\n\n--- demucs output ---\n{tail}")
 
         ext = "mp3" if _FFMPEG else "wav"
         stem_dir = out_dir / "htdemucs_6s" / source_path.stem

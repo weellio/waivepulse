@@ -268,6 +268,14 @@ export function clearAll() {
   S.slots.forEach((_, i) => clearSlot(i));
 }
 
+// Silence every playing loop without clearing it (so the Song Builder can preview
+// against silence instead of fighting the live loop mix). Buffers are kept.
+export function stopAllPlayback() {
+  S.slots.forEach((s, i) => {
+    if (s.state === 'playing') { killSrc(i); s.state = 'stopped'; slotUI(i); }
+  });
+}
+
 function rederiveMaster() {
   S.masterLen = null; S.masterAnchor = null; S.masterSlot = -1;
   S.slots.forEach((s, i) => {

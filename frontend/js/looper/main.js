@@ -20,6 +20,8 @@ import { setSynthMode, togglePseq, pushPseqToLoop, clearPseq, renderSheet } from
 import { exportMIDI } from './midi-export.js';
 import { openLoopEq, closeLoopEq, resetLoopEq, loopEqOpen } from './loopeq.js';
 import { openLoopTrim, closeLoopTrim, applyTrim, resetTrim, snapTrimToSound, loopTrimOpen } from './looptrim.js';
+import { openSong, closeSong, autoArrange, downloadSong, songOpen, refreshSongStudioBtns } from './songbuilder.js';
+import { refreshExportButtons } from './exportstate.js';
 
 // ── Help modal ──────────────────────────────────────────────────────────────────
 function showHelp()   { document.getElementById('help-modal').classList.add('open'); }
@@ -43,6 +45,8 @@ Object.assign(window, {
   openLoopEq, closeLoopEq, resetLoopEq,
   // per-loop trim
   openLoopTrim, closeLoopTrim, applyTrim, resetTrim, snapTrimToSound,
+  // song builder
+  openSong, closeSong, autoArrange, downloadSong,
   // loops
   tapRecord, tapPlay, clearSlot, setVol, nudgeSlot, sendLoopToStudio,
   // master fx
@@ -59,7 +63,7 @@ document.addEventListener('keydown', e => {
   if (e.repeat || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   // Help: ? toggles, Esc closes (not bound to a piano key)
   if (e.key === '?')      { e.preventDefault(); toggleHelp(); return; }
-  if (e.key === 'Escape') { loopEqOpen() ? closeLoopEq() : loopTrimOpen() ? closeLoopTrim() : closeHelp(); return; }
+  if (e.key === 'Escape') { loopEqOpen() ? closeLoopEq() : loopTrimOpen() ? closeLoopTrim() : songOpen() ? closeSong() : closeHelp(); return; }
   // F1–F6 toggle record on loop slots
   if (e.key >= 'F1' && e.key <= 'F6') {
     e.preventDefault();
@@ -88,4 +92,6 @@ setSynthMode('keys');
 renderSheet();
 renderBeatBar();   // premade-beat buttons + saved favorites under the sequencer
 renderMelodyBar(); // premade chord/melody buttons + favorites under the keyboard
-initStudioBridge(refreshStudioButtons);   // heartbeat: greys the "Send to Studio" buttons when no Studio is open
+initStudioBridge(() => { refreshStudioButtons(); refreshSongStudioBtns(); });   // heartbeat: greys the "Send to Studio" buttons (loops + song builder) when no Studio is open
+refreshExportButtons();                                   // grey ⬇Export / 🎼Song / ⬇MIDI until there's something to export…
+setInterval(refreshExportButtons, 350);                   // …and keep them in sync as loops/sequencer/piano-roll change

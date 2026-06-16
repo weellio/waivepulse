@@ -47,6 +47,8 @@ body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans
   padding:4px 11px;border-radius:var(--rs);cursor:pointer;font-size:11px;
   font-weight:600;transition:all .12s;white-space:nowrap}
 .t-btn:hover{background:var(--b2);color:var(--txt)}
+.t-btn:disabled{opacity:.4;cursor:not-allowed;color:var(--txt3);border-color:var(--b1)}
+.t-btn:disabled:hover{background:var(--b1);color:var(--txt3)}
 .t-btn.on{border-color:var(--accent);color:var(--accent);background:var(--accent-bg)}
 .t-btn.export{border-color:rgba(74,222,128,.28);color:var(--green)}
 .t-btn.export:hover{background:var(--green-bg)}
@@ -341,6 +343,71 @@ input[type=range].vslider::-webkit-slider-thumb{-webkit-appearance:none;width:11
 .trim-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:10px;flex-wrap:wrap}
 .trim-btn{background:rgba(140,255,255,.06);color:var(--accent);border:1px solid rgba(140,255,255,.2);font-size:10px}
 .trim-btn:hover{background:rgba(140,255,255,.13)}
+
+/* ── Song Builder modal ────────────────────────────────────── */
+#song-modal{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:500;display:none;
+  align-items:center;justify-content:center;padding:20px}
+#song-modal.open{display:flex}
+#song-panel{background:#111;border:1px solid #2a2a2a;border-radius:10px;width:100%;max-width:1040px;
+  max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.6)}
+.song-body{padding:14px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;overflow-x:hidden}
+.song-auto{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px;
+  background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);font-size:11px}
+.sa-lbl{color:var(--accent);font-weight:700;letter-spacing:.3px}
+.sa-chk{display:flex;align-items:center;gap:5px;color:var(--txt);cursor:pointer}
+.sa-fld{display:flex;align-items:center;gap:5px;color:var(--txt2)}
+.song-auto input[type=number]{width:46px;background:var(--s2);color:var(--txt);border:1px solid var(--b2);
+  border-radius:5px;padding:3px 5px;font-size:11px;font-family:inherit;outline:none}
+.song-auto input[type=number]:focus{border-color:var(--accent)}
+#song-sections{display:flex;gap:8px;flex-wrap:wrap}
+.song-sec{flex:1 1 120px;min-width:120px;max-width:160px;background:var(--s2);border:1px solid var(--b2);
+  border-radius:var(--r);padding:8px;display:flex;flex-direction:column;gap:7px;
+  transition:box-shadow .08s,border-color .08s,background .08s}
+.song-sec.brk{background:rgba(248,113,113,.05);border-color:rgba(248,113,113,.3);border-style:dashed}
+.song-sec.playing{border-color:var(--accent);background:var(--accent-bg);
+  box-shadow:0 0 0 1px var(--accent),0 0 18px rgba(140,255,255,.28)}
+.song-sec.brk.playing{border-color:var(--red);background:var(--red-bg);
+  box-shadow:0 0 0 1px var(--red),0 0 18px rgba(248,113,113,.28)}
+.ss-hdr{display:flex;align-items:center;justify-content:space-between}
+.ss-tag{font-size:9.5px;font-weight:700;letter-spacing:.4px;color:var(--accent)}
+.song-sec.brk .ss-tag{color:var(--red)}
+.ss-move{display:flex;gap:2px}
+.ss-move button{background:var(--s3);border:1px solid var(--b2);color:var(--txt2);border-radius:4px;
+  width:18px;height:18px;font-size:9px;cursor:pointer;padding:0;line-height:1}
+.ss-move button:hover{color:var(--txt);border-color:var(--b3)}
+.ss-move .ss-x:hover{color:var(--red);border-color:var(--red)}
+.ss-loops{display:flex;gap:4px;flex-wrap:wrap}
+.sl-chip{width:24px;height:24px;border-radius:5px;border:1px solid var(--b3);background:var(--s1);
+  color:var(--txt3);font-size:11px;font-weight:700;cursor:pointer;padding:0;transition:all .1s}
+.sl-chip:hover{border-color:var(--accent)}
+.sl-chip.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+.ss-len{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--txt2)}
+.ss-len button{background:var(--s3);border:1px solid var(--b2);color:var(--txt);border-radius:4px;
+  width:20px;height:20px;font-size:13px;cursor:pointer;padding:0;line-height:1}
+.ss-len button:hover{border-color:var(--accent);color:var(--accent)}
+.ss-beats{font-variant-numeric:tabular-nums;color:var(--txt);font-weight:600;min-width:54px;text-align:center}
+.ss-beats small{color:var(--txt2);font-weight:400}
+.ss-bars{margin-left:auto;color:var(--txt3);font-variant-numeric:tabular-nums}
+.ss-vol{display:flex;align-items:center}
+.ss-vol input[type=range]{flex:1;width:100%;height:3px;accent-color:var(--accent);cursor:pointer}
+.ss-label{flex:1;min-width:0;background:transparent;border:none;border-bottom:1px solid transparent;
+  color:var(--accent);font-size:9.5px;font-weight:700;letter-spacing:.4px;font-family:inherit;
+  padding:1px 2px;outline:none;text-transform:uppercase}
+.ss-label:hover{border-bottom-color:var(--b3)}
+.ss-label:focus{border-bottom-color:var(--accent)}
+.song-sec.brk .ss-label{color:var(--red)}
+.song-add{display:flex;gap:8px}
+.song-master{display:flex;align-items:center;gap:12px 14px;flex-wrap:wrap;padding:10px 12px;
+  background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);font-size:11px}
+.song-master input[type=number]{width:50px;background:var(--s2);color:var(--txt);border:1px solid var(--b2);
+  border-radius:5px;padding:3px 5px;font-size:11px;font-family:inherit;outline:none}
+.song-master input[type=number]:focus{border-color:var(--accent)}
+.song-master .sa-fld,.song-master .sa-chk{color:var(--txt2)}
+.song-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  border-top:1px solid var(--b1);padding-top:12px;flex-wrap:wrap}
+.song-len{font-size:11px;color:var(--txt2);font-variant-numeric:tabular-nums}
+.song-foot-btns{display:flex;gap:8px;flex-wrap:wrap}
+.song-foot-btns .t-btn:disabled{opacity:.4;cursor:not-allowed}
 
 /* ── Mic card ───────────────────────────────────────────────── */
 #micBar{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;

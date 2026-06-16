@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WAIvePulse Looper</title>
 <link rel="icon" type="image/png" href="/assets/wave small.png">
-<link rel="stylesheet" href="/css/looper.css?v=15">
+<link rel="stylesheet" href="/css/looper.css?v=21">
 </head>
 <body>
 
@@ -53,8 +53,9 @@
   </div>
   <div class="tg tg-actions">
     <button class="t-btn" id="bypassBtn" onclick="toggleBypass()">⚡ Bypass</button>
-    <button class="t-btn export" onclick="exportMix()">⬇ Export</button>
-    <button class="t-btn export" onclick="exportMIDI()" title="Export piano roll + drum pattern as MIDI file">⬇ MIDI</button>
+    <button class="t-btn export" id="exportBtn" onclick="exportMix()" title="Render all loops to one WAV (one cycle)" disabled>⬇ Export</button>
+    <button class="t-btn export" id="songBtn" onclick="openSong()" title="Arrange loops into a full track with breaks" disabled>🎼 Song</button>
+    <button class="t-btn export" id="midiBtn" onclick="exportMIDI()" title="Export piano roll + drum pattern as MIDI file" disabled>⬇ MIDI</button>
     <button class="t-btn danger" onclick="clearAll()">✕ Clear All</button>
   </div>
 </div>
@@ -348,6 +349,61 @@
   </div>
 </div>
 
+<!-- ── Song Builder modal ──────────────────────────────────── -->
+<div id="song-modal">
+  <div id="song-panel">
+    <div class="help-hdr">
+      <div>
+        <div class="help-hdr-title">🎼 Song Builder</div>
+        <div class="help-hdr-sub">Arrange your recorded loops into a full track. Each block = which loops play + how long. A <b>Break</b> block drops to silence for a few beats, then the next block brings the loops back — still on the grid.</div>
+      </div>
+      <button class="help-close" onclick="closeSong()">×</button>
+    </div>
+    <div class="song-body">
+      <!-- Auto-arrange seed controls -->
+      <div class="song-auto">
+        <span class="sa-lbl">Auto-arrange:</span>
+        <label class="sa-chk"><input type="checkbox" id="sa-buildup" checked> build-up (loops enter 1-by-1)</label>
+        <span class="sa-fld">groove <input type="number" id="sa-bars"  min="1" max="64" value="8"> bars</span>
+        <span class="sa-fld">break <input type="number" id="sa-break" min="0" max="16" value="2"> beats</span>
+        <span class="sa-fld">× <input type="number" id="sa-reps"  min="1" max="16" value="2"> reps</span>
+        <button class="t-btn" onclick="autoArrange()" title="Replace the sections below with a fresh arrangement">↻ Generate</button>
+      </div>
+      <!-- Editable section blocks -->
+      <div id="song-sections"></div>
+      <div class="song-add">
+        <button class="t-btn" onclick="songAddGroove()">＋ Section</button>
+        <button class="t-btn" onclick="songAddBreak()">＋ Break</button>
+      </div>
+
+      <!-- Master / render options -->
+      <div class="song-master">
+        <span class="sa-lbl">Master:</span>
+        <span class="sa-fld">fade in <input type="number" id="mo-fadein" min="0" max="30" step="0.5" value="0"> s</span>
+        <span class="sa-fld">fade out <input type="number" id="mo-fadeout" min="0" max="30" step="0.5" value="2"> s</span>
+        <label class="sa-chk"><input type="checkbox" id="mo-norm" checked> normalize to <input type="number" id="mo-target" min="-12" max="0" step="0.5" value="-1" style="width:50px"> dBFS</label>
+        <label class="sa-chk"><input type="checkbox" id="mo-limit" checked> soft limiter</label>
+        <label class="sa-chk"><input type="checkbox" id="mo-fx"> bake master FX (reverb/delay)</label>
+        <span class="sa-fld">tail <input type="number" id="mo-tail" min="0" max="10" step="0.5" value="2"> s</span>
+        <label class="sa-chk"><input type="checkbox" id="mo-24"> 24-bit</label>
+      </div>
+
+      <!-- Render row -->
+      <div class="song-foot">
+        <span id="song-len" class="song-len">—</span>
+        <div class="song-foot-btns">
+          <button class="t-btn" id="song-preview-btn" onclick="songTogglePreview()">▶ Preview</button>
+          <button class="t-btn" id="song-stop-btn" onclick="songStopPreview()" title="Stop preview" disabled>■ Stop</button>
+          <button class="t-btn" id="song-studio-btn" onclick="songToStudio()" title="Send the full track to an open Studio window as a new track" disabled>⇪ Song → Studio</button>
+          <button class="t-btn" id="song-stemstudio-btn" onclick="songStemsToStudio()" title="Send each loop as its own full-length track to the Studio" disabled>⇪ Stems → Studio</button>
+          <button class="t-btn" onclick="songDownloadStems()" title="Download each loop as its own full-length WAV stem">⬇ Stems</button>
+          <button class="t-btn export" onclick="downloadSong()">⬇ Render Full Track</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Help modal ──────────────────────────────────────────── -->
 <div id="help-modal">
   <div id="help-panel">
@@ -465,8 +521,24 @@
           <tr><td>Count-in</td><td>Beats of lead-in before recording starts</td></tr>
           <tr><td>Quantize</td><td>Snap the first loop's length to the nearest bar</td></tr>
           <tr><td>Master FX</td><td>Global Reverb, Delay (tempo-synced), and Volume</td></tr>
-          <tr><td>⬇ Export</td><td>Render all loops to a single WAV</td></tr>
+          <tr><td>⬇ Export</td><td>Render all loops to a single WAV (one cycle)</td></tr>
+          <tr><td>🎼 Song</td><td>Arrange the loops into a full track — see below</td></tr>
           <tr><td>⚡ Bypass</td><td>Diagnostic — route audio straight to output</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">🎼 Song Builder</div>
+        <p class="help-p">Turn your recorded loops into a full-length track. All loops run continuously on the grid; each section just chooses which ones are audible — so layers drop out and come back perfectly in time.</p>
+        <table class="help-table"><tbody>
+          <tr><td>Auto-arrange</td><td>Seeds a build-up (loops enter one at a time) → groove → break → drop, repeated. Tweak the knobs and hit <b>↻ Generate</b>.</td></tr>
+          <tr><td>Section block</td><td>Click the numbered chips to choose which loops play; <b>− / +</b> set the length in beats (4 beats = 1 bar); the <b>VOL</b> slider sets that section's level (breakdown softer, drop louder); rename it inline; ◀ ▶ reorder; ⧉ duplicate; × removes it.</td></tr>
+          <tr><td>Break block</td><td>A section with no loops on = silence for those beats. The next block brings the groove back in.</td></tr>
+          <tr><td>Master row</td><td>Fade in/out, normalize to a target dBFS + soft limiter (stacked loops never clip), optionally bake in the master Reverb/Delay with a tail, and 16- or 24-bit output.</td></tr>
+          <tr><td>▶ Preview</td><td>Audition the whole arrangement (with all master processing) before saving.</td></tr>
+          <tr><td>⬇ Render Full Track</td><td>Renders the arrangement (per-loop EQ baked in) to <b>looper-song.wav</b>.</td></tr>
+          <tr><td>⬇ Stems</td><td>Each loop as its own full-length WAV (arrangement applied, un-normalized so they sum cleanly) for mixing in a DAW.</td></tr>
+          <tr><td>⇪ Song / Stems → Studio</td><td>With a Studio window open, send the full track — or every stem as its own track — straight into the Studio to keep producing.</td></tr>
         </tbody></table>
       </div>
 
