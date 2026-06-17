@@ -13,7 +13,7 @@ import {
   normalizeTrack, resetTrack, duplicateTrack, cycleTrack, stretchTrack,
 } from './tracks.js';
 import {
-  applyPreset, applyMasterPreset, setMasterVolume,
+  applyPreset, applyMasterPreset, setMasterVolume, resetMix,
   saveMixPreset, loadMixPreset, loadGenreTemplate, deleteMixPreset, renderMixPresetBar,
 } from './presets.js';
 import {
@@ -42,7 +42,7 @@ Object.assign(window, {
   // transport
   togglePlay, stopPlayback, toggleLoop, zoomIn, zoomOut, zoomFit,
   // presets / master
-  applyPreset, applyMasterPreset, setMasterVolume, resetAllTracks,
+  applyPreset, applyMasterPreset, setMasterVolume, resetAllTracks, resetMix,
   // mix presets
   saveMixPreset, loadMixPreset, loadGenreTemplate, deleteMixPreset,
   // master FX (existing)

@@ -47,8 +47,6 @@
   <button class="t-btn" id="comp-btn"    style="font-size:10px;width:auto;padding:0 8px" title="Master limiter — tames peaks, adds loudness glue (mutually exclusive with CLP)" onclick="toggleCompressor()">LMT OFF</button>
   <button class="t-btn" id="clip-btn"    style="font-size:10px;width:auto;padding:0 8px" title="Master soft clipper — catches transient peaks while preserving punch (mutually exclusive with LMT)" onclick="toggleClipper()">CLP</button>
   <button class="t-btn" id="exciter-btn" style="font-size:10px;width:auto;padding:0 8px" title="Harmonic exciter — adds air and presence" onclick="toggleExciter()">EXC</button>
-  <button class="t-btn" id="master-btn"  style="font-size:10px;width:auto;padding:0 9px;color:#c8a832;border-color:#6b5200" title="Apply mastering preset to all stems" onclick="applyMasterPreset()">MASTER</button>
-  <button class="t-btn" style="font-size:10px;width:auto;padding:0 8px;color:#888" title="Reset all knobs on every track to defaults" onclick="resetAllTracks()">RST ALL</button>
   <div class="t-divider"></div>
   <span style="font-size:10px;color:#555;white-space:nowrap">VOL</span>
   <input type="range" id="master-vol" min="0" max="150" value="100" style="width:72px;accent-color:#8cffff;cursor:pointer;vertical-align:middle" title="Master volume (0–150%)" oninput="setMasterVolume(this.value)">
@@ -75,10 +73,15 @@
   <button class="preset-btn"        id="pb-nodrums"  onclick="applyPreset('nodrums')">No Drums</button>
 </div>
 
-<!-- ── Mix Presets bar (genre templates + user-saved presets) ── -->
+<!-- ── Mix Presets bar (genre templates + user-saved presets) + master/reset actions ── -->
 <div id="mix-preset-bar">
   <span class="pb-label">Mix</span>
   <button class="preset-btn" style="color:#6be87c;border-color:#2a6b33" onclick="saveMixPreset()">+ Save</button>
+  <!-- Right-aligned mix actions: MASTER lives with the mix, RST ALL resets the whole mix -->
+  <span id="mix-actions" style="margin-left:auto;display:inline-flex;gap:8px;align-items:center">
+    <button class="t-btn" id="master-btn" style="font-size:10px;width:auto;padding:0 9px;color:#c8a832;border-color:#6b5200" title="MASTER — apply the one-click mastering preset to all stems" onclick="applyMasterPreset()">MASTER</button>
+    <button class="t-btn" style="font-size:10px;width:auto;padding:0 8px;color:#888" title="RST ALL — reset the whole mix to the original Full Mix: every track knob &amp; EQ, the master FX chain, master EQ and volume. Keeps your tracks (undoes MASTER and any preset)" onclick="resetMix()">RST ALL</button>
+  </span>
 </div>
 
 <!-- ── Master FX bar (gate · bitcrusher · wavefolder · plate reverb) ── -->
@@ -260,12 +263,12 @@
         <div class="help-section-title">✨ Mastering Tools</div>
         <p class="help-p">AI-generated music often sounds thinner and flatter than professionally recorded music. These tools help close that gap.</p>
         <table class="help-table"><tbody>
-          <tr><td><b>MASTER button</b></td><td>One-click mastering preset. Duplicates drums at 12ms offset (ADT thickening), applies conservative per-stem EQ (sub and bass boost on drums/bass, treble air on vocals/piano, a slight mid scoop on vocals to compensate), adds reverb presence to instruments, enables the harmonic exciter at a low wet level, boosts the master sub and air EQ modestly, and enables the limiter to catch peaks. Use this as a starting point, then tweak individual knobs.</td></tr>
+          <tr><td><b>MASTER button</b></td><td>Sits at the right of the <b>Mix</b> bar. One-click mastering preset: duplicates drums at 12ms offset (ADT thickening), applies conservative per-stem EQ (sub and bass boost on drums/bass, treble air on vocals/piano, a slight mid scoop on vocals to compensate), adds reverb presence to instruments, enables the harmonic exciter at a low wet level, boosts the master sub and air EQ modestly, and enables the clipper to catch peaks. Use this as a starting point, then tweak individual knobs — and <b>RST ALL</b> (right next to it) fully undoes it.</td></tr>
           <tr><td><b>EXC (Exciter)</b></td><td>Harmonic exciter on the master bus. High-passes the signal at 3kHz, applies soft saturation to only the high frequencies, then mixes it back at 18% wet. Adds overtone shimmer and "air" that AI audio typically lacks — makes it sound more alive and present without affecting the low end.</td></tr>
           <tr><td><b>LMT (Limiter)</b></td><td>Master bus limiter/compressor. Tames loud peaks and adds a sense of loudness glue. Settings: −18dB threshold, 4:1 ratio, fast attack. Toggle on for a more radio-ready sound. <b>Mutually exclusive with CLP.</b></td></tr>
           <tr><td><b>CLP (Clipper)</b></td><td>Master bus soft clipper. Catches transient peaks at a −0.5 dBFS ceiling using a tanh-bent waveshaper (4× oversampled) while leaving everything below the knee untouched. Preserves drum/transient punch where a limiter would duck them — often the better choice for AI-generated music that needs loudness without losing impact. <b>Mutually exclusive with LMT.</b></td></tr>
           <tr><td><b>VOL slider</b></td><td>Master output volume — scales the entire mix from 0% (silence) to 150% (boost). Affects both live playback and Export Mix. Use it to bring down a mix that's too hot before exporting, or to match levels when A/B comparing. Default is 100%.</td></tr>
-          <tr><td><b>RST ALL button</b></td><td>Resets every knob on every track to its default value in one click — VOL back to 100%, PAN to center, all EQ flat, REV/DLY/OFS to zero. Useful for starting fresh after experimenting. Individual tracks also have their own RST button, and pressing <kbd>R</kbd> resets the selected track.</td></tr>
+          <tr><td><b>RST ALL button</b></td><td>Next to MASTER in the <b>Mix</b> bar. Resets the <b>whole mix</b> back to the original Full Mix in one click — every track's knobs (VOL 100%, PAN center, REV/DLY/OFS 0) <i>and</i> per-track EQ flat, plus the entire master chain: limiter/clipper/exciter/gate/crusher/folder/plate off, master sub/air EQ flat, master volume 100%, and un-mutes everything (Full Mix). This fully undoes MASTER and any genre/saved preset. Your tracks are kept — use a track's ✕ to remove an extra (e.g. a duplicate). Individual tracks also have their own RST button, and <kbd>R</kbd> resets the selected track.</td></tr>
           <tr><td><b>DUP button</b></td><td>Duplicate any stem as its own independent track. Set OFS to 10–20ms on the copy for ADT doubling. Try panning the two copies slightly apart (e.g. L20 and R20) for a wide stereo image.</td></tr>
           <tr><td><b>EQ button</b></td><td>Opens the per-track 7-band parametric EQ — live spectrum analyzer + a draggable curve (high-pass · low shelf · three bells · high shelf · low-pass), each with freq/gain/Q. This is the only per-track EQ (the old SUB/BASS/MID/TREB knobs were retired in favour of it). <kbd>Esc</kbd> to close.</td></tr>
           <tr><td><b>FADE in / out</b></td><td>Master fade sliders (0–15 s) in the FX bar. Smoothly ramps the whole mix up at the start and down at the end — perfect for cleaning up a hard AI stop. The fade-out is measured back from the <i>current</i> song end, so it automatically follows a <b>Cut</b>. Catches reverb/exciter/plate tails too, and is baked into Export Mix.</td></tr>

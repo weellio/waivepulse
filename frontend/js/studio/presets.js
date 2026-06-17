@@ -1,8 +1,10 @@
 // Stem presets (mute combinations), the one-click MASTER mastering preset,
 // and saveable mix presets (full mixer state: per-stem + master chain).
 import { S, PRESETS, STEM_ORDER } from './state.js';
-import { baseStemOf, applyGains, duplicateTrack } from './tracks.js';
-import { setBand, snapshotEq, createEq7 } from '../shared/eq7.js';
+import { baseStemOf, applyGains, duplicateTrack, resetAllTracks } from './tracks.js';
+import { setBand, snapshotEq, createEq7, resetEq } from '../shared/eq7.js';
+import { toggleExciter, toggleCompressor, toggleClipper, toggleGate, toggleGateDuck,
+         toggleCrusher, toggleFolder, togglePlate } from './audio-graph.js';
 
 export function applyPreset(name) {
   S._activePreset = name;
@@ -78,6 +80,31 @@ export function applyMasterPreset() {
 export function setMasterVolume(v) {
   if (S._masterBus) S._masterBus.gain.setTargetAtTime(v / 100, S._actx.currentTime, 0.01);
   document.getElementById('master-vol-label').textContent = v + '%';
+}
+
+// RST ALL — reset the WHOLE mix back to the original Full Mix, so it fully undoes
+// MASTER and any genre/saved preset: every track knob + per-track EQ, the master FX
+// chain (limiter/clipper/exciter/gate/crush/fold/plate), master EQ and volume, and
+// the active preset. Tracks themselves are kept (use a track's ✕ to remove extras).
+export function resetMix() {
+  resetAllTracks();                                          // every knob → default
+  for (const t of Object.values(S.tracks)) if (t.eq) resetEq(t.eq);   // per-track EQ flat
+  if (S._actx) {
+    const now = S._actx.currentTime;
+    if (S._exciterEnabled) toggleExciter();
+    if (S._compEnabled)    toggleCompressor();
+    if (S._clipEnabled)    toggleClipper();
+    if (S._gateEnabled)    toggleGate();
+    if (S._gateNode && S._gateNode.parameters.get('duck').value >= 0.5) toggleGateDuck();
+    if (S._crusherEnabled) toggleCrusher();
+    if (S._folderEnabled)  toggleFolder();
+    if (S._plateEnabled)   togglePlate();
+    if (S._masterSubEQ) S._masterSubEQ.gain.setTargetAtTime(0, now, 0.05);   // master EQ flat
+    if (S._masterAirEQ) S._masterAirEQ.gain.setTargetAtTime(0, now, 0.05);
+  }
+  const mv = document.getElementById('master-vol'); if (mv) mv.value = 100;  // master volume 100%
+  setMasterVolume(100);
+  applyPreset('full');                                       // un-mute everything, highlight Full Mix
 }
 
 // ── Mix Presets (full mixer state save/load) ─────────────────────────────────
@@ -392,9 +419,12 @@ function _loadMixPresets() {
 export function renderMixPresetBar() {
   const bar = document.getElementById('mix-preset-bar');
   if (!bar) return;
-  // Keep the label and save button, clear the rest
+  // Keep the label, save button and the right-aligned MASTER/RST ALL actions; clear the rest.
+  // New buttons are inserted BEFORE the actions group so MASTER/RST ALL stay at the far right.
   const btns = bar.querySelectorAll('.mp-btn');
   btns.forEach(b => b.remove());
+  const anchor = document.getElementById('mix-actions');
+  const place = el => anchor ? bar.insertBefore(el, anchor) : bar.appendChild(el);
 
   // Genre templates
   GENRE_TEMPLATES.forEach((t, i) => {
@@ -403,7 +433,7 @@ export function renderMixPresetBar() {
     btn.textContent = t.name;
     btn.title = `Load "${t.name}" genre template`;
     btn.onclick = () => loadGenreTemplate(i);
-    bar.appendChild(btn);
+    place(btn);
   });
 
   // Divider if user presets exist
@@ -412,7 +442,7 @@ export function renderMixPresetBar() {
     const div = document.createElement('span');
     div.className = 'mp-btn';
     div.style.cssText = 'width:1px;height:16px;background:#333;margin:0 4px;flex-shrink:0';
-    bar.appendChild(div);
+    place(div);
   }
 
   // User presets
@@ -432,6 +462,6 @@ export function renderMixPresetBar() {
     del.onclick = e => { e.stopPropagation(); deleteMixPreset(i); };
     wrap.appendChild(btn);
     wrap.appendChild(del);
-    bar.appendChild(wrap);
+    place(wrap);
   });
 }
