@@ -56,6 +56,8 @@ export function snapTrimToSound() {
 }
 
 // Rotate the buffer so `marker` becomes t=0; dead air wraps to the tail.
+// Exported for project open (a saved loop = original take + trim offset).
+export function rotateBuffer(buf, offSamples) { return rotate(buf, offSamples); }
 function rotate(buf, offSamples) {
   const n = buf.length, ch = buf.numberOfChannels;
   const out = S.ctx.createBuffer(ch, n, buf.sampleRate);
@@ -72,6 +74,7 @@ export function applyTrim() {
   if (off <= 0) { setStatus('Marker is already at the start'); return; }
   if (!s._trimOrig) s._trimOrig = s.buffer;   // stash original so Reset can restore
   s.buffer = rotate(s.buffer, off);
+  s.trimOffset = ((s.trimOffset || 0) + off) % s.buffer.length;   // saved with the project
   marker = 0;
   drawWave(curId);
   if (s.state === 'playing') playSlot(curId);
@@ -81,7 +84,7 @@ export function applyTrim() {
 
 export function resetTrim() {
   const s = S.slots[curId]; if (!s || !s._trimOrig) { marker = 0; drawTrim(); return; }
-  s.buffer = s._trimOrig; s._trimOrig = null; marker = 0;
+  s.buffer = s._trimOrig; s._trimOrig = null; s.trimOffset = 0; marker = 0;
   drawWave(curId);
   if (s.state === 'playing') playSlot(curId);
   drawTrim();

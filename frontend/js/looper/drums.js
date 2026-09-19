@@ -4,6 +4,7 @@ import { ensureCtx } from './core.js';
 import { fmtSec, setStatus } from './util.js';
 import { drawWave, playSlot } from './loops.js';
 import { swingOffset, stepSpan, humanizeTime, humanizeVel, ratchetHits, nextProb, nextRatchet, euclid } from './groove.js';
+import { renderPlan } from './banks.js';
 
 // ── Drum synth ────────────────────────────────────────────────────────────────
 function gn(t, peak, decay) {
@@ -190,12 +191,31 @@ export function clearSeq() {
   setStatus('Sequencer cleared');
 }
 
+// Replace the whole drum pattern (velocity + probability + ratchet) in place —
+// used by pattern banks, MIDI import and project open. Works whether or not the
+// grid has been built yet; missing prob/ratchet default to 100% / 1 hit.
+export function applySeqPattern(grid, prob, rat) {
+  for (let r = 0; r < S.seqPattern.length; r++)
+    for (let s = 0; s < SEQ_STEPS; s++) {
+      const v = +(grid?.[r]?.[s]) || 0;
+      S.seqPattern[r][s] = Math.max(0, Math.min(1, v));
+      const p = prob?.[r]?.[s], k = rat?.[r]?.[s];
+      S.seqProb[r][s]    = [1, 0.75, 0.5, 0.25].includes(p) ? p : 1;
+      S.seqRatchet[r][s] = [1, 2, 3, 4].includes(k) ? k : 1;
+      if (S.seqCells.length) paintSeqCell(r, s);
+    }
+}
+
 // Render the current pattern to an empty loop slot — perfectly on-grid, no live recording.
+// With Chain on, renders every bar of the chain (bank by bank) into one loop.
 export async function pushSeqToLoop() {
   ensureCtx();
   if (S.ctx.state === 'suspended') S.ctx.resume();
-  if (!S.seqPattern.some(row => row.some(v => v))) {
-    setStatus('Sequencer is empty — add some steps first'); return;
+  const plan = renderPlan();
+  if (!plan.ok) { setStatus(plan.error); return; }
+  const bars = plan.bars;
+  if (!bars.some(b => b.seq.some(row => row.some(v => v)))) {
+    setStatus(plan.chain ? 'Every bank in the chain has an empty drum grid' : 'Sequencer is empty — add some steps first'); return;
   }
   const id = S.slots.findIndex(s => s.state === 'empty' && !s.buffer);
   if (id < 0) { setStatus('No empty loop slot — clear one first'); return; }
@@ -204,21 +224,27 @@ export async function pushSeqToLoop() {
   const bar     = (60 / S.bpm) * 4;          // 16 sixteenth-notes = one 4/4 bar
   const stepDur = bar / SEQ_STEPS;
   const tail    = 1.0;                         // let decays ring out, then wrap them
-  const off     = new OfflineAudioContext(2, Math.ceil((bar + tail) * sr), sr);
+  const nb      = bars.length;
+  const off     = new OfflineAudioContext(2, Math.ceil((bar * nb + tail) * sr), sr);
 
   // Temporarily point the drum synths at the offline graph, schedule, then restore.
   const savedCtx = S.ctx, savedBus = S.inputBus;
+  const saved = { pat: S.seqPattern, prob: S.seqProb, rat: S.seqRatchet };
   S.ctx = off; S.inputBus = off.destination;
   try {
-    // same swing / probability / ratchet / humanize path as live playback
-    for (let step = 0; step < SEQ_STEPS; step++) scheduleDrumStep(step, step * stepDur, stepDur, 0);
+    // same swing / probability / ratchet / humanize path as live playback, bar by bar
+    bars.forEach((b, bi) => {
+      S.seqPattern = b.seq; S.seqProb = b.prob; S.seqRatchet = b.rat;
+      for (let step = 0; step < SEQ_STEPS; step++) scheduleDrumStep(step, bi * bar + step * stepDur, stepDur, 0);
+    });
   } finally {
     S.ctx = savedCtx; S.inputBus = savedBus;
+    S.seqPattern = saved.pat; S.seqProb = saved.prob; S.seqRatchet = saved.rat;
   }
   const rendered = await off.startRendering();
 
-  // Fold the decay tail (past the bar end) back onto the start so the loop joins seamlessly.
-  const barLen = Math.floor(bar * sr);
+  // Fold the decay tail (past the loop end) back onto the start so the loop joins seamlessly.
+  const barLen = Math.floor(bar * nb * sr);
   const out = savedCtx.createBuffer(2, barLen, sr);
   for (let ch = 0; ch < 2; ch++) {
     const src = rendered.getChannelData(ch);
@@ -238,7 +264,7 @@ export async function pushSeqToLoop() {
     S.masterSlot   = id;
   }
   playSlot(id);
-  setStatus('Beat pushed to Loop ' + (id + 1) + (S.swing ? ' — swung ' + Math.round(S.swing * 100) + '%' : ' — perfectly timed'));
+  setStatus('Beat pushed to Loop ' + (id + 1) + (plan.chain ? ` — ${nb}-bar chain ${plan.label}` : '') + (S.swing ? ' — swung ' + Math.round(S.swing * 100) + '%' : ' — perfectly timed'));
 }
 
 export function buildSeq() {
@@ -341,7 +367,7 @@ export function startSeq() {
   S.seqPlaying = true;
   const stepDur = (60 / S.bpm) / 4;
   // Share the transport grid with the piano roll if it's already running
-  if (!S.pseqPlaying || S.seqAnchor == null) S.seqAnchor = S.ctx.currentTime + 0.05;
+  if (!S.pseqPlaying || S.seqAnchor == null) { S.seqAnchor = S.ctx.currentTime + 0.05; S.onTransportStart?.(); }
   const stepsAhead = Math.max(0, Math.ceil((S.ctx.currentTime - S.seqAnchor) / stepDur));
   S.seqNextTime = S.seqAnchor + stepsAhead * stepDur;
   S.seqStep     = ((stepsAhead % SEQ_STEPS) + SEQ_STEPS) % SEQ_STEPS;
@@ -360,6 +386,7 @@ export function stopSeq() {
 export function runSeq() {
   const stepDur = (60 / S.bpm) / 4;
   while (S.seqNextTime < S.ctx.currentTime + 0.1) {
+    if (S.seqStep === 0) S.onBarStart?.(S.seqNextTime, stepDur);   // pattern banks / chain switch on the bar line
     scheduleDrumStep(S.seqStep, S.seqNextTime, stepDur, S.ctx.currentTime);
     S.seqNextTime += stepDur;
     S.seqStep = (S.seqStep + 1) % SEQ_STEPS;

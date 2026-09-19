@@ -193,9 +193,14 @@ export function wireTrack(stem) {
   t.delaySend = x.createGain(); t.delaySend.gain.value = 0;
   // 7-band parametric EQ is the per-track EQ
   t.eq = createEq7(x);
-  // src → offsetNode → gainNode → panNode → eq7 → masterBus (+ sends)
+  // Automation stage (volume multiplier + automated pan), driven by automation.js
+  t.autoGain = x.createGain(); t.autoGain.gain.value = 1;
+  t.autoPan = x.createStereoPanner(); t.autoPan.pan.value = 0;
+  // src → offsetNode → gainNode → autoGain → autoPan → panNode → eq7 → masterBus (+ sends)
   t.offsetNode.connect(t.gainNode);
-  t.gainNode.connect(t.panNode);
+  t.gainNode.connect(t.autoGain);
+  t.autoGain.connect(t.autoPan);
+  t.autoPan.connect(t.panNode);
   t.panNode.connect(t.eq.input);
   t.eq.output.connect(S._masterBus);
   t.eq.output.connect(t.reverbSend); t.reverbSend.connect(S._reverbNode);

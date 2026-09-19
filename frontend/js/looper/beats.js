@@ -4,6 +4,7 @@ import { S } from './state.js';
 import { setDrumMode, buildSeq, paintSeqCell } from './drums.js';
 import { setStatus } from './util.js';
 import { setSwing } from './transport.js';
+import { bankFavExtras, applyBankFav, paintBanks } from './banks.js';
 
 // Per-row default velocity (rows: 0 Kick · 1 Snare · 2 HiHat · 3 Open · 4 Clap · 5 Tom · 6 808 · 7 Perc)
 const V = [1.0, 0.9, 0.62, 0.68, 0.9, 0.85, 0.95, 0.68];
@@ -73,6 +74,8 @@ function saveBeat() {
   if (S.seqProb.some(row => row.some(p => p !== 1)))    fav.prob  = S.seqProb.map(row => row.slice());
   if (S.seqRatchet.some(row => row.some(k => k !== 1))) fav.rat   = S.seqRatchet.map(row => row.slice());
   if (S.swing) fav.swing = +S.swing.toFixed(2);
+  const extra = bankFavExtras('drums');          // Chain on → keep all 4 banks' beats + the chain
+  if (extra) Object.assign(fav, extra);
   const favs = getFavs();
   favs.push(fav);
   setFavs(favs);
@@ -82,9 +85,12 @@ function saveBeat() {
 
 function loadFav(i) {
   const f = getFavs()[i]; if (!f) return;
-  applyGrid(f.grid, f.prob, f.rat);
+  ensureSeqReady();
+  const chained = applyBankFav('drums', f);      // a chain favorite restores banks A–D + the chain
+  if (!chained) applyGrid(f.grid, f.prob, f.rat);
   if (typeof f.swing === 'number') setSwing(f.swing * 100);   // restore the groove it was saved with
-  setStatus(`Loaded "${f.name}"` + (f.swing ? ` (swing ${Math.round(f.swing * 100)}%)` : ''));
+  paintBanks();
+  setStatus(`Loaded "${f.name}"` + (chained ? ` (banks A–D + chain ${f.chain})` : '') + (f.swing ? ` (swing ${Math.round(f.swing * 100)}%)` : ''));
 }
 
 function deleteFav(i) {
@@ -120,7 +126,7 @@ export function renderBeatBar() {
   favs.forEach((f, i) => {
     const wrap = document.createElement('span');
     wrap.className = 'beat-fav';
-    wrap.appendChild(mkBtn(f.name, 'fav', () => loadFav(i), 'Load your saved beat'));
+    wrap.appendChild(mkBtn((f.banks ? '⛓ ' : '') + f.name, 'fav', () => loadFav(i), f.banks ? 'Load your saved beat chain (banks A–D + chain ' + f.chain + ')' : 'Load your saved beat'));
     wrap.appendChild(mkBtn('✕', 'fav-x', () => deleteFav(i), 'Delete this favorite'));
     bar.appendChild(wrap);
   });

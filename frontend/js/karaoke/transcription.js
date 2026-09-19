@@ -33,6 +33,7 @@ export async function retranscribe(){
         S._words=padLyrics(d.words||[]);
         S._lastWordIdx=-1;
         _updateResyncBtn();
+        window.dispatchEvent(new Event('karaoke-words'));
         break;
       }
       if(d.status==='error'){btn.textContent='❌ Failed';btn.disabled=false;return;}

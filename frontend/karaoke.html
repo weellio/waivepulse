@@ -41,6 +41,12 @@
   <button class="c-btn" id="resync-btn" style="display:none" onclick="retranscribe()" title="Re-run transcription with a better model">🔄 Re-sync</button>
   <button class="c-btn" id="vocals-btn" onclick="toggleVocals()">🎤 Vocals ON</button>
   <button class="c-btn" onclick="nextPreset()" title="Cycle visual style (N)">🎨 Style</button>
+  <div id="cap-group" role="group" aria-label="Caption export">
+    <button class="c-btn cap-btn" id="cap-lrc">⬇ LRC</button>
+    <button class="c-btn cap-btn" id="cap-srt">⬇ SRT</button>
+    <button class="c-btn cap-btn" id="cap-vtt">⬇ VTT</button>
+    <button class="c-btn cap-btn" id="cap-copy">📋 Copy timed lyrics</button>
+  </div>
   <button class="c-btn" id="rec-btn" onclick="toggleRecord()" title="Record lyric video (R)">&#x23FA; Record</button>
 </div>
 

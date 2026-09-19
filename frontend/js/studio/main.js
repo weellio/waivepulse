@@ -28,6 +28,13 @@ import { cutRegion, undoCut, spliceRegion, generateVariation } from './edit.js';
 import { openStemLibrary, closeStemLibrary } from './stem-library.js';
 import { initStudioReceiver } from './bridge.js';
 import { redrawAll, mergeRanges, toggleChords } from './waveform.js';
+import { renderMix } from './export.js';
+import { scheduleAutomation, shiftAutomationBy, cloneAuto, autoValueAt } from './automation.js';
+import { addMarkerAtPlayhead, copyYouTubeChapters, recopyChapters, closeChapters, closeMarkerPopover,
+         markerPopoverOpen, buildChapters, getMarkers, setMarkers } from './markers.js';
+import { saveProject, pickProjectFile, openProjectFile, isProjectFile, projectState, makeZip, readZip } from './project.js';
+import { pitchTrack, shiftAllKeys, shiftKeyName } from './pitch.js';
+import { toggleSpectrogram } from './spectrogram.js';
 
 // transport.js calls applyRangedGains, which lives in tracks.js — inject it to
 // break the circular import.
@@ -68,11 +75,26 @@ Object.assign(window, {
   toggleChords,
   // karaoke
   openKaraoke, toggleAutoTranscribe,
+  // markers / chapters
+  addMarkerAtPlayhead, copyYouTubeChapters, recopyChapters, closeChapters,
+  // project files
+  saveProject, pickProjectFile,
+  // key change
+  shiftAllKeys,
+  // spectrogram
+  toggleSpectrogram,
 });
+
+// Small scripting/debug surface (used by the automated browser checks).
+window.WPStudio = {
+  S, renderMix, projectState, openProjectFile, saveProject, makeZip, readZip,
+  buildChapters, getMarkers, setMarkers, pitchTrack, shiftAllKeys, shiftKeyName,
+  scheduleAutomation, autoValueAt, seekTo, cutRegion, undoCut,
+};
 
 // ── Keyboard shortcuts ──────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT') return;
+  if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
   const ctrl = e.ctrlKey || e.metaKey;
 
   if (!ctrl && (e.key === '?' || e.key === 'h' || e.key === 'H')) {
@@ -80,6 +102,8 @@ document.addEventListener('keydown', e => {
   }
 
   if (e.code === 'Escape') {
+    if (markerPopoverOpen()) { closeMarkerPopover(); return; }
+    if (document.getElementById('chapters-modal')?.classList.contains('open')) { closeChapters(); return; }
     if (document.getElementById('stem-library-modal').classList.contains('open')) { closeStemLibrary(); return; }
     if (document.getElementById('eq-modal').classList.contains('open')) { closeTrackEQ(); return; }
     if (document.getElementById('help-modal').classList.contains('open')) { closeHelp(); return; }
@@ -105,6 +129,9 @@ document.addEventListener('keydown', e => {
   if (e.key === '+' || e.key === '=') { zoomIn(); return; }
   if (e.key === '-') { zoomOut(); return; }
   if (e.key === 'f' || e.key === 'F') { zoomFit(); return; }
+
+  // Shift+M = drop a song marker at the playhead (plain M still mutes the selected track)
+  if ((e.key === 'm' || e.key === 'M') && e.shiftKey) { e.preventDefault(); addMarkerAtPlayhead(); return; }
 
   if (e.code === 'Tab') { e.preventDefault(); cycleTrack(e.shiftKey ? -1 : 1); return; }
 
@@ -144,7 +171,7 @@ document.addEventListener('mousemove', e => {
     }
   }
   if (S._trackPosDrag) {
-    const { stemKey, songX0, startTime0, muteRanges0 } = S._trackPosDrag;
+    const { stemKey, songX0, startTime0, muteRanges0, auto0 } = S._trackPosDrag;
     const t = S.tracks[stemKey];
     if (t) {
       const dx = e.clientX - songX0;
@@ -154,6 +181,7 @@ document.addEventListener('mousemove', e => {
       const clampedDt = newStart - startTime0;
       t.startTime = newStart;
       if (muteRanges0.length) t.muteRanges = muteRanges0.map(r => ({ start: r.start + clampedDt, end: r.end + clampedDt }));
+      if (auto0 && (auto0.vol.length || auto0.pan.length)) shiftAutomationBy(t, auto0, clampedDt);   // lanes travel with the clip
       redrawAll();
     }
   }
@@ -180,6 +208,7 @@ document.addEventListener('mouseup', () => {
   if (S._trackPosDrag) {
     const { stemKey } = S._trackPosDrag;
     S._trackPosDrag = null;
+    scheduleAutomation(stemKey);
     const row = document.querySelector(`#scroll-content .track-row[data-stem="${stemKey}"]`);
     if (row) row.style.cursor = 'grab';
   }
@@ -199,6 +228,8 @@ document.addEventListener('dragover', e => e.preventDefault());
 document.addEventListener('drop', e => {
   e.preventDefault(); S._dragDepth = 0;
   document.getElementById('drop-overlay').classList.remove('active');
+  const proj = [...e.dataTransfer.files].find(isProjectFile);
+  if (proj) { openProjectFile(proj); return; }
   const files = [...e.dataTransfer.files].filter(f => f.type.startsWith('audio/') || /\.(mp3|wav|flac|ogg|m4a|aac)$/i.test(f.name));
   if (files.length) handleImportFiles(files);
 });

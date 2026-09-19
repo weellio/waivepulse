@@ -79,6 +79,24 @@
     <option value="loud">−9 Loud</option>
   </select>
   <button id="zip-btn"    disabled onclick="downloadZip()">⬇ Stems</button>
+  <!-- server-fx:start -->
+  <style>
+  #match-master-btn{background:#1a1408;border:1px solid #6b5200;color:#e8cc4a;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;flex-shrink:0}
+  #match-master-btn:hover{background:#241a06}
+  #match-master-btn:disabled{opacity:.4;cursor:not-allowed}
+  #match-master-btn.busy{opacity:1;cursor:progress;color:#8cffff;border-color:#0d6b6b}
+  #match-bits{width:64px}
+  #match-master-readout{font-size:10px;color:#aaa;white-space:nowrap;font-family:'Courier New',monospace}
+  #match-master-readout b{color:#e8cc4a}
+  #match-master-readout .mm-dim{color:#666}
+  #match-master-readout .mm-err{color:#ff6b5a}
+  </style>
+  <button id="match-master-btn" disabled title="Reference mastering: pick any finished song you like the sound of. Your mix is rendered (like Export Mix) and matched to it on the server: loudness, tonal balance (EQ), true peak (≤ −1 dBTP) and stereo width. Downloads &lt;song&gt;_mastered.wav and shows before/after LUFS.">🎚 Match master…</button>
+  <select id="match-bits" class="exp-sel" title="Bit depth of the mastered WAV"><option value="24">24-bit</option><option value="16">16-bit</option></select>
+  <input type="file" id="match-ref-input" accept="audio/*" style="display:none">
+  <span id="match-master-readout"></span>
+  <script type="module" src="/js/studio/server-fx.js"></script>
+  <!-- server-fx:end -->
   <div class="t-divider"></div>
   <button class="t-btn" style="font-size:10px;width:auto;padding:0 9px" title="Import audio track (or drag & drop)" onclick="document.getElementById('_importInput').click()">＋ Track</button>
   <input type="file" id="_importInput" accept="audio/*" multiple style="display:none" onchange="handleImportFiles(this.files);this.value=''">
@@ -96,6 +114,21 @@
   <button class="preset-btn"        id="pb-acappella"onclick="applyPreset('acappella')">Acappella</button>
   <button class="preset-btn"        id="pb-drumsonly"onclick="applyPreset('drumsonly')">Drums Only</button>
   <button class="preset-btn"        id="pb-nodrums"  onclick="applyPreset('nodrums')">No Drums</button>
+  <!-- Song tools: markers → YouTube chapters · key change for all tracks · spectrogram · project files -->
+  <span id="song-tools">
+    <button class="t-btn st-btn" id="marker-btn" title="Add a song marker (Intro / Verse / Chorus…) at the playhead — Shift+M. Drag flags on the ruler to move, double-click to rename, right-click to delete." onclick="addMarkerAtPlayhead()">⚑ Marker<span id="marker-count" class="st-count"></span></button>
+    <button class="t-btn st-btn" id="chapters-btn" title="Turn the markers into YouTube chapters (0:00 Intro, 0:32 Verse 1…) and copy them to the clipboard" onclick="copyYouTubeChapters()">YT Chapters</button>
+    <div class="t-divider"></div>
+    <span class="st-lbl" title="Key change for ALL tracks — shifts every track by the same number of semitones on the server (tempo preserved)">KEY</span>
+    <button class="t-btn st-btn key-all-btn" title="All tracks down a semitone" onclick="shiftAllKeys(-1)">−</button>
+    <span id="key-all-val" class="st-val" title="Semitones applied to every track ('mix' = tracks differ)">0</span>
+    <button class="t-btn st-btn key-all-btn" title="All tracks up a semitone" onclick="shiftAllKeys(1)">+</button>
+    <div class="t-divider"></div>
+    <button class="t-btn st-btn" id="spec-btn" title="Spectrogram — show the selected track's frequency content over time instead of its waveform" onclick="toggleSpectrogram()">SPEC</button>
+    <div class="t-divider"></div>
+    <button class="t-btn st-btn" id="proj-save-btn" disabled title="Save Project — download a .wpproj with the whole mix: tracks, knobs, EQ, automation, markers, master FX, cuts, and any imported/edited audio" onclick="saveProject()">💾 Save Project</button>
+    <button class="t-btn st-btn" id="proj-open-btn" title="Open Project — load a .wpproj (or drag-drop it onto the Studio)" onclick="pickProjectFile()">📂 Open</button>
+  </span>
 </div>
 
 <!-- ── Mix Presets bar (genre templates + user-saved presets) + master/reset actions ── -->
@@ -265,7 +298,61 @@
           <tr><td>2. <b>✂ Cut</b></td><td>Removes that region from all tracks and ripples everything after it left. Confirms first and shows the new length.</td></tr>
           <tr><td><b>↩ Uncut</b></td><td>Undo the last cut (multiple levels)</td></tr>
         </tbody></table>
-        <p class="help-p" style="margin-top:8px">Imported clips after the cut slide left to stay in time; the shortened song is what gets exported.</p>
+        <p class="help-p" style="margin-top:8px">Imported clips after the cut slide left to stay in time; the shortened song is what gets exported. Mute regions, automation points and song markers after the cut slide left too, and <b>Uncut</b> puts them back.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">📈 Volume &amp; Pan Automation</div>
+        <p class="help-p">Draw how a track's volume or pan changes over the song — fade the vocal down in the bridge, swing a guitar from left to right, lift the drums into the last chorus. Works alongside mute regions.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>A</b> button (track strip)</td><td>Show / hide the automation lane under that track's waveform. The button turns gold when the track has automation, even with the lane hidden.</td></tr>
+          <tr><td><b>VOL</b> / <b>PAN</b></td><td>Pick which lane you're editing (in the strip while the lane is open). The other lane shows faintly behind it.</td></tr>
+          <tr><td>Click in the lane</td><td>Add a point. Volume is 0–150% of the VOL knob (dashed line = 100%); pan is L100 (top) to R100 (bottom), on top of the PAN knob.</td></tr>
+          <tr><td>Drag a point</td><td>Move it in time and value (snaps gently to 100% / centre)</td></tr>
+          <tr><td>Double-click / right-click a point</td><td>Delete it</td></tr>
+          <tr><td><b>CLR</b></td><td>Clear every point in the current lane</td></tr>
+        </tbody></table>
+        <p class="help-p" style="margin-top:8px">Between points the level ramps smoothly; before the first and after the last point it holds. Automation plays live from wherever you start, follows seeks and loops, and is baked into <b>Export Mix</b>, MP3, <b>MEASURE</b> and the LUFS targets. Imported clips carry their automation when you drag them.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">⚑ Song Markers &amp; YouTube Chapters</div>
+        <p class="help-p">Mark the song's sections on the ruler, then turn them into YouTube chapters in one click.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>⚑ Marker</b> / <kbd>Shift</kbd>+<kbd>M</kbd></td><td>Add a marker at the playhead. Pick a name — Intro, Verse, Pre-Chorus, Chorus, Bridge, Solo, Breakdown, Drop, Hook, Outro (Verse/Chorus number themselves) — or type your own.</td></tr>
+          <tr><td>Click a flag</td><td>Jump the playhead there</td></tr>
+          <tr><td>Drag a flag</td><td>Move the marker</td></tr>
+          <tr><td>Double-click a flag</td><td>Rename it (or Delete)</td></tr>
+          <tr><td>Right-click a flag</td><td>Delete it</td></tr>
+          <tr><td><b>YT Chapters</b></td><td>Builds <i>0:00 Intro · 0:32 Verse 1 · …</i>, copies it to the clipboard and shows it in a window. YouTube's rules are enforced: the first chapter is moved/added at 0:00, markers less than 10 s apart are skipped, and you're warned if there are fewer than 3.</td></tr>
+        </tbody></table>
+        <p class="help-p" style="margin-top:8px">Markers are remembered for this song in this browser, saved in project files, and shift with <b>Cut</b>.</p>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">🎼 Key Change (Pitch Shift)</div>
+        <p class="help-p">Move a track — or the whole song — up or down in semitones without changing its tempo. Done on the server, like time-stretch.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>KEY</b> (track strip)</td><td>−12 … +12 semitones for that track. The original is kept, so changing it again never stacks quality loss, and 0 restores it instantly.</td></tr>
+          <tr><td><b>KEY − / +</b> (top bar)</td><td>Shift every track one semitone down / up together. Shows <i>mix</i> if tracks have different shifts.</td></tr>
+          <tr><td>Key readout</td><td>When the song's key is known, the info bar shows the new key, e.g. <i>D major (+2 from C major)</i>.</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">🌈 Spectrogram</div>
+        <table class="help-table"><tbody>
+          <tr><td><b>SPEC</b></td><td>Select a track, then press SPEC to swap its waveform for a spectrogram (40 Hz at the bottom to 16 kHz at the top, brighter = louder). Great for spotting muddy lows, harsh highs, or bleed between stems. Press again to go back. It's computed once and cached.</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">💾 Project Files (.wpproj)</div>
+        <p class="help-p">Save your whole session and pick it up later — on this machine or another one running WAIvePulse.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>💾 Save Project</b></td><td>Downloads <i>song.wpproj</i>: every track and knob, EQ, mute regions, automation, markers, master FX, sidechain, fades, cuts, stretch and key settings. Imported, spliced, stretched and key-shifted audio is packed inside as WAV. Untouched separated stems are referenced, not copied, so files stay small.</td></tr>
+          <tr><td><b>📂 Open</b> / drag-drop</td><td>Pick a .wpproj (or drop it on the Studio) to restore everything. If the song's separated stems are no longer on this server you're told which tracks can't come back — the embedded ones still open.</td></tr>
+        </tbody></table>
       </div>
 
       <div class="help-section">
@@ -428,6 +515,7 @@
           <tr><td><kbd>R</kbd></td><td>Reset knobs on selected track</td></tr>
           <tr><td><kbd>D</kbd></td><td>Duplicate selected track</td></tr>
           <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Clear all mute regions on selected track</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>M</kbd></td><td>Add a song marker at the playhead</td></tr>
           <tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Export Mix</td></tr>
           <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd></td><td>Apply MASTER preset</td></tr>
         </tbody></table>
@@ -473,6 +561,24 @@
   <div id="overlay-progress" style="display:none"><div id="overlay-bar"></div></div>
   <div id="overlay-log" style="display:none"></div>
   <div id="overlay-err" style="display:none"></div>
+  <button id="overlay-open" style="display:none" onclick="pickProjectFile()" title="Open a saved .wpproj project (you can also drag-drop it here)">📂 Open a project file…</button>
+</div>
+
+<div id="chapters-modal">
+  <div id="chapters-panel">
+    <div class="help-hdr">
+      <div><div class="help-hdr-title">YouTube Chapters</div><div class="help-hdr-sub">Paste into your video description · first chapter 0:00 · at least 3 · each ≥ 10 s · <kbd>Esc</kbd> to close</div></div>
+      <button class="help-close" onclick="closeChapters()">×</button>
+    </div>
+    <div class="help-body">
+      <ul id="chapters-warn" style="display:none"></ul>
+      <textarea id="chapters-text" spellcheck="false" readonly></textarea>
+      <div class="chapters-foot">
+        <span id="chapters-status"></span>
+        <button class="t-btn st-btn" onclick="recopyChapters()">Copy again</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script type="module" src="/js/studio/main.js"></script>

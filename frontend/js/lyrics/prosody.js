@@ -9,6 +9,7 @@
 let DICT = null;          // Map word -> phones array (e.g. ['N','AY1','T'])
 let WORDS = null;         // words in frequency order (most common first)
 let RHYME_INDEX = null;   // lazily built: vowel-signature -> [{w, tail, syl, rank}]
+let PROPER = null;        // Set of names/brands: used for syllables, never suggested as rhymes
 
 const VOWEL_RE = /^(AA|AE|AH|AO|AW|AY|EH|ER|EY|IH|IY|OW|OY|UH|UW)[012]$/;
 const isVowel = p => VOWEL_RE.test(p);
@@ -17,25 +18,31 @@ const isVowel = p => VOWEL_RE.test(p);
 export function parseDict(text) {
   const lines = text.split('\n');
   const head = lines[0];
-  if (!head.startsWith('#WPDICT1 ')) throw new Error('bad dictionary header');
+  // WPDICT2 = WPDICT1 + a Capitalised word marks a proper noun / brand.
+  if (!/^#WPDICT[12] /.test(head)) throw new Error('bad dictionary header');
   const table = head.slice(9).trim().split(' ');
   const map = new Map();
   const words = [];
+  const proper = new Set();
   for (let i = 1; i < lines.length; i++) {
     const ln = lines[i];
     const tab = ln.indexOf('\t');
     if (tab < 1) continue;
-    const w = ln.slice(0, tab);
+    let w = ln.slice(0, tab);
+    if (w[0] >= 'A' && w[0] <= 'Z') { w = w.toLowerCase(); proper.add(w); }
     const enc = ln.slice(tab + 1);
     const phones = new Array(enc.length);
     for (let j = 0; j < enc.length; j++) phones[j] = table[enc.charCodeAt(j) - 0x30];
     map.set(w, phones);
     words.push(w);
   }
-  return { map, words };
+  return { map, words, proper };
 }
 
-export function setDict(d) { DICT = d ? d.map : null; WORDS = d ? d.words : null; RHYME_INDEX = null; }
+export function setDict(d) {
+  DICT = d ? d.map : null; WORDS = d ? d.words : null; PROPER = d ? (d.proper || new Set()) : null; RHYME_INDEX = null;
+}
+export function isProperNoun(raw) { return !!PROPER && PROPER.has(cleanWord(raw)); }
 export function hasDict() { return !!DICT; }
 export function dictSize() { return DICT ? DICT.size : 0; }
 
@@ -278,6 +285,7 @@ export function wordsRhyme(w1, w2) { return rhymeKind(rhymeKeyOf(w1), rhymeKeyOf
 function buildIndex() {
   RHYME_INDEX = new Map();
   WORDS.forEach((w, rank) => {
+    if (PROPER && PROPER.has(w)) return;      // names / brands are never suggested
     const phones = DICT.get(w);
     const tail = phoneTail(phones);
     const entry = { w, tail, syl: phones.filter(isVowel).length, rank };

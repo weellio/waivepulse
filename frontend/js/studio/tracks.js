@@ -6,6 +6,9 @@ import { wireTrack } from './audio-graph.js';
 import { computePeaks, drawWaveform, drawPositionedWaveform, redrawAll, mergeRanges, soloCount } from './waveform.js';
 import { applyZoom, seekTo, getCanvasWidth } from './transport.js';
 import { openTrackEQ } from './eq-modal.js';
+import { ensureAuto, cloneAuto, buildAutoControls, attachLane, toggleAutoLane, applyLaneVisibility } from './automation.js';
+import { buildPitchControl } from './pitch.js';
+import { refreshSpecButton } from './spectrogram.js';
 
 // ── Track helpers ──────────────────────────────────────────────────────────
 export function baseStemOf(key) { const m = key.match(/^(.+?)_\d+$/); return m ? m[1] : key; }
@@ -46,6 +49,11 @@ export function addTrackToUI(stemKey) {
   const eqBtn = document.createElement('button');
   eqBtn.className = 'tb tb-norm'; eqBtn.textContent = 'EQ'; eqBtn.title = 'Open visual EQ editor';
   eqBtn.style.color = '#ffe066'; eqBtn.onclick = e => { e.stopPropagation(); openTrackEQ(stemKey); };
+  const aBtn = document.createElement('button');
+  aBtn.className = 'tb tb-auto'; aBtn.textContent = 'A'; aBtn.id = 'a-' + stemKey;
+  aBtn.title = 'Automation lane — draw volume / pan changes over time';
+  aBtn.onclick = e => { e.stopPropagation(); toggleAutoLane(stemKey); };
+  ensureAuto(t);
 
   if (isImport) {
     const lBtn = document.createElement('button');
@@ -62,7 +70,7 @@ export function addTrackToUI(stemKey) {
     const xBtn = document.createElement('button');
     xBtn.className = 'tb'; xBtn.textContent = '×'; xBtn.title = 'Remove track';
     xBtn.style.color = '#e05555'; xBtn.onclick = () => removeTrack(stemKey);
-    r1.append(nameEl, mBtn, sBtn, nBtn, rBtn, eqBtn, lBtn, xBtn);
+    r1.append(nameEl, mBtn, sBtn, nBtn, rBtn, eqBtn, aBtn, lBtn, xBtn);
   } else {
     const dBtn = document.createElement('button');
     if (t.isDuplicate) {
@@ -72,7 +80,7 @@ export function addTrackToUI(stemKey) {
       dBtn.className = 'tb tb-norm'; dBtn.textContent = 'DUP'; dBtn.title = 'Duplicate this track';
       dBtn.style.color = '#6af'; dBtn.onclick = () => duplicateTrack(stemKey);
     }
-    r1.append(nameEl, mBtn, sBtn, nBtn, rBtn, eqBtn, dBtn);
+    r1.append(nameEl, mBtn, sBtn, nBtn, rBtn, eqBtn, aBtn, dBtn);
   }
 
   // Row 2: 5 knobs — VOL, PAN, REV, DLY, OFS (tone is handled by the 7-band EQ modal)
@@ -90,6 +98,9 @@ export function addTrackToUI(stemKey) {
     onChange: v => { t.dlyAmt = v; t.delaySend.gain.setTargetAtTime(v, x.currentTime, 0.01); } });
   t.knobs.ofs = new Knob(r2, { label: 'OFS', min: 0, max: 50, value: t.offset * 1000, def: 0, color, bipolar: false,
     onChange: v => { t.offset = v / 1000; if (t.offsetNode) t.offsetNode.delayTime.setTargetAtTime(v / 1000, x.currentTime, 0.005); } });
+
+  // KEY: per-track pitch shift in semitones (server-side, tempo preserved)
+  buildPitchControl(r2, stemKey);
 
   strip.append(r1, r2);
 
@@ -128,6 +139,9 @@ export function addTrackToUI(stemKey) {
     strip.appendChild(r3);
   }
 
+  // Automation lane controls (visible only while the lane is open)
+  buildAutoControls(strip, stemKey);
+
   strip.addEventListener('mousedown', () => selectTrack(stemKey));
 
   // Insert strip after last sibling with same baseStem, otherwise append
@@ -156,7 +170,7 @@ export function addTrackToUI(stemKey) {
         const st = tk.startTime || 0, end = st + (tk.buffer?.duration || 0);
         if (pos >= st && pos <= end) {
           e.preventDefault();
-          S._trackPosDrag = { stemKey, songX0: e.clientX, startTime0: st, muteRanges0: (tk.muteRanges || []).map(r => ({ ...r })) };
+          S._trackPosDrag = { stemKey, songX0: e.clientX, startTime0: st, muteRanges0: (tk.muteRanges || []).map(r => ({ ...r })), auto0: cloneAuto(tk.auto) };
           row.style.cursor = 'grabbing';
         } else { seekTo(pos); }
       }
@@ -181,6 +195,7 @@ export function addTrackToUI(stemKey) {
   const canvas = document.createElement('canvas');
   canvas.className = 'waveform';
   row.appendChild(canvas);
+  attachLane(row, stemKey);            // volume/pan automation lane (hidden until "A")
 
   // Insert after last sibling row with same baseStem, otherwise before playhead
   const rows = [...scrollContent.querySelectorAll('.track-row')];
@@ -188,6 +203,7 @@ export function addTrackToUI(stemKey) {
   const playhead = document.getElementById('playhead');
   if (lastRow) lastRow.after(row); else scrollContent.insertBefore(row, playhead);
   t.canvas = canvas;
+  if (t.autoShow) applyLaneVisibility(stemKey);
 
   requestAnimationFrame(() => {
     if (!t.peaks) t.peaks = computePeaks(t.buffer);
@@ -223,6 +239,7 @@ export function removeTrack(stemKey) {
   try {
     if (t.offsetNode) t.offsetNode.disconnect();
     t.gainNode.disconnect(); t.panNode.disconnect();
+    if (t.autoGain) { t.autoGain.disconnect(); t.autoPan.disconnect(); }
     if (t.eq) t.eq.output.disconnect();
     t.reverbSend.disconnect(); t.delaySend.disconnect();
   } catch {}
@@ -261,6 +278,8 @@ export async function stretchTrack(stemKey, factor) {
     const abuf = await S._actx.decodeAudioData(ab);
     t.buffer = abuf;
     t.stretchFactor = factor;
+    t._editedAudio = true;             // stretched audio is embedded when saving a project
+    t._prePitchBuffer = null;
     t.peaks = computePeaks(abuf);
     redrawAll();
 
@@ -404,6 +423,7 @@ export function selectTrack(key) {
   document.querySelectorAll('.ctrl-strip,.track-row').forEach(el => el.classList.remove('selected'));
   document.querySelector(`#sidebar-tracks .ctrl-strip[data-stem="${key}"]`)?.classList.add('selected');
   document.querySelector(`#scroll-content .track-row[data-stem="${key}"]`)?.classList.add('selected');
+  refreshSpecButton();
 }
 
 export function cycleTrack(dir) {

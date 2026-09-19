@@ -8,6 +8,7 @@ import { drawWave, playSlot } from './loops.js';
 import { fmtSec, setStatus } from './util.js';
 import { swingOffset, humanizeTime, humanizeVel } from './groove.js';
 import { SCALES, NOTE_NAMES as SC_NAMES, inScale, snapMidi, isLocked } from './scale.js';
+import { renderPlan } from './banks.js';
 
 const STEPS = 16;
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -59,14 +60,15 @@ function ledgersFor(dia) {
 
 // A run of contiguous filled cells in a row = one held note (start step + length in
 // 16ths). This is the shared truth for both playback and notation.
-export function pseqRuns() {
+// `grid` defaults to the live roll; banks / chain renders pass their own.
+export function pseqRuns(grid = S.pseqPattern) {
   const runs = [];
   for (let row = 0; row < ROWS; row++) {
     let s = 0;
     while (s < STEPS) {
-      if (!S.pseqPattern[row][s]) { s++; continue; }
+      if (!grid[row]?.[s]) { s++; continue; }
       let len = 1;
-      while (s + len < STEPS && S.pseqPattern[row][s + len]) len++;
+      while (s + len < STEPS && grid[row][s + len]) len++;
       const midi = PR[row].midi;
       runs.push({ row, midi, hz: PR[row].hz, dia: diaOf(midi), sharp: isSharp(midi), start: s, len });
       s += len;
@@ -231,17 +233,25 @@ export function renderSheet() {
   svg.innerHTML = p.join('');
 }
 
-// Replace the whole roll pattern (used by the melody presets). Repaints any built
-// cells and refreshes the notation. Works whether or not the grid has been opened yet.
-export function applyPseqPattern(grid) {
+// Replace the whole roll pattern (used by the melody presets, banks, MIDI import,
+// project open). Repaints any built cells and refreshes the notation. Works whether
+// or not the grid has been opened yet. keepTranspose: bank switches leave the ±
+// transpose read-out alone (presets reset it to 0).
+export function applyPseqPattern(grid, { keepTranspose = false } = {}) {
   for (let r = 0; r < ROWS; r++)
     for (let s = 0; s < STEPS; s++) {
-      S.pseqPattern[r][s] = grid[r] ? (grid[r][s] || 0) : 0;
+      S.pseqPattern[r][s] = grid?.[r]?.[s] ? 1 : 0;
       if (S.pseqCells.length) S.pseqCells[r][s].classList.toggle('on', !!S.pseqPattern[r][s]);
     }
-  S.rollTranspose = 0; syncScaleUI();
+  if (!keepTranspose) { S.rollTranspose = 0; syncScaleUI(); }
   renderSheet();
 }
+
+// Lowest MIDI note on the roll at the current OCT (row 23) — MIDI import folds into it.
+export function rollLowMidi() { return PR[ROWS - 1].midi; }
+
+// Restore the transpose read-out (project open) without moving any notes.
+export function setRollTransposeReadout(v) { S.rollTranspose = Math.max(-12, Math.min(12, v | 0)); syncScaleUI(); }
 
 export function setSynthMode(mode) {
   S.synthMode = mode;
@@ -388,7 +398,7 @@ export function startPseq() {
   S.pseqPlaying = true;
   const stepDur = (60 / S.bpm) / 4;
   // Share the transport grid with the drum sequencer if it's already running
-  if (!S.seqPlaying || S.seqAnchor == null) S.seqAnchor = S.ctx.currentTime + 0.05;
+  if (!S.seqPlaying || S.seqAnchor == null) { S.seqAnchor = S.ctx.currentTime + 0.05; S.onTransportStart?.(); }
   const stepsAhead = Math.max(0, Math.ceil((S.ctx.currentTime - S.seqAnchor) / stepDur));
   S.pseqNextTime = S.seqAnchor + stepsAhead * stepDur;
   S.pseqStep     = ((stepsAhead % STEPS) + STEPS) % STEPS;
@@ -407,9 +417,10 @@ export function stopPseq() {
 
 export function runPseq() {
   const stepDur = (60 / S.bpm) / 4;
-  const runs = pseqRuns();
+  let runs = pseqRuns();
   while (S.pseqNextTime < S.ctx.currentTime + 0.1) {
     const step = S.pseqStep;
+    if (step === 0 && S.onBarStart) { S.onBarStart(S.pseqNextTime, stepDur); runs = pseqRuns(); }   // bank / chain switch
     // spawn one sustained voice per run that STARTS on this step (held = its length)
     // swing: the note starts late on odd steps and ends where its last step ends
     const on = S.pseqNextTime + swingOffset(step, stepDur, S.swing);
@@ -438,8 +449,11 @@ export function pseqVisLoop() {
 export async function pushPseqToLoop() {
   ensureCtx();
   if (S.ctx.state === 'suspended') S.ctx.resume();
-  if (!S.pseqPattern.some(row => row.some(v => v))) {
-    setStatus('Piano roll is empty — add some notes first'); return;
+  const plan = renderPlan();
+  if (!plan.ok) { setStatus(plan.error); return; }
+  const bars = plan.bars;
+  if (!bars.some(b => b.roll.some(row => row.some(v => v)))) {
+    setStatus(plan.chain ? 'Every bank in the chain has an empty piano roll' : 'Piano roll is empty — add some notes first'); return;
   }
   const id = S.slots.findIndex(s => s.state === 'empty' && !s.buffer);
   if (id < 0) { setStatus('No empty loop slot — clear one first'); return; }
@@ -448,20 +462,23 @@ export async function pushPseqToLoop() {
   const bar     = (60 / S.bpm) * 4;
   const stepDur = bar / STEPS;
   const tail    = 1.5;
-  const off     = new OfflineAudioContext(2, Math.ceil((bar + tail) * sr), sr);
+  const nb      = bars.length;
+  const off     = new OfflineAudioContext(2, Math.ceil((bar * nb + tail) * sr), sr);
 
   // one sustained voice per run (held note), so the render matches what you hear/see
-  // (same swing + humanize as live playback)
-  for (const r of pseqRuns()) {
-    const on  = r.start * stepDur + swingOffset(r.start, stepDur, S.swing);
-    const end = (r.start + r.len) * stepDur + swingOffset(r.start + r.len, stepDur, S.swing);
-    spawnVoice(r.hz, { when: Math.max(0, on + humanizeTime(S.humanize)), gate: Math.max(0.02, (end - on) * 0.95),
-                       vel: humanizeVel(0.85, S.humanize), actx: off, dest: off.destination });
-  }
+  // (same swing + humanize as live playback); with Chain on, bar by bar
+  bars.forEach((b, bi) => {
+    for (const r of pseqRuns(b.roll)) {
+      const on  = bi * bar + r.start * stepDur + swingOffset(r.start, stepDur, S.swing);
+      const end = bi * bar + (r.start + r.len) * stepDur + swingOffset(r.start + r.len, stepDur, S.swing);
+      spawnVoice(r.hz, { when: Math.max(0, on + humanizeTime(S.humanize)), gate: Math.max(0.02, (end - on) * 0.95),
+                         vel: humanizeVel(0.85, S.humanize), actx: off, dest: off.destination });
+    }
+  });
   const rendered = await off.startRendering();
 
   // Fold the decay tail back onto the start for a seamless loop
-  const barLen = Math.floor(bar * sr);
+  const barLen = Math.floor(bar * nb * sr);
   const out = S.ctx.createBuffer(2, barLen, sr);
   for (let ch = 0; ch < 2; ch++) {
     const srcD = rendered.getChannelData(ch);
@@ -478,5 +495,5 @@ export async function pushPseqToLoop() {
     S.masterLen = out.duration; S.masterAnchor = S.ctx.currentTime; S.masterSlot = id;
   }
   playSlot(id);
-  setStatus('Piano roll pushed to Loop ' + (id + 1) + ' — perfectly timed');
+  setStatus('Piano roll pushed to Loop ' + (id + 1) + (plan.chain ? ` — ${nb}-bar chain ${plan.label}` : ' — perfectly timed'));
 }

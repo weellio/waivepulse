@@ -1,6 +1,8 @@
 // Waveform peak computation + canvas rendering, plus mute-region overlays.
 import { S, STEM_COLORS, IMPORT_COLOR, PEAK_BINS } from './state.js';
 import { baseStemOf } from './tracks.js';
+import { drawSpectrogram } from './spectrogram.js';
+import { drawAllLanes } from './automation.js';
 
 export function computePeaks(buf) {
   const data = buf.getChannelData(0), step = Math.ceil(data.length / PEAK_BINS);
@@ -84,7 +86,9 @@ export function redrawAll() {
   for (const [key, t] of Object.entries(S.tracks)) {
     if (t.canvas && t.peaks) {
       const dimmed = t.muted || (sc > 0 && !t.solo);
-      if (t.isImport) {
+      if (t.showSpec) {
+        drawSpectrogram(t);
+      } else if (t.isImport) {
         drawPositionedWaveform(t.canvas, t.peaks, IMPORT_COLOR, dimmed, t.startTime || 0, t.buffer.duration, S._dur, !!t.loopTrack);
       } else {
         drawWaveform(t.canvas, t.peaks, STEM_COLORS[baseStemOf(key)] || IMPORT_COLOR, dimmed);
@@ -95,6 +99,7 @@ export function redrawAll() {
       drawMuteRanges(t.canvas, ranges, S._dur);
     }
   }
+  drawAllLanes();
   drawChords();
 }
 

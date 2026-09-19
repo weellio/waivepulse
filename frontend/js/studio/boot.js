@@ -8,6 +8,8 @@ import { applyZoom, buildRuler, startRAF, getCanvasWidth } from './transport.js'
 import { renderMixPresetBar } from './presets.js';
 import { snapshotEq } from '../shared/eq7.js';
 import { setupLufsMeter } from './lufs-meter.js';
+import { updateAudioInfo } from './pitch.js';
+import { restoreMarkersLocal, getMarkers } from './markers.js';
 
 // ── Boot ────────────────────────────────────────────────────────────────────
 export async function boot() {
@@ -87,12 +89,19 @@ function streamSepProgress() {
   S._sseConn.onerror = () => { S._sseConn.close(); setTimeout(checkSepStatus, 1500); };
 }
 
-async function loadStems(stems) {
-  setOverlay('Loading audio…', 'Decoding stems into memory.', true);
+// Create the AudioContext + master graph once (also used by Open Project when the
+// page was opened without a song).
+export async function ensureAudioEngine() {
+  if (S._actx) return;
   S._actx = new AudioContext();
   await loadWorklets(S._actx);
   setupGlobalFX();
   setupLufsMeter();
+}
+
+async function loadStems(stems) {
+  setOverlay('Loading audio…', 'Decoding stems into memory.', true);
+  await ensureAudioEngine();
 
   const stemNames = STEM_ORDER.filter(s => stems[s]);
   let loaded = 0;
@@ -119,15 +128,10 @@ async function loadStems(stems) {
 
   if (!Object.keys(S.tracks).length) { showError('No stems could be loaded.'); return; }
 
-  const first = Object.values(S.tracks)[0].buffer;
-  const lat = Math.round((S._actx.baseLatency || 0) * 1000);
-  const bpmStr = S._jobMeta?.bpm ? ` · ${S._jobMeta.bpm} BPM` : '';
-  const keyStr = S._jobMeta?.key ? ` · ${S._jobMeta.key}` : '';
-  document.getElementById('audio-info').textContent =
-    `${(first.sampleRate / 1000).toFixed(1)} kHz · ${first.numberOfChannels === 2 ? 'stereo' : 'mono'}` +
-    (lat ? ` · latency ${lat} ms` : '') + bpmStr + keyStr;
+  updateAudioInfo();
 
   buildUI();
+  restoreMarkersLocal();       // song markers saved for this separation in this browser
   hideOverlay();
 
   // Fetch chord data in background (non-blocking)
@@ -139,12 +143,16 @@ async function loadStems(stems) {
 }
 
 // ── Build UI ──────────────────────────────────────────────────────────────
-function buildUI() {
+function buildUI() { finishUI(); }
+
+// (Re)build the track UI for whatever is in S.tracks: base stems in canonical order,
+// then duplicates / imports in insertion order. Global listeners bind only once.
+export function finishUI() {
   document.getElementById('song-title').textContent = S._title;
   document.getElementById('duration-display').textContent = '/ ' + fmtTime(S._dur);
-  document.getElementById('export-btn').disabled = false;
-  document.getElementById('zip-btn').disabled = false;
-  { const mb = document.getElementById('measure-btn'); if (mb) mb.disabled = false; }
+  for (const id of ['export-btn', 'zip-btn', 'measure-btn', 'proj-save-btn']) { const b = document.getElementById(id); if (b) b.disabled = false; }
+  { const zb = document.getElementById('zip-btn'); if (zb) zb.disabled = !S._sepId; }
+  { const kb = document.getElementById('karaoke-btn'); if (kb && S._sepId) kb.disabled = false; }
 
   document.getElementById('sidebar-tracks').innerHTML = '';
   document.getElementById('scroll-content').querySelectorAll('.track-row').forEach(e => e.remove());
@@ -153,6 +161,14 @@ function buildUI() {
     if (!S.tracks[stem]) continue;
     addTrackToUI(stem);
   }
+  for (const key of Object.keys(S.tracks)) if (!STEM_ORDER.includes(key)) addTrackToUI(key);
+
+  applyZoom();
+  buildRuler();
+  renderMixPresetBar();
+  populateSidechainDropdowns();
+  if (_uiBound) return;
+  _uiBound = true;
 
   // Scroll sync: waveform area Y → sidebar
   const sc = document.getElementById('scroll-content');
@@ -177,12 +193,9 @@ function buildUI() {
     S._rulerDrag = { startAbs: x, moved: false };
   });
 
-  applyZoom();
-  buildRuler();
   startRAF();
-  renderMixPresetBar();
-  populateSidechainDropdowns();
 }
+let _uiBound = false;
 
 // ── Karaoke ───────────────────────────────────────────────────────────────
 export async function initKaraokeButtons() {
@@ -229,6 +242,7 @@ export function openKaraoke() {
       revAmt: t.revAmt || 0, dlyAmt: t.dlyAmt || 0, offset: t.offset || 0,
       muted: t.muted || (soloActive && !t.solo),
       muteRanges: t.muteRanges || [],
+      auto: t.auto || null,
     };
   }
   localStorage.setItem('waivepulse_mixer', JSON.stringify({
@@ -241,6 +255,7 @@ export function openKaraoke() {
       comp: S._compEnabled,
       clip: S._clipEnabled,
     },
+    markers: getMarkers(),
   }));
   window.open(`/karaoke?sep=${S._sepId}`, '_blank');
 }

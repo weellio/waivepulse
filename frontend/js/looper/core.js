@@ -2,6 +2,7 @@
 import { S } from './state.js';
 import { setStatus } from './util.js';
 import { applyEqOffline, snapshotEq, eqIsFlat } from '../shared/eq7.js';
+import { finishExport, readoutText } from './loudexport.js';
 
 // Soft-clip curve: transparent (linear) below ±0.7, then soft-knees toward ±1 so
 // extreme peaks are rounded instead of clipped — kills the static the guitar's
@@ -151,33 +152,51 @@ export function setMasterVol(val) {
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
+// One cycle of every loop (per-loop volume + EQ baked in) → optional loudness
+// target (LUFS, true peak ≤ −1 dBTP) → WAV or MP3 320, per the topbar selectors.
+let exporting = false;
 export async function exportMix() {
   const active = S.slots.filter(s => s.buffer);
   if (!active.length) { setStatus('No loops recorded yet'); return; }
-  setStatus('Rendering mix…');
-  const dur    = S.masterLen || Math.max(...active.map(s => s.buffer.duration));
-  const sr     = S.ctx.sampleRate;
-  const offCtx = new OfflineAudioContext(2, Math.ceil(dur * sr), sr);
-  active.forEach(s => {
-    const src = offCtx.createBufferSource();
-    src.buffer = s.buffer; src.loop = true; src.loopEnd = s.buffer.duration;
-    const g = offCtx.createGain();
-    g.gain.value = s.gainNode ? s.gainNode.gain.value : 1;
-    if (s.eq && !eqIsFlat(s.eq)) {                 // bake the per-loop EQ into the render
-      const oeq = applyEqOffline(offCtx, snapshotEq(s.eq));
-      src.connect(oeq.input); oeq.output.connect(g);
-    } else {
-      src.connect(g);
-    }
-    g.connect(offCtx.destination); src.start(0);
-  });
-  const rendered = await offCtx.startRendering();
-  const wav = bufToWav(rendered);
-  const url = URL.createObjectURL(new Blob([wav], {type: 'audio/wav'}));
-  const a   = document.createElement('a');
-  a.href = url; a.download = 'looper-mix.wav'; a.click();
-  URL.revokeObjectURL(url);
-  setStatus('Exported looper-mix.wav');
+  if (exporting) return;
+  exporting = true;
+  const btn = document.getElementById('exportBtn');
+  const label = btn ? btn.textContent : '';
+  const stage = t => { if (btn) btn.textContent = '⏳ ' + t; };
+  try {
+    stage('Rendering…'); setStatus('Rendering mix…');
+    const dur    = S.masterLen || Math.max(...active.map(s => s.buffer.duration));
+    const sr     = S.ctx.sampleRate;
+    const offCtx = new OfflineAudioContext(2, Math.ceil(dur * sr), sr);
+    active.forEach(s => {
+      const src = offCtx.createBufferSource();
+      src.buffer = s.buffer; src.loop = true; src.loopEnd = s.buffer.duration;
+      const g = offCtx.createGain();
+      g.gain.value = s.gainNode ? s.gainNode.gain.value : (s.vol ?? 1);
+      if (s.eq && !eqIsFlat(s.eq)) {                 // bake the per-loop EQ into the render
+        const oeq = applyEqOffline(offCtx, snapshotEq(s.eq));
+        src.connect(oeq.input); oeq.output.connect(g);
+      } else {
+        src.connect(g);
+      }
+      g.connect(offCtx.destination); src.start(0);
+    });
+    const rendered = await offCtx.startRendering();
+    const res = await finishExport(rendered, {
+      fmt: document.getElementById('expFmt')?.value || 'wav',
+      targetKey: document.getElementById('expTarget')?.value || 'off',
+      baseName: (S.projectName || 'looper') + '-mix',
+      readoutEl: document.getElementById('expReadout'),
+      onStage: stage,
+    });
+    setStatus(`Exported ${res.name} — ${readoutText(res)}`);
+  } catch (e) {
+    console.warn('Export failed:', e);
+    setStatus('Export failed: ' + e.message);
+  } finally {
+    exporting = false;
+    if (btn) btn.textContent = label || '⬇ Export';
+  }
 }
 
 export function bufToWav(buf) {

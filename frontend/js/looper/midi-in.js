@@ -11,6 +11,7 @@ import { setStatus } from './util.js';
 import { noteOn, noteOff, WHITE_KEYS, BLACK_KEYS } from './synth.js';
 import { DRUMS, hitDrum } from './drums.js';
 import { NOTE_NAMES } from './scale.js';
+import { gmToPad } from './gm.js';
 
 let access = null;            // MIDIAccess
 let selected = 'all';         // input id, or 'all'
@@ -18,19 +19,8 @@ const held = new Set();       // MIDI notes whose key is physically down
 const sustained = new Set();  // released while the pedal was down → release on pedal-up
 let sustainDown = false;
 
-// ── GM percussion → pad index (0 Kick · 1 Snare · 2 HiHat · 3 Open · 4 Clap · 5 Tom · 6 808 · 7 Perc)
-export function gmToPad(note) {
-  switch (note) {
-    case 36: return 0;                               // bass drum 1
-    case 35: return 6;                               // acoustic bass drum → 808
-    case 38: case 40: return 1;                      // snares
-    case 42: case 44: return 2;                      // closed / pedal hat
-    case 46: return 3;                               // open hat
-    case 39: return 4;                               // hand clap
-    case 41: case 43: case 45: case 47: case 48: case 50: return 5;   // toms
-    default: return 7;                               // everything else → perc
-  }
-}
+// GM percussion → pad index lives in gm.js (shared with MIDI file import/export)
+export { gmToPad };
 
 // A note object noteOn/noteOff understand. noteOn multiplies hz by 2^(OCT-4) and
 // computes the sample pitch from `semi` + OCT, so divide the OCT shift back out:

@@ -13,14 +13,16 @@ S.slots = Array.from({length: N}, (_, i) => ({
   id: i, state: 'empty',
   buffer: null, srcNode: null, gainNode: null, eq: null,
   startedAt: null, stopTimer: null, armTimer: null,
-  nudge: 0   // seconds; live phase shift to align the loop to the beat
+  nudge: 0,  // seconds; live phase shift to align the loop to the beat
+  vol: 1,    // VOL slider value (kept here so it survives before the gain node exists)
+  trimOffset: 0   // samples the buffer is rotated by vs. the original take (✂ Trim Start)
 }));
 
 export function buildSlots() {
   const grid = document.getElementById('loopGrid');
   grid.innerHTML = '';
   S.slots.forEach(s => {
-    s.state = 'empty'; s.buffer = null; s.srcNode = null; s.gainNode = null; s.eq = null; s.nudge = 0;
+    s.state = 'empty'; s.buffer = null; s.srcNode = null; s.gainNode = null; s.eq = null; s.nudge = 0; s.vol = 1; s.trimOffset = 0; s._trimOrig = null;
     const el = document.createElement('div');
     el.className = 'slot'; el.id = 'slot-' + s.id;
     el.innerHTML = `
@@ -46,7 +48,7 @@ export function buildSlots() {
       </div>
       <div class="slot-vol">
         <span class="vol-lbl">VOL</span>
-        <input type="range" class="vslider" min="0" max="1.5" step="0.01" value="1"
+        <input type="range" class="vslider" id="vol-${s.id}" min="0" max="1.5" step="0.01" value="1"
                oninput="setVol(${s.id}, this.value)">
       </div>
       <div class="slot-nudge">
@@ -59,9 +61,10 @@ export function buildSlots() {
   });
 }
 
-function ensureGain(s) {
+export function ensureGain(s) {
   if (!s.gainNode) {
     s.gainNode = S.ctx.createGain();
+    s.gainNode.gain.value = s.vol ?? 1;
     s.gainNode.connect(S.loopBus);
     s.eq = createEq7(S.ctx);          // 7-band parametric EQ in front of the gain
     s.eq.output.connect(s.gainNode);
@@ -253,7 +256,7 @@ function killSrc(id) {
 export function clearSlot(id) {
   killSrc(id);
   const s = S.slots[id];
-  s.state = 'empty'; s.buffer = null; s.startedAt = null; s.nudge = 0;
+  s.state = 'empty'; s.buffer = null; s.startedAt = null; s.nudge = 0; s._trimOrig = null; s.trimOffset = 0;
   if (s.eq) resetEq(s.eq);          // flatten the per-loop EQ so a new recording starts clean
   if (id === S.masterSlot) rederiveMaster();
   document.getElementById('dur-' + id).textContent = '—';
@@ -286,7 +289,11 @@ function rederiveMaster() {
 }
 
 export function setVol(id, v) {
-  if (S.slots[id].gainNode) S.slots[id].gainNode.gain.value = parseFloat(v);
+  const s = S.slots[id];
+  s.vol = parseFloat(v);
+  if (s.gainNode) s.gainNode.gain.value = s.vol;
+  const el = document.getElementById('vol-' + id);
+  if (el && +el.value !== s.vol) el.value = s.vol;
 }
 
 // ── Slot UI ───────────────────────────────────────────────────────────────────

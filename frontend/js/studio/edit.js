@@ -6,9 +6,11 @@ import { S } from './state.js';
 import { computePeaks, redrawAll } from './waveform.js';
 import { stopPlayback, updatePlayhead, buildRuler, updateLoopRegion } from './transport.js';
 import { fmtTime } from './util.js';
+import { shiftAutomationForCut, cloneAuto, scheduleAutomation, drawAllLanes } from './automation.js';
+import { shiftMarkersForCut, getMarkers, setMarkers, persistMarkers, renderMarkers } from './markers.js';
 
 // Return a new buffer with [cutStartSec, cutStartSec+cutLenSec) removed and the gap closed.
-function spliceBuffer(buf, cutStartSec, cutLenSec) {
+export function spliceBuffer(buf, cutStartSec, cutLenSec) {
   const sr = buf.sampleRate, total = buf.length;
   const cs = Math.max(0, Math.floor(cutStartSec * sr));
   const ce = Math.min(total, Math.floor((cutStartSec + cutLenSec) * sr));
@@ -26,8 +28,11 @@ function snapshot() {
   return {
     dur: S._dur,
     startOff: S._startOff,
+    markers: getMarkers(),
+    cutLog: (S._cutLog || []).map(c => ({ ...c })),
     tracks: Object.fromEntries(Object.entries(S.tracks).map(([k, t]) => [k, {
       buffer: t.buffer, startTime: t.startTime, muteRanges: (t.muteRanges || []).map(r => ({ ...r })),
+      auto: cloneAuto(t.auto), prePitch: t._prePitchBuffer || null, edited: !!t._editedAudio,
     }])),
   };
 }
@@ -39,6 +44,9 @@ function refreshTimeline() {
   updateLoopRegion();
   updatePlayhead(S._startOff);
   document.getElementById('time-display').textContent = fmtTime(S._startOff);
+  renderMarkers();
+  drawAllLanes();
+  scheduleAutomation();
   const ub = document.getElementById('uncut-btn');
   if (ub) ub.disabled = !(S._cutUndo && S._cutUndo.length);
 }
@@ -72,11 +80,15 @@ export function cutRegion() {
         const ls = Math.max(0, a - st), le = Math.min(d, b - st);   // overlap → splice clip
         const nb = spliceBuffer(t.buffer, ls, le - ls);
         t.buffer = nb;
+        t._editedAudio = true;                               // clip audio changed → embed in projects
+        t._prePitchBuffer = null;
         if (st >= a) t.startTime = Math.max(0, a);          // clip started inside the cut
       }
     } else {
       t.buffer = spliceBuffer(t.buffer, a, cutLen);         // full-length stem — splice directly
+      if (t._prePitchBuffer) t._prePitchBuffer = spliceBuffer(t._prePitchBuffer, a, cutLen);
     }
+    shiftAutomationForCut(t, a, b);                         // volume/pan lanes ripple like mute regions
     if (t.muteRanges?.length) {
       t.muteRanges = t.muteRanges.map(r => ({ start: tx(r.start), end: tx(r.end) }))
                                  .filter(r => r.end - r.start > 0.03);
@@ -84,6 +96,8 @@ export function cutRegion() {
     if (t.buffer) t.peaks = computePeaks(t.buffer);
   }
 
+  shiftMarkersForCut(a, b); persistMarkers();
+  (S._cutLog = S._cutLog || []).push({ a, len: cutLen });   // replayed on the server stems when a project re-opens
   S._startOff = Math.min(tx(S._startOff), S._dur - cutLen);
   S._dur = Math.max(0.05, S._dur - cutLen);
   S._loopStart = S._loopEnd = null;
@@ -100,8 +114,13 @@ export function undoCut() {
     const t = S.tracks[k];
     if (!t) continue;
     t.buffer = s.buffer; t.startTime = s.startTime; t.muteRanges = s.muteRanges;
+    if (s.auto) t.auto = s.auto;
+    if ('prePitch' in s) t._prePitchBuffer = s.prePitch;
+    if ('edited' in s) t._editedAudio = s.edited;
     t.peaks = computePeaks(t.buffer);
   }
+  if (snap.markers) setMarkers(snap.markers);
+  if (snap.cutLog) S._cutLog = snap.cutLog;
   S._loopStart = S._loopEnd = null;
   refreshTimeline();
 }
@@ -198,6 +217,8 @@ export function spliceRegion() {
         }
 
         t.buffer = out;
+        t._editedAudio = true;                // spliced audio can't be rebuilt from the server stem
+        t._prePitchBuffer = null;
         t.peaks = computePeaks(out);
       }
 

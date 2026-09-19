@@ -53,6 +53,7 @@ export const S = {
 
   // lyrics
   _words: [], _lastWordIdx: -1, _matchPct: null,
+  _lyrics: '', _title: '', _artist: '',
 
   // visualizer
   _presetIdx: 0, _vizPhase: 0, _hideTimer: null,

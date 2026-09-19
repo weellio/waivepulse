@@ -152,6 +152,15 @@ Every day the fire burns"></textarea>
         <option value="newest">Newest</option>
         <option value="oldest">Oldest</option>
         <option value="title">Title A–Z</option>
+        <option value="rating">Top rated</option>
+      </select>
+      <select id="libMinRating" onchange="applyLibraryFilter()" title="Only show songs rated at least this many stars">
+        <option value="0">Any rating</option>
+        <option value="1">★1+</option>
+        <option value="2">★2+</option>
+        <option value="3">★3+</option>
+        <option value="4">★4+</option>
+        <option value="5">★5</option>
       </select>
       <span class="lib-count" id="libCount"></span>
     </div>

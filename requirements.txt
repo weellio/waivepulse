@@ -17,7 +17,16 @@ huggingface_hub>=0.20.0
 
 # BPM / key detection (optional — safe to remove if you don't need it)
 librosa>=0.10.0
+numba>=0.61.0              # older numba breaks librosa under numpy 2.x
 numpy>=1.24.0
+
+# Pitch shift / time-stretch / reference mastering (librosa-free DSP core)
+soundfile>=0.12.0
+scipy>=1.10.0
+soxr>=0.3.0                # high-quality resampling (scipy fallback if missing)
+
+# Cover art + YouTube MP4 (also needs ffmpeg on PATH)
+pillow>=10.1.0
 
 # Stem separation — Studio page (optional — safe to remove if you don't need it)
 demucs>=4.0.0

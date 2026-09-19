@@ -127,4 +127,20 @@ export const S = {
 
   // ── Web MIDI input ──
   midiDrums: false,         // route ALL MIDI notes to the drum pads (ch 10 always does)
+
+  // ── Pattern banks A–D (each = drum pattern + piano-roll pattern) + chain ──
+  // The LIVE pattern arrays above always hold the current bank; banks[current]
+  // is refreshed from them (storeBank) before a switch / save / render.
+  banks: null,              // built in banks.js: [{ seq, prob, rat, roll }] × 4
+  bankCur: 0,
+  bankQueued: null,         // picked while playing → switches on the next bar
+  chainStr: 'A A B A',
+  chainOn: false,
+  chainPos: 0,
+  bankLastBar: -1,          // bar index already handled (drum + roll share one switch)
+  onBarStart: null,         // hook(barIdx) set by banks.js, called by both sequencers
+  onTransportStart: null,   // hook() when the grid anchor is (re)set
+
+  // ── Project ──
+  projectName: '',
 };

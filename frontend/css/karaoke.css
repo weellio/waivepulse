@@ -59,3 +59,13 @@ body.show-cursor{cursor:default}
 
 /* Help hint */
 #hint{position:fixed;bottom:80px;right:24px;font-size:11px;color:rgba(255,255,255,0.2);pointer-events:none;z-index:6;line-height:1.8}
+
+/* Caption export (LRC / SRT / VTT / copy) */
+#cap-group{display:flex;gap:4px;flex-shrink:0}
+.cap-btn{padding:6px 9px}
+.c-btn:disabled{opacity:.35;cursor:not-allowed}
+.c-btn:disabled:hover{background:rgba(255,255,255,0.08);color:#ccc}
+#cap-toast{position:fixed;bottom:86px;left:50%;transform:translateX(-50%);background:rgba(10,30,34,0.95);border:1px solid rgba(140,255,255,0.4);color:#8cffff;font-size:13px;padding:8px 16px;border-radius:8px;z-index:30;opacity:0;pointer-events:none;transition:opacity .25s;max-width:90vw;text-align:center}
+#cap-toast.show{opacity:1}
+#cap-toast.bad{color:#ffb4b4;border-color:rgba(255,120,120,0.5);background:rgba(40,10,10,0.95)}
+@media (max-width:1100px){#hint{display:none}.cap-btn{padding:6px 7px;font-size:11px}#vol-wrap label{display:none}}

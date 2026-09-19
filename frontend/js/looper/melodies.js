@@ -4,6 +4,7 @@
 import { S } from './state.js';
 import { applyPseqPattern } from './pianoseq.js';
 import { setStatus } from './util.js';
+import { bankFavExtras, applyBankFav, paintBanks } from './banks.js';
 
 const ROWS = 24, STEPS = 16;                 // roll is C3–B4 × 16 steps
 const rowOf = midi => 71 - midi;             // row 0 = B4 (71) … row 23 = C3 (48)
@@ -53,12 +54,21 @@ function saveMelody() {
   const name = (prompt('Name this melody:', 'My melody') || '').trim();
   if (!name) return;
   const grid = S.pseqPattern.map(row => row.map(v => (v ? 1 : 0)));
-  const favs = getFavs(); favs.push({ name, grid }); setFavs(favs);
+  const fav = { name, grid };
+  const extra = bankFavExtras('roll');            // Chain on → keep all 4 banks' rolls + the chain
+  if (extra) Object.assign(fav, extra);
+  const favs = getFavs(); favs.push(fav); setFavs(favs);
   renderMelodyBar();
   setStatus(`Saved "${name}" to your favorites`);
 }
 
-function loadFav(i) { const f = getFavs()[i]; if (!f) return; applyPseqPattern(f.grid); setStatus(`Loaded "${f.name}"`); }
+function loadFav(i) {
+  const f = getFavs()[i]; if (!f) return;
+  const chained = applyBankFav('roll', f);
+  if (!chained) applyPseqPattern(f.grid);
+  paintBanks();
+  setStatus(`Loaded "${f.name}"` + (chained ? ` (banks A–D + chain ${f.chain})` : ''));
+}
 function deleteFav(i) { const favs = getFavs(); if (!favs[i]) return; favs.splice(i, 1); setFavs(favs); renderMelodyBar(); }
 
 // ── UI (reuses the .beat-* styles) ────────────────────────────────────────────
@@ -80,7 +90,7 @@ export function renderMelodyBar() {
   bar.appendChild(mkBtn('★ Save', 'save', saveMelody, 'Save the current roll pattern to your favorites'));
   getFavs().forEach((f, i) => {
     const wrap = document.createElement('span'); wrap.className = 'beat-fav';
-    wrap.appendChild(mkBtn(f.name, 'fav', () => loadFav(i), 'Load your saved melody'));
+    wrap.appendChild(mkBtn((f.banks ? '⛓ ' : '') + f.name, 'fav', () => loadFav(i), f.banks ? 'Load your saved melody chain (banks A–D + chain ' + f.chain + ')' : 'Load your saved melody'));
     wrap.appendChild(mkBtn('✕', 'fav-x', () => deleteFav(i), 'Delete this favorite'));
     bar.appendChild(wrap);
   });

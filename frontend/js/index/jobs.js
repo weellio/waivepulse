@@ -1,7 +1,7 @@
 import { S, VIZ_LABELS } from './state.js';
 import { escHtml, formatSize } from './util.js';
 import { attachVizListeners, attachMetaListeners, stopViz } from './viz.js';
-import { applyLibraryFilter } from './library.js';
+import { applyLibraryFilter, ratingHTML } from './library.js';
 
 // ── Card HTML ─────────────────────────────────────────────────────────────────
 export function jobCardHTML(jobId, title, tags, status, message, file, fileSize, createdAt, bpm, key) {
@@ -17,6 +17,8 @@ export function jobCardHTML(jobId, title, tags, status, message, file, fileSize,
     ? `<button class="btn-action" onclick="loadJobToForm('${jobId}')" title="Fill the form with this song's title, artist, lyrics, tags, duration, temperature, CFG and seed">↺ Reuse</button>`
     : '';
   const takeBadge = full.takes > 1 ? `<span class="take-badge">Take ${full.take}/${full.takes}</span>` : '';
+  const rating = Number(full.rating) || 0;
+  const ratingBadge = `<span class="rating-badge" id="rating-badge-${jobId}"${rating ? '' : ' hidden'} title="Your rating">★${rating}</span>`;
   const starBtn = isLocal ? '' :
     `<button class="btn-star${full.favorite ? ' on' : ''}" onclick="event.stopPropagation();toggleFavorite('${jobId}')" title="${full.favorite ? 'Unstar' : 'Star as favorite'}">${full.favorite ? '★' : '☆'}</button>`;
 
@@ -32,7 +34,7 @@ export function jobCardHTML(jobId, title, tags, status, message, file, fileSize,
     <div class="job-row" onclick="toggleCard('${jobId}')">
       <div class="dot dot-${status}"></div>
       <div class="job-row-text">
-        <span class="job-title">${escHtml(title)}${takeBadge}</span>
+        <span class="job-title">${escHtml(title)}${takeBadge}${isLocal ? '' : ratingBadge}</span>
         <span class="job-tags">${escHtml(tags)}</span>
       </div>
       ${durSpan}
@@ -77,8 +79,11 @@ export function jobCardHTML(jobId, title, tags, status, message, file, fileSize,
         ${!jobId.startsWith('local_')
           ? `<a class="btn-action" href="/studio?job=${jobId}" target="_blank">🎛 Studio</a>`
           : `<button class="btn-action" id="studio-btn-${jobId}" onclick="openStudioForLocal('${jobId}')">🎛 Studio</button>`}
+        ${!isLocal ? `<button class="btn-action" id="video-btn-${jobId}" onclick="makeVideo('${jobId}')" title="Render a 1920×1080 MP4 for YouTube: generated cover art, title + artist, waveform strip, 320 kbps AAC audio. Takes ~10–30 s the first time, then it's cached.">🎬 Video</button>
+        <a class="btn-action" href="/cover/${jobId}.png" download="${escHtml(String(title || 'cover').replace(/[^\w\s-]/g, '').trim() || 'cover')}_cover.png" title="Download the generated cover art (1200×1200 PNG) — also embedded in newly generated MP3s">🖼 Cover</a>` : ''}
       </div>
       <div class="job-meta" id="meta-${jobId}">
+        ${!isLocal ? ratingHTML(jobId, rating) : ''}
         ${sizeStr ? `<span>${sizeStr}</span>` : ''}
         ${bpm  ? `<span class="chip chip-bpm">♩ ${bpm} BPM</span>` : ''}
         ${key  ? `<span class="chip chip-key">♬ ${escHtml(key)}</span>` : ''}

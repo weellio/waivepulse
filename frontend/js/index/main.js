@@ -9,7 +9,8 @@ import {
   updateDurHint, useDurEstimate, onInstrumentalToggle,
   setSeedLocked, toggleSeedLock, randomizeSeed, onSeedInput, setTakes,
 } from './ui.js';
-import { applyLibraryFilter, toggleFavOnly, toggleFavorite, useSeed } from './library.js';
+import { applyLibraryFilter, toggleFavOnly, toggleFavorite, useSeed, setRating } from './library.js';
+import { makeVideo } from './video.js';
 import { generate, cancelJob, checkModelStatus } from './generate.js';
 import {
   jobCardHTML, getLMProgress, getCodecProgress,
@@ -38,7 +39,9 @@ Object.assign(window, {
   updateDurHint, useDurEstimate, onInstrumentalToggle,
   setSeedLocked, toggleSeedLock, randomizeSeed, onSeedInput, setTakes,
   // library
-  applyLibraryFilter, toggleFavOnly, toggleFavorite, useSeed,
+  applyLibraryFilter, toggleFavOnly, toggleFavorite, useSeed, setRating,
+  // video
+  makeVideo,
   // generate
   generate, cancelJob, checkModelStatus,
   // jobs

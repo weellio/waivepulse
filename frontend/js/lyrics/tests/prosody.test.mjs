@@ -93,3 +93,20 @@ Till the morning makes it right`);
   assert.ok(Math.abs(a.stats.seconds - (a.stats.words / 2.2 + 4)) < 1e-9);
   assert.equal(P.fmtDuration(83), '1:23');
 });
+
+test('rhyme finder never suggests proper names or brands', () => {
+  P.setDict(dict);
+  const all = r => [...Object.values(r.perfect).flat(), ...Object.values(r.near).flat()];
+  const light = all(P.findRhymes('light'));
+  for (const bad of ['dwight', 'wright', 'albright', 'mike']) assert.ok(!light.includes(bad), bad);
+  assert.ok(light.includes('night') && light.includes('bright'));
+  assert.ok(!all(P.findRhymes('smart')).includes('walmart'));
+  assert.ok(!all(P.findRhymes('rain')).includes('jane'));
+  // ordinary words that double as names stay: rose / will / mark / bill
+  assert.ok(all(P.findRhymes('nose')).includes('rose'));
+  assert.ok(all(P.findRhymes('still')).includes('will'));
+  assert.ok(all(P.findRhymes('dark')).includes('mark'));
+  // names still count syllables from the dictionary
+  assert.equal(P.syllables('Michael'), 2);
+  assert.ok(P.isProperNoun('Dwight') && !P.isProperNoun('light'));
+});

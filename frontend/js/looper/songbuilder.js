@@ -13,6 +13,8 @@ import { setStatus } from './util.js';
 import { sendBufferToStudio, isStudioOpen } from './bridge.js';
 import { stopAllPlayback } from './loops.js';
 import { applyEqOffline, snapshotEq, eqIsFlat } from '../shared/eq7.js';
+import { encodePcmWav } from './wavio.js';
+import { finishExport, readoutText } from './loudexport.js';
 
 // arrangement = ordered list of sections: { on:[bool x6], beats:int, vol:0..1.5, label:str }
 let arr = [];
@@ -294,34 +296,8 @@ function makeIR(off) {                              // ~1.6 s synthetic reverb t
   return ir;
 }
 
-// ── WAV encode (16- or 24-bit PCM) ──────────────────────────────────────────────
-function encodeWav(buf, bits) {
-  const nc = buf.numberOfChannels, sr = buf.sampleRate, len = buf.length;
-  const bps = bits / 8;
-  const ab = new ArrayBuffer(44 + len * nc * bps);
-  const v = new DataView(ab);
-  const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
-  ws(0, 'RIFF'); v.setUint32(4, 36 + len * nc * bps, true); ws(8, 'WAVE');
-  ws(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
-  v.setUint16(22, nc, true); v.setUint32(24, sr, true);
-  v.setUint32(28, sr * nc * bps, true); v.setUint16(32, nc * bps, true); v.setUint16(34, bits, true);
-  ws(36, 'data'); v.setUint32(40, len * nc * bps, true);
-  let off = 44;
-  const chans = Array.from({ length: nc }, (_, c) => buf.getChannelData(c));
-  for (let i = 0; i < len; i++) {
-    for (let c = 0; c < nc; c++) {
-      let x = Math.max(-1, Math.min(1, chans[c][i]));
-      if (bits === 16) {
-        v.setInt16(off, x < 0 ? x * 0x8000 : x * 0x7FFF, true); off += 2;
-      } else {                                     // 24-bit little-endian
-        const s = Math.round(x < 0 ? x * 0x800000 : x * 0x7FFFFF);
-        v.setUint8(off, s & 0xFF); v.setUint8(off + 1, (s >> 8) & 0xFF); v.setUint8(off + 2, (s >> 16) & 0xFF);
-        off += 3;
-      }
-    }
-  }
-  return ab;
-}
+// ── WAV encode (16- or 24-bit PCM) → shared encoder in wavio.js ──────────────────
+const encodeWav = encodePcmWav;
 function download(buf, name, bits) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([encodeWav(buf, bits)], { type: 'audio/wav' }));
@@ -400,11 +376,72 @@ function updatePreviewBtns() {
 }
 
 // ── Render / export actions ─────────────────────────────────────────────────────
+// Full track → optional loudness target (LUFS, ≤ −1 dBTP) → WAV (16/24-bit) or MP3 320.
+let songExporting = false;
 export async function downloadSong() {
-  const buf = await renderMix();
-  if (!buf) { setStatus('Nothing to render'); return; }
-  download(buf, 'looper-song.wav', masterOpts().bits);
-  setStatus('Exported looper-song.wav (' + masterOpts().bits + '-bit)');
+  if (songExporting) return;
+  songExporting = true;
+  const btn = document.getElementById('song-render-btn');
+  const label = btn ? btn.textContent : '';
+  const stage = t => { if (btn) btn.textContent = '⏳ ' + t; };
+  try {
+    stage('Rendering…');
+    const buf = await renderMix();
+    if (!buf) { setStatus('Nothing to render'); return; }
+    const fmt = document.getElementById('song-fmt')?.value || 'wav';
+    const res = await finishExport(buf, {
+      fmt, targetKey: document.getElementById('song-target')?.value || 'off',
+      bits: masterOpts().bits, baseName: (S.projectName || 'looper') + '-song',
+      readoutEl: document.getElementById('song-readout'), onStage: stage,
+    });
+    setStatus(`Exported ${res.name}` + (fmt === 'wav' ? ` (${masterOpts().bits}-bit)` : '') + ` — ${readoutText(res)}`);
+  } catch (e) {
+    console.warn('Song export failed:', e);
+    setStatus('Song export failed: ' + e.message);
+  } finally {
+    songExporting = false;
+    if (btn) btn.textContent = label || '⬇ Render Full Track';
+  }
+}
+
+// ── Project save / open ─────────────────────────────────────────────────────────
+const AUTO_IDS   = ['sa-buildup', 'sa-bars', 'sa-break', 'sa-reps'];
+const MASTER_IDS = ['mo-fadein', 'mo-fadeout', 'mo-norm', 'mo-target', 'mo-limit', 'mo-fx', 'mo-tail', 'mo-24', 'song-fmt', 'song-target'];
+function readInputs(ids) {
+  const o = {};
+  for (const id of ids) {
+    const el = document.getElementById(id); if (!el) continue;
+    o[id] = el.type === 'checkbox' ? el.checked : el.value;
+  }
+  return o;
+}
+function writeInputs(o) {
+  for (const id in o || {}) {
+    const el = document.getElementById(id); if (!el) continue;
+    if (el.type === 'checkbox') el.checked = !!o[id];
+    else if (el.tagName === 'SELECT') { if ([...el.options].some(op => op.value === String(o[id]))) el.value = String(o[id]); }
+    else el.value = o[id];
+  }
+}
+export function getSongState() {
+  return {
+    arrangement: arr.map(sec => ({ on: sec.on.slice(), beats: sec.beats, vol: sec.vol ?? 1, label: sec.label || '' })),
+    auto: readInputs(AUTO_IDS),
+    master: readInputs(MASTER_IDS),
+  };
+}
+export function setSongState(st) {
+  const list = Array.isArray(st?.arrangement) ? st.arrangement : [];
+  arr = list.map(sec => ({
+    on: Array.from({ length: 6 }, (_, i) => !!sec?.on?.[i]),
+    beats: Math.max(1, Math.min(4096, parseInt(sec?.beats) || 4)),
+    vol: Math.max(0, Math.min(1.5, isFinite(+sec?.vol) ? +sec.vol : 1)),
+    label: typeof sec?.label === 'string' ? sec.label.slice(0, 60) : '',
+  }));
+  writeInputs(st?.auto);
+  writeInputs(st?.master);
+  invalidatePreview(true);
+  if (songOpen()) buildArrangementUI();
 }
 window.songDownloadStems = async () => {
   const stems = await renderStems();

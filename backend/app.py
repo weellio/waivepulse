@@ -25,7 +25,7 @@ except ImportError:
     _MUTAGEN = False
 
 from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Query
-from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -527,6 +527,7 @@ def _apply_audioseal(mp3_path: str, job_id: str) -> bool:
             ret = subprocess.run(
                 ["ffmpeg", "-y", "-i", tmp_wav, "-q:a", "2", tmp_mp3],
                 capture_output=True,
+                creationflags=_NO_WINDOW,
             )
             if ret.returncode == 0:
                 shutil.move(tmp_mp3, mp3_path)
@@ -790,6 +791,7 @@ def _run_generation(job_id, lyrics, tags, title, artist, max_ms, temperature, cf
         else:
             audio_wm = _apply_audioseal(out_path, job_id)   # re-encodes — must be first
             _write_metadata(out_path, title, artist, tags, temperature, cfg_scale, seed)
+            cover_ok = _embed_cover(out_path, job_id, {"title": title, "artist": artist, "tags": tags})
             c2pa_ok  = _apply_c2pa(out_path, title, tags, job_id)
             bpm, key = _detect_bpm_key(out_path)
             filename = _output_filename(title, job_id)
@@ -801,6 +803,7 @@ def _run_generation(job_id, lyrics, tags, title, artist, max_ms, temperature, cf
             jobs[job_id]["key"]              = key
             jobs[job_id]["watermarked_audio"]= audio_wm
             jobs[job_id]["watermarked_c2pa"] = c2pa_ok
+            jobs[job_id]["cover_embedded"]   = cover_ok
 
     except Exception as e:
         msg = str(e)
@@ -972,6 +975,8 @@ def model_status():
         "c2pa":      _C2PA and _CRYPTOGRAPHY,
     }
     ms["gpu"] = _gpu_status()
+    ms["mastering"] = {"available": _DSP, "engine": "builtin"}
+    ms["video"] = {"available": _FFMPEG and _PIL}
     return ms
 
 
@@ -1234,6 +1239,10 @@ def delete_job(job_id: str):
         mp3 = OUTPUTS_DIR / Path(stored_file).name
         if mp3.exists():
             mp3.unlink()
+    vid = (jobs[job_id].get("video") or {}).get("file")
+    if vid:
+        (OUTPUTS_DIR / "videos" / Path(vid).name).unlink(missing_ok=True)
+    video_jobs.pop(job_id, None)
     del jobs[job_id]
     cancel_flags.pop(job_id, None)
     job_logs.pop(job_id, None)
@@ -1408,20 +1417,23 @@ def download_stems_zip(sep_id: str):
     )
 
 
-# ── Time-stretch (librosa phase vocoder) ──────────────────────────────────────
+# ── Time-stretch (phase vocoder) ──────────────────────────────────────────────
 
 def _time_stretch_audio(audio_path: str, factor: float) -> bytes:
     """Load audio, time-stretch by *factor*, return WAV bytes.
     factor > 1 = speed up (shorter), factor < 1 = slow down (longer)."""
-    import librosa, numpy as np, struct
-    y, sr = librosa.load(audio_path, sr=None, mono=False)
+    import numpy as np, struct
+    y, sr = _load_audio(audio_path)          # librosa-free (see "librosa-free DSP core")
+    if y.shape[0] == 1:
+        y = y[0]
     mono = y.ndim == 1
     if mono:
-        ys = librosa.effects.time_stretch(y, rate=factor)
+        ys = _time_stretch_pv(y, factor)
     else:
         # stretch each channel separately, stack back
-        ys = np.stack([librosa.effects.time_stretch(y[ch], rate=factor)
-                       for ch in range(y.shape[0])])
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(4, y.shape[0])) as ex:
+            ys = np.stack(list(ex.map(lambda ch: _time_stretch_pv(ch, factor), y)))
     # Encode as 16-bit PCM WAV
     nc = 1 if mono else ys.shape[0]
     if mono:
@@ -1443,8 +1455,8 @@ def _time_stretch_audio(audio_path: str, factor: float) -> bytes:
 @app.post("/timestretch/{sep_id}/{stem_name}")
 def timestretch_stem(sep_id: str, stem_name: str, factor: float = Query(...)):
     """Time-stretch an existing separated stem. factor>1=faster, <1=slower."""
-    if not _LIBROSA:
-        raise HTTPException(status_code=501, detail="librosa is not installed")
+    if not _DSP:
+        raise HTTPException(status_code=501, detail="soundfile + scipy are required")
     if factor < 0.25 or factor > 4.0:
         raise HTTPException(status_code=400, detail="factor must be between 0.25 and 4.0")
     if sep_id not in sep_jobs and not _recover_sep(sep_id):
@@ -1458,15 +1470,15 @@ def timestretch_stem(sep_id: str, stem_name: str, factor: float = Query(...)):
     if not candidates:
         raise HTTPException(status_code=404, detail=f"Stem '{stem_name}' not found")
     wav_bytes = _time_stretch_audio(str(candidates[0]), factor)
-    return StreamingResponse(io.BytesIO(wav_bytes), media_type="audio/wav",
+    return Response(content=wav_bytes, media_type="audio/wav",
                              headers={"Content-Disposition": f'attachment; filename="{stem_name}_stretched.wav"'})
 
 
 @app.post("/timestretch")
 async def timestretch_upload(file: UploadFile = FastAPIFile(...), factor: float = Query(...)):
     """Time-stretch an uploaded audio file. factor>1=faster, <1=slower."""
-    if not _LIBROSA:
-        raise HTTPException(status_code=501, detail="librosa is not installed")
+    if not _DSP:
+        raise HTTPException(status_code=501, detail="soundfile + scipy are required")
     if factor < 0.25 or factor > 4.0:
         raise HTTPException(status_code=400, detail="factor must be between 0.25 and 4.0")
     # Save to temp file
@@ -1480,8 +1492,833 @@ async def timestretch_upload(file: UploadFile = FastAPIFile(...), factor: float 
         wav_bytes = _time_stretch_audio(tmp_path, factor)
     finally:
         Path(tmp_path).unlink(missing_ok=True)
-    return StreamingResponse(io.BytesIO(wav_bytes), media_type="audio/wav",
+    return Response(content=wav_bytes, media_type="audio/wav",
                              headers={"Content-Disposition": 'attachment; filename="stretched.wav"'})
+
+
+# ── Shared audio helpers (pitch shift / mastering) ────────────────────────────
+_SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def _safe_id(value: str, what: str) -> str:
+    """Reject anything that could escape outputs/ or act as a glob (.., *, /, ?)."""
+    if not value or not _SAFE_ID_RE.match(value):
+        raise HTTPException(status_code=400, detail=f"Invalid {what}")
+    return value
+
+
+def _find_stem_file(sep_id: str, stem_name: str) -> Path:
+    _safe_id(sep_id, "separation id")
+    _safe_id(stem_name, "stem name")
+    if sep_id not in sep_jobs and not _recover_sep(sep_id):
+        raise HTTPException(status_code=404, detail="Separation not found")
+    out_dir = (OUTPUTS_DIR / f"sep_{sep_id}").resolve()
+    ext = "mp3" if _FFMPEG else "wav"
+    candidates = list(out_dir.rglob(f"{stem_name}.{ext}")) or list(out_dir.rglob(f"{stem_name}.wav"))
+    candidates = [c for c in candidates if out_dir in c.resolve().parents]
+    if not candidates:
+        raise HTTPException(status_code=404, detail=f"Stem '{stem_name}' not found")
+    return candidates[0]
+
+
+def _wav_bytes(y, sr: int, bits: int = 16) -> bytes:
+    """(channels, n) or (n,) float → WAV bytes (PCM_16 or PCM_24)."""
+    import numpy as np, soundfile as sf
+    data = y.T if y.ndim == 2 else y
+    buf = io.BytesIO()
+    sf.write(buf, np.clip(data, -1.0, 1.0), int(sr), format="WAV",
+             subtype="PCM_24" if bits == 24 else "PCM_16")
+    return buf.getvalue()
+
+
+async def _upload_to_temp(upload: UploadFile, default_suffix: str = ".wav") -> str:
+    content = await upload.read()
+    if not content:
+        raise HTTPException(status_code=400, detail=f"Empty file: {upload.filename or 'upload'}")
+    suffix = Path(upload.filename or "audio" + default_suffix).suffix.lower()
+    if not re.match(r"^\.[a-z0-9]{1,5}$", suffix):
+        suffix = default_suffix
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(content)
+        return tmp.name
+
+
+# ── librosa-free DSP core ─────────────────────────────────────────────────────
+# librosa needs a numba that matches numpy; on a mismatched install (e.g. numba 0.56
+# + numpy 2.x) *every* librosa call fails at import time. Time-stretch, pitch shift
+# and mastering therefore use soundfile (+ ffmpeg fallback) for decoding, soxr (or
+# scipy) for resampling and a numpy/scipy phase vocoder — same algorithm librosa uses.
+_SOUNDFILE = importlib.util.find_spec("soundfile") is not None
+_SCIPY     = importlib.util.find_spec("scipy") is not None
+_DSP       = _SOUNDFILE and _SCIPY
+
+
+def _resample(y, fs_in: float, fs_out: float):
+    """(channels, n) → resampled (channels, m) float32."""
+    import numpy as np
+    if abs(fs_in - fs_out) < 1e-9:
+        return y.astype(np.float32, copy=False)
+    try:
+        import soxr
+        out = soxr.resample(np.ascontiguousarray(y.T, dtype=np.float32), fs_in, fs_out, "HQ")
+        out = out[:, None] if out.ndim == 1 else out
+        return np.ascontiguousarray(out.T, dtype=np.float32)
+    except ImportError:
+        from fractions import Fraction
+        from scipy.signal import resample_poly
+        fr = Fraction(fs_out / fs_in).limit_denominator(2000)
+        return resample_poly(y, fr.numerator, fr.denominator, axis=-1).astype(np.float32)
+
+
+def _load_audio(path: str, sr: Optional[int] = None):
+    """Decode any audio file → ((channels, n) float32, sample_rate).
+    soundfile handles wav/flac/ogg/mp3; anything else goes through ffmpeg."""
+    import numpy as np, soundfile as sf
+    try:
+        d, fs = sf.read(path, dtype="float32", always_2d=True)
+    except Exception:
+        if not _FFMPEG:
+            raise ValueError("Unsupported audio format (install ffmpeg for more formats)")
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as t:
+            tmp = t.name
+        try:
+            r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", path, "-vn", "-c:a", "pcm_f32le", tmp],
+                               capture_output=True, creationflags=_NO_WINDOW)
+            if r.returncode != 0:
+                raise ValueError("Unsupported or corrupt audio file")
+            d, fs = sf.read(tmp, dtype="float32", always_2d=True)
+        finally:
+            Path(tmp).unlink(missing_ok=True)
+    if d.size == 0:
+        raise ValueError("Audio file contains no samples")
+    y = np.ascontiguousarray(d.T)
+    if sr and sr != fs:
+        y, fs = _resample(y, fs, sr), sr
+    return y, int(fs)
+
+
+def _time_stretch_pv(x, rate: float, n_fft: int = 2048, hop: int = 512):
+    """Phase-vocoder time stretch of a 1-D signal. rate > 1 = faster/shorter."""
+    import numpy as np
+    from scipy.signal import stft, istft
+    x = np.asarray(x, dtype=np.float32)
+    _, _, D = stft(x, nperseg=n_fft, noverlap=n_fft - hop, window="hann")
+    D = D.astype(np.complex64, copy=False)
+    F, T = D.shape
+    if T < 2:
+        return x.copy()
+    steps = np.arange(0, T - 1, rate)
+    TWO_PI = np.float32(2 * np.pi)
+    phi_adv = np.linspace(0, np.pi * hop, F, dtype=np.float32)[:, None]
+    MAG, ANG = np.abs(D), np.angle(D).astype(np.float32)
+    del D
+    # per-input-frame wrapped phase deviation (computed once, reused by every step)
+    dev = ANG[:, 1:] - ANG[:, :-1] - phi_adv
+    dev -= TWO_PI * np.round(dev / TWO_PI)
+    dev += phi_adv
+    out = np.empty((F, len(steps)), np.complex64)
+    phase = ANG[:, :1].astype(np.float64)
+    CH = 2048                                   # chunk frames → bounded memory
+    for c0 in range(0, len(steps), CH):
+        st = steps[c0:c0 + CH]
+        i0 = st.astype(np.int64)
+        a = (st - i0).astype(np.float32)[None, :]
+        mag = MAG[:, i0] * (1 - a) + MAG[:, i0 + 1] * a
+        inc = dev[:, i0]
+        acc = np.cumsum(inc, axis=1, dtype=np.float64)
+        acc -= inc                                   # exclusive prefix sum
+        acc += phase
+        phase = acc[:, -1:] + inc[:, -1:]
+        acc = np.mod(acc, 2 * np.pi).astype(np.float32)
+        o = out[:, c0:c0 + len(st)]
+        o.real = mag * np.cos(acc)
+        o.imag = mag * np.sin(acc)
+    _, y = istft(out, nperseg=n_fft, noverlap=n_fft - hop, window="hann")
+    return y.astype(np.float32)
+
+
+def _fix_length(y, n: int):
+    import numpy as np
+    return y[:n] if len(y) >= n else np.pad(y, (0, n - len(y)))
+
+
+# ── Pitch shift (phase vocoder + soxr resample, tempo preserved) ──────────────
+def _pitch_shift_audio(audio_path: str, semitones: float) -> bytes:
+    import numpy as np
+    y, sr = _load_audio(audio_path)
+    n = y.shape[1]
+    if abs(semitones) < 1e-6:
+        ys = y
+    else:
+        rate = 2.0 ** (-float(semitones) / 12.0)          # stretch by 1/ratio, then resample back
+        from concurrent.futures import ThreadPoolExecutor
+        one = lambda ch: _fix_length(_resample(_time_stretch_pv(ch, rate)[None, :], sr / rate, sr)[0], n)
+        with ThreadPoolExecutor(max_workers=min(4, y.shape[0])) as ex:   # numpy releases the GIL
+            ys = np.stack(list(ex.map(one, y)))
+    peak = float(np.max(np.abs(ys))) if ys.size else 0.0
+    if peak > 1.0:            # resampling can overshoot a hot stem — scale instead of clipping
+        ys = ys / peak * 0.999
+    return _wav_bytes(ys if ys.shape[0] > 1 else ys[0], sr, 16)
+
+
+def _check_semitones(semitones: float):
+    import math
+    if not math.isfinite(semitones) or semitones < -12 or semitones > 12:
+        raise HTTPException(status_code=400, detail="semitones must be between -12 and 12")
+
+
+@app.post("/pitchshift/{sep_id}/{stem_name}")
+def pitchshift_stem(sep_id: str, stem_name: str, semitones: float = Query(...)):
+    """Pitch-shift an existing separated stem by N semitones (−12..12), tempo unchanged."""
+    if not _DSP:
+        raise HTTPException(status_code=501, detail="soundfile + scipy are required")
+    _check_semitones(semitones)
+    path = _find_stem_file(sep_id, stem_name)
+    try:
+        wav = _pitch_shift_audio(str(path), semitones)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Pitch shift failed: {e}")
+    return Response(content=wav, media_type="audio/wav",
+                             headers={"Content-Disposition": f'attachment; filename="{stem_name}_pitch{semitones:+g}.wav"'})
+
+
+@app.post("/pitchshift")
+async def pitchshift_upload(file: UploadFile = FastAPIFile(...), semitones: float = Query(...)):
+    """Pitch-shift an uploaded audio file by N semitones (−12..12), tempo unchanged."""
+    if not _DSP:
+        raise HTTPException(status_code=501, detail="soundfile + scipy are required")
+    _check_semitones(semitones)
+    tmp_path = await _upload_to_temp(file)
+    try:
+        wav = _pitch_shift_audio(tmp_path, semitones)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not process audio: {e}")
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+    return Response(content=wav, media_type="audio/wav",
+                             headers={"Content-Disposition": 'attachment; filename="pitched.wav"'})
+
+
+# ── Reference-track mastering (built-in matcher) ──────────────────────────────
+# `matchering` would upgrade numba/llvmlite/soundfile/cffi (librosa + HeartMuLa deps)
+# and needs resampy + statsmodels, so WAIvePulse ships its own lightweight matcher:
+#   1. mid/side split  2. average-spectrum match EQ per M and S (Welch PSD ratio,
+#   1/3-octave smoothed, ±12 dB, linear-phase FIR)  3. stereo width match (S/M RMS)
+#   4. integrated-LUFS match (BS.1770-4)  5. 4× oversampled true-peak limiter at
+#   min(−1 dBTP, reference true peak), iterated so loudness still lands on the reference.
+_MATCHERING = importlib.util.find_spec("matchering") is not None
+
+
+def _k_weight(x, sr):
+    """BS.1770 K-weighting (pre-filter shelf + RLB high-pass) for any sample rate."""
+    import numpy as np
+    from scipy.signal import lfilter
+    f0, G, Q = 1681.974450955533, 3.999843853973347, 0.7071752369554196
+    K = np.tan(np.pi * f0 / sr); Vh = 10 ** (G / 20); Vb = Vh ** 0.4996667741545416
+    a0 = 1 + K / Q + K * K
+    b1 = [(Vh + Vb * K / Q + K * K) / a0, 2 * (K * K - Vh) / a0, (Vh - Vb * K / Q + K * K) / a0]
+    a1 = [1, 2 * (K * K - 1) / a0, (1 - K / Q + K * K) / a0]
+    f0, Q = 38.13547087602444, 0.5003270373238773
+    K = np.tan(np.pi * f0 / sr); d = 1 + K / Q + K * K
+    b2 = [1.0, -2.0, 1.0]
+    a2 = [1, 2 * (K * K - 1) / d, (1 - K / Q + K * K) / d]
+    return lfilter(b2, a2, lfilter(b1, a1, x, axis=-1), axis=-1)
+
+
+def _lufs(x, sr) -> float:
+    """Integrated loudness (BS.1770-4, gated) of a (channels, n) array."""
+    import numpy as np
+    z = _k_weight(np.asarray(x, dtype=np.float64), sr)
+    e = np.concatenate([[0.0], np.cumsum((z ** 2).sum(axis=0))])
+    blk, hop = int(round(0.4 * sr)), int(round(0.1 * sr))
+    if z.shape[-1] < blk:
+        return float("-inf")
+    starts = np.arange(0, z.shape[-1] - blk + 1, hop)
+    ms = (e[starts + blk] - e[starts]) / blk
+    L = lambda v: -0.691 + 10 * np.log10(np.maximum(v, 1e-20))
+    g = ms[L(ms) > -70]
+    if not g.size:
+        return float("-inf")
+    g2 = g[L(g) > L(g.mean()) - 10]
+    return float(L(g2.mean())) if g2.size else float("-inf")
+
+
+def _tp_envelope(x):
+    """Per-sample 4×-oversampled absolute peak across channels (chunked, low memory)."""
+    import numpy as np
+    from scipy.signal import resample_poly
+    ch, n = x.shape
+    out = np.empty(n, np.float32)
+    C, P = 1 << 19, 64
+    for s in range(0, n, C):
+        a, b = max(0, s - P), min(n, s + C + P)
+        up = resample_poly(x[:, a:b], 4, 1, axis=1)
+        env = np.abs(up).max(axis=0).reshape(-1, 4).max(axis=1)
+        m = min(C, n - s)
+        out[s:s + m] = env[s - a:s - a + m]
+    return np.maximum(out, np.abs(x).max(axis=0))
+
+
+def _true_peak_db(x) -> float:
+    import numpy as np
+    pk = float(_tp_envelope(x).max()) if x.size else 0.0
+    return 20 * np.log10(max(pk, 1e-12))
+
+
+def _tp_limit(x, sr, ceil_db=-1.0, look_ms=2.0, release_ms=80.0):
+    """Look-ahead true-peak limiter (channel-linked). Returns a new array."""
+    import numpy as np
+    from scipy.ndimage import minimum_filter1d
+    ceil = 10 ** (ceil_db / 20)
+    env = _tp_envelope(x)
+    n, B = x.shape[1], 16
+    nb = -(-n // B)
+    pad = np.zeros(nb * B, np.float32); pad[:n] = env
+    req = np.minimum(1.0, ceil / np.maximum(pad.reshape(nb, B).max(axis=1), 1e-9))
+    La = max(1, int(round(sr * look_ms / 1000 / B)))
+    target = minimum_filter1d(req, 2 * La + 1, mode="nearest").tolist()
+    rel = float(np.exp(-B / (sr * release_ms / 1000)))
+    g, cur = [0.0] * nb, 1.0
+    for i, t in enumerate(target):
+        cur = t if t < cur else t + (cur - t) * rel
+        g[i] = cur
+    gains = np.interp(np.arange(n), np.arange(nb) * B + B / 2, np.asarray(g)).astype(np.float32)
+    y = x * gains
+    tp = float(_tp_envelope(y).max())
+    if tp > ceil:                       # residual overshoot from interpolation → trim it
+        y *= ceil / tp
+    return y
+
+
+def _smooth_octave(f, v, frac=3):
+    """Average v over a 1/frac-octave window around each frequency bin."""
+    import numpy as np
+    c = np.concatenate([[0.0], np.cumsum(v)])
+    k = 2 ** (1 / (2 * frac))
+    lo = np.searchsorted(f, f / k, side="left")
+    hi = np.searchsorted(f, f * k, side="right")
+    hi = np.maximum(hi, lo + 1)
+    return (c[hi] - c[lo]) / (hi - lo)
+
+
+def _match_eq_fir(tgt, ref, sr, numtaps=4095, max_db=12.0):
+    """Linear-phase FIR that moves tgt's average spectrum shape onto ref's."""
+    import numpy as np
+    from scipy.signal import welch, firwin2
+    nper = 8192
+    f, pt = welch(tgt, sr, nperseg=nper, noverlap=nper // 2)
+    _, pr = welch(ref, sr, nperseg=nper, noverlap=nper // 2)
+    eps = 1e-14
+    r_db = 10 * np.log10((pr + eps) / (pt + eps))
+    r_db = _smooth_octave(f, r_db, 3)
+    band = (f >= 100) & (f <= 10000)
+    r_db -= np.average(r_db[band], weights=pt[band] + eps) if band.any() else 0.0   # shape only
+    lo_f, hi_f = 25.0, min(18000.0, sr / 2 * 0.9)
+    r_db = np.where(f < lo_f, np.interp(lo_f, f, r_db), r_db)
+    r_db = np.where(f > hi_f, np.interp(hi_f, f, r_db), r_db)
+    r_db = np.clip(r_db, -max_db, max_db)
+    taps = firwin2(numtaps, f, 10 ** (r_db / 20), fs=sr)
+    return taps, float(np.max(np.abs(r_db[(f >= 30) & (f <= 16000)])))
+
+
+def _to_stereo(y):
+    import numpy as np
+    if y.ndim == 1:
+        return np.stack([y, y])
+    if y.shape[0] == 1:
+        return np.concatenate([y, y])
+    return y[:2]
+
+
+def _master_match(target_path: str, reference_path: str):
+    """Returns (mastered (2,n) float32, sr, report dict)."""
+    import numpy as np
+    from scipy.signal import oaconvolve
+    tgt, sr = _load_audio(target_path)
+    ref, _  = _load_audio(reference_path, sr=sr)
+    tgt, ref = _to_stereo(tgt).astype(np.float32), _to_stereo(ref).astype(np.float32)
+    for name, a in (("target", tgt), ("reference", ref)):
+        if a.shape[1] < 3 * sr:
+            raise ValueError(f"The {name} is too short (need at least 3 seconds)")
+        if float(np.sqrt(np.mean(a ** 2))) < 1e-5:
+            raise ValueError(f"The {name} is silent")
+
+    in_lufs, ref_lufs = _lufs(tgt, sr), _lufs(ref, sr)
+    ref_tp = _true_peak_db(ref)
+
+    mid_t, side_t = (tgt[0] + tgt[1]) / 2, (tgt[0] - tgt[1]) / 2
+    mid_r, side_r = (ref[0] + ref[1]) / 2, (ref[0] - ref[1]) / 2
+    rms = lambda v: float(np.sqrt(np.mean(np.square(v, dtype=np.float64))))
+    width = lambda m, s: rms(s) / max(rms(m), 1e-12)
+    w_in, w_ref = width(mid_t, side_t), width(mid_r, side_r)
+
+    taps_m, eq_mid_db = _match_eq_fir(mid_t, mid_r, sr)
+    mid = oaconvolve(mid_t, taps_m, mode="same").astype(np.float32)
+    side = side_t
+    eq_side_db = 0.0
+    if w_in > 0.01 and w_ref > 0.01:     # near-mono → leave the side channel alone (noise)
+        taps_s, eq_side_db = _match_eq_fir(side_t, side_r, sr)
+        side = oaconvolve(side_t, taps_s, mode="same").astype(np.float32)
+        side_gain = float(np.clip(w_ref / max(width(mid, side), 1e-9), 0.25, 4.0))
+        side = side * side_gain
+    y0 = np.stack([mid + side, mid - side]).astype(np.float32)
+
+    ceil_db = float(min(-1.0, max(ref_tp, -12.0)))
+    cur = _lufs(y0, sr)
+    gain_db = float(np.clip(ref_lufs - cur, -30.0, 24.0))
+    y = y0
+    for _ in range(5):
+        y = _tp_limit(y0 * np.float32(10 ** (gain_db / 20)), sr, ceil_db)
+        out_l = _lufs(y, sr)
+        err = ref_lufs - out_l
+        if abs(err) < 0.1 or gain_db >= 24.0:
+            break
+        gain_db = float(min(24.0, gain_db + err))
+    out_lufs = _lufs(y, sr)
+    report = {
+        "engine": "builtin",
+        "in_lufs": round(in_lufs, 2), "ref_lufs": round(ref_lufs, 2), "out_lufs": round(out_lufs, 2),
+        "ref_true_peak_db": round(ref_tp, 2), "out_true_peak_db": round(_true_peak_db(y), 2),
+        "ceiling_db": round(ceil_db, 2), "gain_db": round(gain_db, 2),
+        "width_in": round(w_in, 3), "width_ref": round(w_ref, 3),
+        "width_out": round(width((y[0] + y[1]) / 2, (y[0] - y[1]) / 2), 3),
+        "eq_max_db": round(max(eq_mid_db, eq_side_db), 1), "sample_rate": int(sr),
+    }
+    return y, sr, report
+
+
+@app.get("/master-status")
+def master_status():
+    return {"available": _DSP, "engine": "builtin",
+            "matchering_installed": _MATCHERING}
+
+
+@app.post("/master/match")
+async def master_match(target: UploadFile = FastAPIFile(...),
+                       reference: UploadFile = FastAPIFile(...),
+                       bits: int = Query(24)):
+    """Master `target` (your mix) to sound like `reference` (any song): loudness, tonal
+    balance, peak level and stereo width. Returns a 16/24-bit WAV; measurements are
+    in the X-Master-* response headers."""
+    if not _DSP:
+        raise HTTPException(status_code=501, detail="soundfile + scipy are required for mastering")
+    if bits not in (16, 24):
+        raise HTTPException(status_code=400, detail="bits must be 16 or 24")
+    t_path = await _upload_to_temp(target, ".wav")
+    r_path = None
+    try:
+        r_path = await _upload_to_temp(reference, ".wav")
+        import asyncio
+        try:
+            y, sr, rep = await asyncio.to_thread(_master_match, t_path, r_path)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            _real_stderr.write(f"[waivepulse] master/match failed: {e}\n")
+            raise HTTPException(status_code=400, detail=f"Could not master these files: {e}")
+        wav = _wav_bytes(y, sr, bits)
+    finally:
+        for p in (t_path, r_path):
+            if p:
+                Path(p).unlink(missing_ok=True)
+    stem = re.sub(r"[^\w-]", "_", Path(target.filename or "mix").stem)[:48] or "mix"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{stem}_mastered.wav"',
+        "X-Master-Report": json.dumps(rep),
+        "X-Master-In-LUFS": str(rep["in_lufs"]), "X-Master-Ref-LUFS": str(rep["ref_lufs"]),
+        "X-Master-Out-LUFS": str(rep["out_lufs"]), "X-Master-Out-TP": str(rep["out_true_peak_db"]),
+    }
+    return Response(content=wav, media_type="audio/wav", headers=headers)
+
+
+# ── Cover art + YouTube video ─────────────────────────────────────────────────
+_PIL = importlib.util.find_spec("PIL") is not None
+_NO_WINDOW = 0x08000000 if os.name == "nt" else 0     # CREATE_NO_WINDOW: no console popup
+VIDEOS_DIR = OUTPUTS_DIR / "videos"
+video_jobs: dict = {}     # job_id → {status, progress, file, message}
+
+_FONT_BOLD = ["C:/Windows/Fonts/segoeuib.ttf", "C:/Windows/Fonts/arialbd.ttf",
+              "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+              "/System/Library/Fonts/Supplemental/Arial Bold.ttf", "DejaVuSans-Bold.ttf"]
+_FONT_REG  = ["C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf",
+              "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+              "/System/Library/Fonts/Supplemental/Arial.ttf", "DejaVuSans.ttf"]
+
+
+def _font(size: int, bold: bool = True):
+    from PIL import ImageFont
+    for p in (_FONT_BOLD if bold else _FONT_REG):
+        try:
+            return ImageFont.truetype(p, size)
+        except OSError:
+            continue
+    try:
+        return ImageFont.load_default(size=size)
+    except TypeError:
+        return ImageFont.load_default()
+
+
+def _clean_text(s: str) -> str:
+    """Drop characters the bundled fonts can't draw (emoji / astral plane)."""
+    return "".join(ch for ch in (s or "") if ord(ch) <= 0xFFFF and ch.isprintable()).strip()
+
+
+def _fit_lines(draw, text: str, max_w: int, start: int, min_size: int, max_lines: int, bold=True):
+    """Largest font size whose word-wrap fits max_w in ≤ max_lines lines."""
+    words = text.split() or [""]
+    for size in range(start, min_size - 1, -4):
+        f = _font(size, bold)
+        lines, cur = [], ""
+        for w in words:
+            trial = (cur + " " + w).strip()
+            if draw.textlength(trial, font=f) <= max_w:
+                cur = trial
+            else:
+                if cur:
+                    lines.append(cur)
+                cur = w
+        lines.append(cur)
+        if len(lines) <= max_lines and all(draw.textlength(l, font=f) <= max_w for l in lines):
+            return f, lines
+    f = _font(min_size, bold)
+    line = text
+    while line and draw.textlength(line + "…", font=f) > max_w:
+        line = line[:-1]
+    return f, [line + "…" if line != text else line]
+
+
+def _cover_seed(job_id: str, tags: str) -> int:
+    import hashlib
+    return int.from_bytes(hashlib.sha256(f"waivepulse-cover|{job_id}|{tags}".encode()).digest()[:8], "big")
+
+
+def _cover_art(job_id: str, tags: str, w: int, h: int):
+    """Deterministic abstract art (no text): colour blobs + glowing sound ribbons + grain."""
+    import numpy as np, colorsys
+    from PIL import Image
+    rng = np.random.default_rng(_cover_seed(job_id, tags))
+    t = (tags or "").lower()
+    dark = any(k in t for k in ("dark", "sad", "melanchol", "haunting", "metal", "desperate", "lonel"))
+    bright = any(k in t for k in ("happy", "upbeat", "energetic", "euphoric", "playful", "summer", "party"))
+    h0 = rng.random()
+    scheme = rng.choice([[0, .08, .16, .5], [0, .5, .58, .92], [0, .33, .66, .12], [0, .06, .9, .45]])
+    vmax = .72 if dark else (1.0 if bright else .9)
+    pal = [np.array(colorsys.hsv_to_rgb((h0 + d) % 1, .55 + .4 * rng.random(), vmax * (.7 + .3 * rng.random())))
+           for d in scheme]
+    # work at reduced resolution (smooth content) then upscale
+    sw, sh = max(64, w // 3), max(64, h // 3)
+    yy, xx = np.mgrid[0:sh, 0:sw].astype(np.float32)
+    xx /= sw; yy /= sh
+    aspect = sw / sh
+    base = np.array(colorsys.hsv_to_rgb(h0, .6, .06 if dark else .1))
+    img = np.ones((sh, sw, 3), np.float32) * base
+    for k in range(6):
+        c = pal[k % len(pal)]
+        cx, cy = rng.random(), rng.random()
+        r = .18 + .3 * rng.random()
+        d2 = ((xx - cx) * aspect) ** 2 + (yy - cy) ** 2
+        wgt = (np.exp(-d2 / (2 * r * r)) * (.55 + .4 * rng.random()))[..., None]
+        img = img * (1 - wgt) + c * wgt
+    # glowing "sound ribbons"
+    for k in range(3 + int(rng.integers(0, 3))):
+        c = pal[(k + 1) % len(pal)] * 1.2 + .15
+        cy, amp = .25 + .5 * rng.random(), .05 + .12 * rng.random()
+        f1, f2 = 1 + 3 * rng.random(), 4 + 8 * rng.random()
+        p1, p2 = rng.random() * 6.28, rng.random() * 6.28
+        yc = cy + amp * np.sin(2 * np.pi * f1 * xx + p1) + amp * .35 * np.sin(2 * np.pi * f2 * xx + p2)
+        dist = np.abs(yy - yc)
+        thick = max(.0025 + .004 * rng.random(), 1.6 / sh)   # ≥1.6 px at work res → no dotted aliasing
+        glow = (np.exp(-(dist / thick) ** 2) * .9 + np.exp(-(dist / (thick * 9)) ** 2) * .25)[..., None]
+        img = img + c * glow * (.5 + .5 * rng.random())
+    # vignette
+    vr = ((xx - .5) * aspect / max(aspect, 1)) ** 2 + (yy - .5) ** 2
+    img *= (1 - .75 * np.clip(vr, 0, 1))[..., None]
+    img = 1 - np.exp(-img * 1.6)            # soft tone-map, no hard clipping
+    small = Image.fromarray((np.clip(img, 0, 1) * 255).astype(np.uint8), "RGB")
+    big = np.asarray(small.resize((w, h), Image.BICUBIC)).astype(np.float32)
+    big += rng.normal(0, 4.0, big.shape[:2])[..., None]     # film grain
+    return Image.fromarray(np.clip(big, 0, 255).astype(np.uint8), "RGB")
+
+
+def _logo():
+    from PIL import Image
+    p = ASSETS_DIR / "wave small.png"
+    try:
+        return Image.open(p).convert("RGBA") if p.exists() else None
+    except Exception:
+        return None
+
+
+def _draw_wordmark(img, x: int, y: int, size: int, anchor_right=False):
+    """Small 'WAIvePulse' wordmark (+ logo) with its top-left (or top-right) at x,y."""
+    from PIL import Image, ImageDraw
+    d = ImageDraw.Draw(img)
+    f = _font(size, True)
+    tw = int(d.textlength("WAIvePulse", font=f))
+    logo = _logo()
+    lw = 0
+    if logo is not None:
+        lh = int(size * 1.25)
+        logo = logo.resize((max(1, int(logo.width * lh / logo.height)), lh), Image.LANCZOS)
+        lw = logo.width + size // 3
+    total = lw + tw
+    x0 = x - total if anchor_right else x
+    if logo is not None:
+        img.paste(logo, (x0, y), logo)
+    d.text((x0 + lw, y + size * 0.1), "WAIvePulse", font=f, fill=(255, 255, 255, 215))
+
+
+def _job_texts(job: dict):
+    title = _clean_text(job.get("title") or "Untitled") or "Untitled"
+    artist = _clean_text(job.get("artist") or "")
+    return title, artist
+
+
+def _render_cover(job_id: str, job: dict, size: int = 1200):
+    """Square cover: art + title/artist + small wordmark. Returns PIL RGB image."""
+    from PIL import Image, ImageDraw
+    import numpy as np
+    title, artist = _job_texts(job)
+    img = _cover_art(job_id, job.get("tags", ""), size, size).convert("RGBA")
+    # bottom shade for legibility
+    shade = np.zeros((size, size, 4), np.uint8)
+    ramp = np.clip((np.arange(size) - size * .45) / (size * .55), 0, 1) ** 1.4
+    shade[..., 3] = (ramp * 200).astype(np.uint8)[:, None]
+    img = Image.alpha_composite(img, Image.fromarray(shade, "RGBA"))
+    d = ImageDraw.Draw(img)
+    m = int(size * .07)
+    f_art = _font(int(size * .045), False)
+    f_t, lines = _fit_lines(d, title, size - 2 * m, int(size * .11), int(size * .05), 3)
+    lh = int(f_t.size * 1.12)
+    y = size - m - (int(f_art.size * 1.5) if artist else 0) - lh * len(lines)
+    for ln in lines:
+        d.text((m, y), ln, font=f_t, fill=(255, 255, 255, 255))
+        y += lh
+    if artist:
+        d.text((m, y + int(size * .01)), artist, font=f_art, fill=(225, 235, 240, 235))
+    _draw_wordmark(img, m, m, int(size * .028))
+    return img.convert("RGB")
+
+
+def _waveform_peaks(audio_path: str, n: int):
+    import numpy as np
+    y, _ = _load_audio(audio_path)
+    y = y.mean(axis=0)
+    if not y.size:
+        return np.zeros(n)
+    edges = np.linspace(0, y.size, n + 1).astype(int)
+    pk = np.array([np.sqrt(np.mean(y[a:b] ** 2)) if b > a else 0 for a, b in zip(edges[:-1], edges[1:])])
+    return pk / max(pk.max(), 1e-9)
+
+
+def _render_video_frame(job_id: str, job: dict, audio_path: Optional[str]):
+    """1920×1080 still: blurred art backdrop, square cover left, title/artist right,
+    wordmark, and an audio waveform strip along the bottom."""
+    from PIL import Image, ImageDraw, ImageFilter
+    W, H = 1920, 1080
+    title, artist = _job_texts(job)
+    tags = job.get("tags", "") or ""
+    bg = _cover_art(job_id, tags, W // 4, H // 4).resize((W, H), Image.BICUBIC)
+    bg = bg.filter(ImageFilter.GaussianBlur(18)).convert("RGBA")
+    bg = Image.alpha_composite(bg, Image.new("RGBA", (W, H), (6, 8, 14, 150)))
+    S = 720
+    art = _cover_art(job_id, tags, S, S).convert("RGBA")
+    ax, ay = 110, (H - S) // 2 - 50
+    shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle((ax + 14, ay + 22, ax + S + 14, ay + S + 22), 26, fill=(0, 0, 0, 170))
+    bg = Image.alpha_composite(bg, shadow.filter(ImageFilter.GaussianBlur(22)))
+    mask = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, S - 1, S - 1), 22, fill=255)
+    bg.paste(art, (ax, ay), mask)
+    d = ImageDraw.Draw(bg)
+    tx = ax + S + 90
+    tw = W - tx - 100
+    f_t, lines = _fit_lines(d, title, tw, 118, 56, 3)
+    f_a = _font(58, False)
+    f_g = _font(30, False)
+    lh = int(f_t.size * 1.1)
+    block = lh * len(lines) + (80 if artist else 0) + 60
+    y = ay + (S - block) // 2
+    for ln in lines:
+        d.text((tx, y), ln, font=f_t, fill=(255, 255, 255, 255))
+        y += lh
+    if artist:
+        d.text((tx, y + 14), artist, font=f_a, fill=(140, 255, 255, 255))
+        y += 80
+    tag_line = " · ".join(t.strip() for t in tags.split(",") if t.strip())[:90]
+    if tag_line:
+        d.text((tx, y + 24), _clean_text(tag_line), font=f_g, fill=(200, 205, 215, 200))
+    _draw_wordmark(bg, W - 60, 48, 30, anchor_right=True)
+    # waveform strip
+    if audio_path:
+        try:
+            n = 240
+            pk = _waveform_peaks(audio_path, n)
+            strip = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            sd = ImageDraw.Draw(strip)
+            x0, x1, cy, amp = 110, W - 110, H - 92, 56
+            step = (x1 - x0) / n
+            for i, v in enumerate(pk):
+                hgt = max(2, int(v * amp))
+                bx = x0 + i * step
+                sd.rounded_rectangle((bx, cy - hgt, bx + step * .55, cy + hgt), 2, fill=(140, 255, 255, 150))
+            bg = Image.alpha_composite(bg, strip)
+        except Exception as e:
+            _real_stderr.write(f"[waivepulse] waveform strip skipped: {e}\n")
+    return bg.convert("RGB")
+
+
+def _job_audio_path(job: dict) -> Optional[Path]:
+    f = job.get("file")
+    if not f:
+        return None
+    p = OUTPUTS_DIR / Path(f).name
+    return p if p.exists() else None
+
+
+def _embed_cover(mp3_path: str, job_id: str, job: dict) -> bool:
+    """Embed the generated cover as ID3 APIC (front cover, JPEG)."""
+    if not (_MUTAGEN and _PIL):
+        return False
+    try:
+        from mutagen.id3 import APIC
+        buf = io.BytesIO()
+        _render_cover(job_id, job, 1000).save(buf, "JPEG", quality=90)
+        try:
+            id3 = ID3(mp3_path)
+        except ID3NoHeaderError:
+            id3 = ID3()
+        id3.delall("APIC")
+        id3.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=buf.getvalue()))
+        id3.save(mp3_path)
+        return True
+    except Exception as e:
+        _real_stderr.write(f"[waivepulse] Cover embed failed: {e}\n")
+        return False
+
+
+def _get_job_or_404(job_id: str) -> dict:
+    _safe_id(job_id, "job id")
+    if job_id not in jobs and not _recover_job(job_id):
+        raise HTTPException(status_code=404, detail="Job not found")
+    return jobs[job_id]
+
+
+@app.get("/cover/{job_id}.png")
+def cover_png(job_id: str, size: int = Query(1200, ge=128, le=3000)):
+    if not _PIL:
+        raise HTTPException(status_code=501, detail="Pillow is not installed")
+    job = _get_job_or_404(job_id)
+    buf = io.BytesIO()
+    _render_cover(job_id, job, size).save(buf, "PNG", optimize=False)
+    return Response(content=buf.getvalue(), media_type="image/png",
+                             headers={"Cache-Control": "no-cache"})
+
+
+def _audio_duration(path: Path) -> float:
+    try:
+        from mutagen import File as MFile
+        m = MFile(str(path))
+        if m is not None and m.info and m.info.length:
+            return float(m.info.length)
+    except Exception:
+        pass
+    return 0.0
+
+
+def _run_video(job_id: str, audio: Path, out: Path, title: str, artist: str):
+    vj = video_jobs[job_id]
+    frame = out.with_suffix(".frame.png")
+    tmp_out = out.with_suffix(".part.mp4")
+    try:
+        vj["message"] = "Drawing cover…"
+        _render_video_frame(job_id, jobs[job_id], str(audio)).save(frame, "PNG")
+        dur = _audio_duration(audio)
+        vj["message"] = "Encoding video…"
+        cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1",
+               "-loop", "1", "-framerate", "6", *(["-t", f"{dur:.3f}"] if dur > 0 else []),
+               "-i", str(frame), "-i", str(audio),
+               "-map", "0:v:0", "-map", "1:a:0",
+               "-c:v", "libx264", "-tune", "stillimage", "-preset", "veryfast", "-crf", "20",
+               "-pix_fmt", "yuv420p", "-r", "6",
+               "-c:a", "aac", "-b:a", "320k",
+               "-shortest", "-movflags", "+faststart", str(tmp_out)]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                encoding="utf-8", errors="replace", creationflags=_NO_WINDOW)
+        for line in proc.stdout:
+            if line.startswith("out_time_us=") and dur > 0:
+                try:
+                    vj["progress"] = min(99, int(int(line.split("=", 1)[1]) / 1e6 / dur * 100))
+                except ValueError:
+                    pass
+        err = proc.stderr.read()
+        proc.wait()
+        if proc.returncode != 0 or not tmp_out.exists():
+            raise RuntimeError(f"ffmpeg failed ({proc.returncode}): {err.strip()[-400:]}")
+        os.replace(tmp_out, out)
+        url = f"/outputs/videos/{out.name}"
+        jobs[job_id]["video"] = {"file": url, "title": title, "artist": artist}
+        _save_history()
+        vj.update(status="done", progress=100, file=url, message="Video ready")
+    except Exception as e:
+        vj.update(status="error", message=str(e))
+        _real_stderr.write(f"[waivepulse] Video render failed for {job_id}: {e}\n")
+    finally:
+        for p in (frame, tmp_out):
+            try:
+                p.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
+def _video_state(job_id: str, job: dict) -> Optional[dict]:
+    """Cached video that still matches the current title/artist, else None."""
+    v = job.get("video") or {}
+    if v.get("file") and (OUTPUTS_DIR / "videos" / Path(v["file"]).name).exists() \
+            and v.get("title") == job.get("title") and v.get("artist", "") == (job.get("artist") or ""):
+        return {"status": "done", "progress": 100, "file": v["file"], "message": "Video ready"}
+    return None
+
+
+@app.post("/video/{job_id}")
+def make_video(job_id: str, force: bool = Query(False)):
+    """Render (or return the cached) 1920×1080 H.264/AAC-320k MP4 of a song for YouTube.
+    Poll GET /video/{job_id} for progress."""
+    if not _FFMPEG:
+        raise HTTPException(status_code=501, detail="ffmpeg is not installed / not on PATH")
+    if not _PIL:
+        raise HTTPException(status_code=501, detail="Pillow is not installed (pip install pillow)")
+    job = _get_job_or_404(job_id)
+    if job.get("status") != "done":
+        raise HTTPException(status_code=400, detail="Song is not finished yet")
+    audio = _job_audio_path(job)
+    if not audio:
+        raise HTTPException(status_code=404, detail="Audio file not found on disk")
+    cur = video_jobs.get(job_id)
+    if cur and cur.get("status") == "rendering":
+        return cur
+    if not force:
+        cached = _video_state(job_id, job)
+        if cached:
+            return cached
+    VIDEOS_DIR.mkdir(exist_ok=True)
+    out = VIDEOS_DIR / f"{audio.stem}.mp4"
+    video_jobs[job_id] = {"status": "rendering", "progress": 0, "file": None, "message": "Starting…"}
+    threading.Thread(target=_run_video, name=f"video-{job_id}", daemon=True,
+                     args=(job_id, audio, out, job.get("title"), job.get("artist") or "")).start()
+    return video_jobs[job_id]
+
+
+@app.get("/video/{job_id}")
+def video_status(job_id: str):
+    job = _get_job_or_404(job_id)
+    cur = video_jobs.get(job_id)
+    if cur and cur.get("status") in ("rendering", "error"):
+        return cur
+    return _video_state(job_id, job) or {"status": "none", "progress": 0, "file": None, "message": ""}
+
 
 
 @app.post("/detect-bpm")

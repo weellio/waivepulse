@@ -35,6 +35,7 @@ Open the Lyrics page. Pick a theme, song structure, tone, and optional rhyme sch
 - **Edit and polish:** the lyrics box is fully editable. A gutter shows syllables per line, each section's average, and ⚠ on lines that break the section's flow
 - **Rhyme scheme:** coloured A/B/C letters per section (`~` = near rhyme)
 - **Rhyme Finder:** double-click any word (or type one) for perfect and near rhymes grouped by syllable count; click one to drop it in
+- Rhyme suggestions skip people's names, places, and brands
 - **Stats bar:** words, lines, sections, and estimated sung length. All offline, using a bundled 30k-word CMU pronunciation dictionary
 
 [Detail section below](#lyric-helper-in-depth)
@@ -56,6 +57,8 @@ The main page. Paste lyrics, pick tags from an organised grid (Genre, Timbre, Mo
 - **Duration estimate:** "≈ 2:45 for these lyrics · use" under the duration slider
 - **✨ Suggest tags:** local Ollama picks tags from the page's own tag list based on your idea or lyrics
 - **Library:** search, ★ favorites filter, and sort above the song list
+- **Ratings:** 1–5 stars per song, a "Top rated" sort, and a minimum-rating filter
+- **🎬 Video:** turns any song into a 1080p H.264 MP4 for YouTube, with generated cover art, title, and a waveform strip. The same cover is embedded in new MP3s
 - Drop external MP3s onto the history panel to play them, or to send them into Studio for stem separation
 
 [Detail section below](#generate-page-in-depth)
@@ -85,6 +88,12 @@ Click the Studio button on any finished song card. Demucs splits the song into s
 - **Loudness-ready exports:** Export Mix can hit a streaming target — YouTube/Spotify −14 LUFS, Apple −16, or Loud −9. It measures the mix to ITU-R BS.1770-4, applies gain, and a look-ahead limiter holds true peak at or below −1 dBTP. The result shows next to the button (e.g. "−14.0 LUFS · −1.2 dBTP")
 - **WAV or MP3 320:** MP3 is encoded in the browser (bundled lamejs), fully offline
 - **LUFS metering:** a live momentary + short-term LUFS meter in the Master FX bar; **MEASURE** reports integrated loudness and true peak without exporting
+- **🎚 Match master:** pick any reference song. The mix is matched to its tonal balance, stereo width, and loudness, with peaks capped at −1 dBTP. Shows before/after LUFS
+- **Automation lanes:** the "A" button on a track opens a lane to draw volume or pan changes. Baked into every export and shifted correctly by Cut
+- **Song markers → YouTube chapters:** mark Intro/Verse/Chorus on the ruler (Shift+M), then copy a chapter list that follows YouTube's rules
+- **Key change:** shift one track or the whole song ±12 semitones, tempo unchanged
+- **Project files (.wpproj):** save and reopen the whole session. Edited audio is packed inside; separated stems are linked
+- **Spectrogram:** see a track's frequencies over time
 
 External songs work too. Drop an MP3 into the history panel, click Studio, and Demucs runs on it the same way. The full Studio feature set is available on imports.
 
@@ -115,6 +124,10 @@ Open the Looper page at any time — it works independently of the AI generation
 - **Probability & ratchets:** per-step 100/75/50/25% chance and 1–4 hit rolls (Prob/Ratchet mode, or Alt/Shift-click), saved with favorites
 - **Euclidean fill:** "E" on any drum row spreads N hits evenly, with rotation
 - **Scale lock & transpose:** 7 scales; keys, piano roll, arpeggiator and MIDI snap into key; shift the whole roll ±12 semitones
+- **Project files (.wploop):** every loop, pattern, bank, synth setting, FX, and song arrangement in one file (Ctrl+S; drag-drop to open). Warns before you lose unsaved work
+- **MIDI file import:** channel 10 fills the drum grid, other channels fill the piano roll; tempo is offered; multi-bar files spread across banks
+- **Better export:** WAV or MP3 320, with a loudness target (−14/−16/−9 LUFS, ≤ −1 dBTP) and a readout. The Song Builder has the same options
+- **Pattern banks A–D + chain:** four drum+roll patterns, switched on the next bar, chained like "A A B A C"; → Loop and MIDI export render the whole chain
 
 [Detail section below](#looper-in-depth)
 
@@ -144,6 +157,10 @@ You can also record lyric videos directly from the browser — no external scree
 | Side-chain ducking | Yes (AudioWorklet) | No | Native or plugin |
 | Stem swap between songs | Yes (built-in library) | No | Manual import |
 | Time-stretch (pitch-preserved) | Yes (server-side phase vocoder) | No | Native or plugin |
+| Export at YouTube loudness (−14 LUFS) | Yes (BS.1770 meter + limiter) | No | Plugin |
+| Reference-track mastering | Yes | No | Plugin |
+| YouTube video + captions | Yes (MP4, SRT/VTT/LRC) | No | No |
+| MIDI keyboard input | Yes (Web MIDI) | No | Native |
 | Loop station (drums, synth, guitar, mic) | Yes | No | External plugin |
 | Subscription | None | Monthly | Monthly or one-time |
 | Usage cap | None | Tokens or credits | None |
@@ -690,6 +707,10 @@ Click the Karaoke button in the Studio transport bar (enabled once separation is
 | Auto-transcribe | "AUTO TX" toggle in the Studio transport. When on, Whisper runs in the background right after separation so Karaoke opens instantly. |
 | Keyboard | Space play/pause, V vocals toggle, N next style, R start/stop recording, Left/Right seek ±5s, Esc back to Studio |
 
+### Caption export
+
+After lyric sync, **⬇ LRC** (line and word timing), **⬇ SRT** and **⬇ VTT** (YouTube-ready captions, no overlaps, 42-character lines) and **📋 Copy timed lyrics** export the aligned lyrics. Section markers are left out. If a song has no timings yet, the button runs Whisper first.
+
 ### Lyric video export (built-in recorder)
 
 Record the Karaoke playback as a WebM video file directly from the browser — no external screen recorder required.
@@ -1164,6 +1185,18 @@ Update a history entry: `{title, artist, favorite, rating}` (rating 0–5). Writ
 
 `{idea, lyrics, title, categories}` → `{tags, model}`. Asks local Ollama for tags, filtered to the allowed tag list.
 
+### `POST /master/match`
+
+`?bits=24|16`, multipart `target` (your mix) + `reference` → mastered WAV, plus `X-Master-*` headers with before/after loudness. `GET /master-status` reports the engine.
+
+### `POST /pitchshift/{sep_id}/{stem_name}?semitones=N` · `POST /pitchshift?semitones=N`
+
+Key change, −12…12 semitones, tempo preserved. The upload form takes multipart `file`. Returns WAV.
+
+### `POST /video/{job_id}` · `GET /video/{job_id}` · `GET /cover/{job_id}.png`
+
+Starts (or with `?force=1` re-renders) a 1080p MP4; poll GET for `{status, progress, file}`. Cover art PNG takes an optional `?size=`.
+
 ### `POST /upload`
 
 Multipart file upload (`file` field) for external audio. Saves to `outputs/`, runs BPM/key detection, creates a `done` history record indistinguishable from a generated song, and returns `{"job_id": "abc12345"}`. The "Load MP3" / drag-drop flow uses this when you click Studio on a locally-loaded card. Accepts MP3, WAV, FLAC, OGG, M4A, AAC.
@@ -1317,6 +1350,10 @@ Normal. The first `POST /generate` after starting the server triggers a model lo
 ### `import error: No module named 'triton'`
 
 Harmless warning from PyTorch on Windows. triton is Linux-only and is present automatically on Linux. Generation works fine on Windows without it.
+
+### BPM/key chips or chord overlay are empty
+
+librosa needs a numba that supports numpy 2.x. If `python -c "import librosa"` fails with `_ARRAY_API not found`, run `pip install "numba>=0.61"` in the HeartMuLa venv. An old numba in the system Python can shadow it when the venv uses system site-packages.
 
 ### History not showing after restart
 

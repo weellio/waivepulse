@@ -10,6 +10,9 @@ import { padLyrics, updateLyrics } from './lyric-sync.js';
 import { nextPreset, renderFrame } from './visualizers.js';
 import { _updateResyncBtn, retranscribe, waitForTranscription } from './transcription.js';
 import { startRecording, stopRecording, isRecording } from './recorder.js';
+import { initCaptionButtons, updateCaptionButtons } from './caption-export.js';
+
+window.addEventListener('karaoke-words', () => updateCaptionButtons());
 
 // ── Controls auto-hide ───────────────────────────────────────────────────────
 document.addEventListener('mousemove',()=>{
@@ -74,10 +77,11 @@ async function init(){
     let title='WAIvePulse';
     if(jobId){
       const jr=await fetch('/status/'+jobId);
-      if(jr.ok){const jd=await jr.json();title=jd.title||title;}
+      if(jr.ok){const jd=await jr.json();title=jd.title||title;S._lyrics=jd.lyrics||'';S._artist=jd.artist||'';}
     }
     document.getElementById('title-bar').textContent=title;
     document.title='Karaoke — '+title;
+    S._title=title;
 
     // Load audio
     await loadStems(sep.stems);
@@ -104,6 +108,7 @@ async function init(){
     hideStatus();
     document.getElementById('controls').classList.remove('hidden');
     _updateResyncBtn();
+    initCaptionButtons();
     startPlayback();
 
   }catch(e){

@@ -18,7 +18,7 @@ $features = [
     'kicker'=> 'HeartMuLa 3B',
     'title' => 'Type lyrics. Get a finished song.',
     'body'  => 'Paste your words, pick a few style tags, and a 3-billion-parameter model writes, sings, and produces a complete track as an MP3 — vocals and all. Jobs queue up; BPM and key are detected automatically.',
-    'points'=> ['Full vocal songs from text', 'Multi-job queue with live progress', 'BPM + key auto-detection', 'Neural watermark + provenance baked in'],
+    'points'=> ['Full vocal songs from text', 'Seed lock + 1–4 takes per click', 'Searchable library with stars + ratings', 'One-click 1080p YouTube video with cover art', 'Neural watermark + provenance baked in'],
   ],
   [
     'tag'   => 'Lyrics',
@@ -26,8 +26,8 @@ $features = [
     'img'   => 'img/lyrics.jpg',
     'kicker'=> 'Local Llama via Ollama',
     'title' => 'Writer’s block, solved — privately.',
-    'body'  => 'Stuck on a line? A local Llama model streams lyrics word-by-word, pre-formatted with the verse and chorus markers the generator expects. Send them straight to the studio with one click.',
-    'points'=> ['Streaming, token-by-token output', 'Theme, structure, tone, rhyme controls', 'Frees VRAM the instant it finishes', 'Never leaves your machine'],
+    'body'  => 'Stuck on a line? A local Llama model streams lyrics word-by-word, pre-formatted with the verse and chorus markers the generator expects. Then polish them: a syllable gutter flags lines that break the flow, rhyme schemes are colour-coded, and a built-in rhyme finder works fully offline.',
+    'points'=> ['Streaming, token-by-token output', 'Syllable counts + rhyme-scheme colours', 'Offline rhyme finder', 'Never leaves your machine'],
   ],
   [
     'tag'   => 'Studio',
@@ -35,8 +35,8 @@ $features = [
     'img'   => 'img/studio.jpg',
     'kicker'=> 'Demucs stem mixer',
     'title' => 'A full DAW in your browser.',
-    'body'  => 'Every song splits into six stems on your GPU — vocals, drums, bass, guitar, piano, other. Mix them with per-track EQ, a master chain, a live visual EQ, mute automation, a rack of creative effects, and a lossless export.',
-    'points'=> ['Six-stem separation', 'Per-track 7-band parametric EQ', 'Clipper · limiter · exciter · noise gate', 'Dattorro reverb · bitcrusher · wavefolder', 'Export the exact mix you hear'],
+    'body'  => 'Every song splits into six stems on your GPU — vocals, drums, bass, guitar, piano, other. Mix them with per-track EQ, volume and pan automation, a master chain, and a rack of creative effects. Match your master to any reference song, then export at YouTube loudness as WAV or MP3.',
+    'points'=> ['Six-stem separation + key change', 'Per-track 7-band EQ + automation lanes', 'Reference-track mastering', 'Export at −14 LUFS · WAV or MP3', 'Song markers → YouTube chapters', 'Save and reopen whole projects'],
   ],
   [
     'tag'   => 'Looper',
@@ -45,7 +45,7 @@ $features = [
     'kicker'=> 'Ed Sheeran in a tab',
     'title' => 'Build a track, layer by layer.',
     'body'  => 'A full loop station: synthesized drums with a 16-step sequencer, a two-octave synth with filter, arpeggiator and ADSR, a polyphonic piano roll for chords, a plucked-guitar voice, a sampler, and a mic with autotune — stacked into six loops. Fill cells to make held notes and read them back on a live sheet-music staff. Overdubs are auto-quantized, so every layer lands on the beat.',
-    'points'=> ['Six layers with quantized overdub', 'Piano roll with held notes → live sheet-music notation', 'Drum sequencer + polyphonic piano roll → push to a loop', 'Two-octave synth: filter · arp · guitar · sampler', 'Per-loop 7-band parametric EQ + mic autotune'],
+    'points'=> ['Six layers with quantized overdub', 'Play it from a real MIDI keyboard', 'Swing, probability, ratchets + pattern banks', 'Piano roll with scale lock → live sheet music', 'Import and export MIDI files', 'Export WAV or MP3 at streaming loudness'],
   ],
   [
     'tag'   => 'Karaoke',
@@ -53,8 +53,8 @@ $features = [
     'img'   => 'img/karaoke.jpg',
     'kicker'=> 'Performance mode',
     'title' => 'Lyric videos, ready to record.',
-    'body'  => 'Whisper transcribes your vocals and aligns them to your original words. A fullscreen visualizer rolls the lyrics in a sliding window over your tuned mix — screen-record it and you’ve got a video for YouTube.',
-    'points'=> ['Five-word sliding lyric window', '20+ reactive visual styles', 'Carries your full Studio mix', 'Toggle vocals for sing-along'],
+    'body'  => 'Whisper transcribes your vocals and aligns them to your original words. A fullscreen visualizer rolls the lyrics over your tuned mix — record it straight to video, and export YouTube-ready captions to go with it.',
+    'points'=> ['Five-word sliding lyric window', '20+ reactive visual styles', 'Built-in lyric-video recorder', 'SRT · VTT · LRC caption export'],
   ],
 ];
 
@@ -78,6 +78,9 @@ $compare = [
   ['Browser stem mixer',     true,  false, false],
   ['Built-in loop station',  true,  false, 'plugin'],
   ['Lyric-video output',     true,  false, false],
+  ['YouTube-loudness export', true, false, 'plugin'],
+  ['Reference-track mastering', true, false, 'plugin'],
+  ['MIDI keyboard input',    true,  false, true],
   ['Subscription',           'None','Monthly','Monthly'],
   ['Usage caps',             'None','Credits','None'],
 ];

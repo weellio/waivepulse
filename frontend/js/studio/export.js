@@ -11,6 +11,7 @@ import { makeSatCurve, makeClipperCurve, makeFolderCurve, makeIR } from './audio
 import { soloCount } from './waveform.js';
 import { measureLoudness, normalizeToTarget } from '../shared/loudness.js';
 import { audioBufferToMp3 } from '../shared/mp3enc.js';
+import { applyAutomationOffline } from './automation.js';
 
 // The three worklet-based effects must be available in the offline context too.
 const OFFLINE_WORKLETS = [
@@ -140,7 +141,12 @@ export async function renderMix() {
       const dlyS = off.createGain(); dlyS.gain.value = t.dlyAmt;
       const src = off.createBufferSource(); src.buffer = t.buffer;
       const ofs = off.createDelay(0.051); ofs.delayTime.value = t.offset || 0;
-      src.connect(ofs); ofs.connect(muteGain); muteGain.connect(gain); gain.connect(pan);
+      // Volume/pan automation lanes (same envelope as live playback) sit between the
+      // VOL gain and the PAN knob, mirroring the live chain gain → autoGain → autoPan → pan.
+      const aGain = off.createGain(); aGain.gain.value = 1;
+      const aPan = off.createStereoPanner(); aPan.pan.value = 0;
+      applyAutomationOffline(t, aGain.gain, aPan.pan);
+      src.connect(ofs); ofs.connect(muteGain); muteGain.connect(gain); gain.connect(aGain); aGain.connect(aPan); aPan.connect(pan);
       // 7-band parametric EQ (matches the live chain: pan → eq → bus/sends)
       let post = pan;
       if (t.eq && !eqIsFlat(t.eq)) { const oeq = applyEqOffline(off, snapshotEq(t.eq)); pan.connect(oeq.input); post = oeq.output; }

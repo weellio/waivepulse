@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WAIvePulse Looper</title>
 <link rel="icon" type="image/png" href="/assets/wave small.png">
-<link rel="stylesheet" href="/css/looper.css?v=22">
+<link rel="stylesheet" href="/css/looper.css?v=23">
 </head>
 <body>
 
@@ -18,6 +18,31 @@
     <a href="/lyrics">Lyrics</a>
     <a href="/looper" class="active">Looper</a>
   </nav>
+  <!-- Project: name · open · save · import MIDI -->
+  <div class="proj-bar">
+    <input id="projName" class="proj-name" placeholder="untitled" spellcheck="false" maxlength="80"
+           oninput="setProjectName(this.value)" title="Project name — used for the .wploop and export file names">
+    <button class="t-btn" id="projOpenBtn" onclick="openProjectDialog()" title="Open a saved .wploop project (or drag one onto the page)">📂 Open</button>
+    <button class="t-btn" id="projSaveBtn" onclick="saveProject()" title="Save everything — loops, patterns, banks, synth, FX, song arrangement — as one .wploop file (Ctrl+S)">💾 Save</button>
+    <button class="t-btn" id="midiImportBtn" onclick="importMidiDialog()" title="Import a .mid file: channel 10 → drum grid, other channels → piano roll (or drag one onto the page)">🎼 Import MIDI</button>
+    <input type="file" id="projFile" accept=".wploop,.zip" hidden onchange="openProjectFile(this)">
+    <input type="file" id="midiFile" accept=".mid,.midi,.rmi,audio/midi" hidden onchange="importMidiFile(this)">
+  </div>
+  <!-- Export format + loudness target (used by ⬇ Export) -->
+  <div class="exp-bar">
+    <span class="tg-label">Export</span>
+    <select id="expFmt" class="at-sel exp-sel" title="⬇ Export file format">
+      <option value="wav">WAV</option>
+      <option value="mp3">MP3 320</option>
+    </select>
+    <select id="expTarget" class="at-sel exp-sel" title="Loudness target — gain to this LUFS with true peak kept ≤ −1 dBTP">
+      <option value="off">Loudness off</option>
+      <option value="-14">−14 LUFS · streaming</option>
+      <option value="-16">−16 LUFS · Apple</option>
+      <option value="-9">−9 LUFS · loud</option>
+    </select>
+    <span id="expReadout" class="exp-readout idle" title="Loudness of the last export (appears after ⬇ Export)">— LUFS</span>
+  </div>
   <button id="help-btn" onclick="showHelp()" title="Help (?)">?</button>
 </div>
 
@@ -75,6 +100,21 @@
 <!-- Status strip -->
 <div id="statusBar">
   <span id="statusMsg">F1–F6 record · 1–8 drums · A–K keys · hold & drag to slide across pads/keys</span>
+  <!-- Pattern banks A–D (drum grid + piano roll together) + chain -->
+  <div class="bank-bar" id="bankBar">
+    <span class="tg-label" title="Pattern banks: each holds a drum pattern AND a piano-roll pattern">Bank</span>
+    <button class="bank-btn" data-b="0" onclick="clickBank(0)" title="Bank A — click to switch (waits for the next bar while playing)">A</button>
+    <button class="bank-btn" data-b="1" onclick="clickBank(1)" title="Bank B — click to switch (waits for the next bar while playing)">B</button>
+    <button class="bank-btn" data-b="2" onclick="clickBank(2)" title="Bank C — click to switch (waits for the next bar while playing)">C</button>
+    <button class="bank-btn" data-b="3" onclick="clickBank(3)" title="Bank D — click to switch (waits for the next bar while playing)">D</button>
+    <button class="ibtn bank-copy" id="bankCopyBtn" onclick="toggleBankCopy()" title="Copy the current bank: click ⧉, then the bank to paste into">⧉ Copy</button>
+    <span class="bank-sep"></span>
+    <span class="tg-label" title="Bank order, one bar each, e.g. A A B A C">Chain</span>
+    <input id="chainInput" class="chain-input" value="A A B A" spellcheck="false" maxlength="48"
+           oninput="setChainStr(this.value)" title="Bank letters, one per bar — e.g. A A B A C">
+    <button class="ibtn" id="chainBtn" onclick="toggleChain()" title="Chain on: the drum sequencer + piano roll follow the chain bar by bar; → Loop and ⬇ MIDI render the whole chain">⛓ Chain</button>
+    <span id="chainPosVal" class="chain-pos"></span>
+  </div>
   <div class="hk-list">
     <span class="hk"><kbd>F1–F6</kbd> loops</span>
     <span class="hk"><kbd>1–8</kbd> drums</span>
@@ -444,23 +484,40 @@
         <label class="sa-chk"><input type="checkbox" id="mo-fx"> bake master FX (reverb/delay)</label>
         <span class="sa-fld">tail <input type="number" id="mo-tail" min="0" max="10" step="0.5" value="2"> s</span>
         <label class="sa-chk"><input type="checkbox" id="mo-24"> 24-bit</label>
+        <span class="sa-fld">format
+          <select id="song-fmt" class="at-sel exp-sel" title="Render Full Track file format (stems are always WAV)">
+            <option value="wav">WAV</option>
+            <option value="mp3">MP3 320</option>
+          </select>
+        </span>
+        <span class="sa-fld">loudness
+          <select id="song-target" class="at-sel exp-sel" title="Gain the full track to this LUFS, true peak ≤ −1 dBTP (applied after normalize/limiter/fades)">
+            <option value="off">Off</option>
+            <option value="-14">−14 LUFS</option>
+            <option value="-16">−16 LUFS</option>
+            <option value="-9">−9 LUFS</option>
+          </select>
+        </span>
       </div>
 
       <!-- Render row -->
       <div class="song-foot">
-        <span id="song-len" class="song-len">—</span>
+        <span class="song-foot-info"><span id="song-len" class="song-len">—</span><span id="song-readout" class="exp-readout" title="Loudness of the last full-track render"></span></span>
         <div class="song-foot-btns">
           <button class="t-btn" id="song-preview-btn" onclick="songTogglePreview()">▶ Preview</button>
           <button class="t-btn" id="song-stop-btn" onclick="songStopPreview()" title="Stop preview" disabled>■ Stop</button>
           <button class="t-btn" id="song-studio-btn" onclick="songToStudio()" title="Send the full track to an open Studio window as a new track" disabled>⇪ Song → Studio</button>
           <button class="t-btn" id="song-stemstudio-btn" onclick="songStemsToStudio()" title="Send each loop as its own full-length track to the Studio" disabled>⇪ Stems → Studio</button>
           <button class="t-btn" onclick="songDownloadStems()" title="Download each loop as its own full-length WAV stem">⬇ Stems</button>
-          <button class="t-btn export" onclick="downloadSong()">⬇ Render Full Track</button>
+          <button class="t-btn export" id="song-render-btn" onclick="downloadSong()">⬇ Render Full Track</button>
         </div>
       </div>
     </div>
   </div>
 </div>
+
+<!-- Drag & drop hint -->
+<div id="dropHint"><div>Drop a <b>.wploop</b> to open it · a <b>.mid</b> to import it</div></div>
 
 <!-- ── Help modal ──────────────────────────────────────────── -->
 <div id="help-modal">
@@ -473,6 +530,29 @@
       <button class="help-close" onclick="closeHelp()">×</button>
     </div>
     <div class="help-body">
+
+      <div class="help-section">
+        <div class="help-section-title">💾 Project — save, open, import</div>
+        <table class="help-table"><tbody>
+          <tr><td>Name box (top bar)</td><td>Project name — used for the <b>.wploop</b>, export and MIDI file names</td></tr>
+          <tr><td><b>💾 Save</b> · <kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>Downloads <b>&lt;name&gt;.wploop</b> — one file with every loop (lossless), per-loop volume / EQ / sync / trim, BPM, count-in, swing, humanize, scale + transpose, drum pattern (velocity, chance, ratchets), piano roll, synth + ADSR + filter + arp, keyboard sample, master FX, banks A–D + chain, and the Song Builder arrangement</td></tr>
+          <tr><td><b>📂 Open</b> · drag &amp; drop</td><td>Restore a .wploop exactly as saved. Drag a .wploop onto the page to open it. Older or newer files open too — anything missing keeps its default</td></tr>
+          <tr><td><b>🎼 Import MIDI</b> · drag &amp; drop</td><td>Load a .mid / .midi: channel 10 fills the drum grid (GM map, fast repeats become ratchets), all other channels fill the piano roll — snapped to 16ths and folded by octaves into the roll's two octaves. Offers the file's tempo. A longer file can go into banks A–D (one bar each) with a chain</td></tr>
+          <tr><td>Unsaved work</td><td><b>✕ Clear All</b>, <b>📂 Open</b> and closing the tab ask first when there are loops or patterns you haven't saved</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">🅰 Pattern banks &amp; chain</div>
+        <p class="help-p">Four banks, each holding a drum pattern <b>and</b> a piano-roll pattern. The grids always show the current bank; edits stay in it.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>A B C D</b> (status bar)</td><td>Switch bank. While the sequencer or roll is playing, the switch is queued (amber) and lands on the next bar line. A dot = the bank has notes</td></tr>
+          <tr><td><b>⧉ Copy</b></td><td>Click ⧉, then a bank: the current bank is pasted into it (build a variation from a copy)</td></tr>
+          <tr><td><b>Chain</b> box</td><td>Bank order, one bar each — e.g. <b>A A B A C</b> (spaces optional, up to 16 bars). Turns red if it has a letter that isn't A–D</td></tr>
+          <tr><td><b>⛓ Chain</b></td><td>On: drums + roll follow the chain bar by bar (read-out shows <i>bar 3/5</i>). <b>→ Loop</b> renders the whole chain into one loop, and <b>⬇ MIDI</b> writes every bar. The chain has to match your loops' length (or divide it evenly) — you get a warning if it wouldn't line up</td></tr>
+          <tr><td>★ Save with Chain on</td><td>A beat or melody favorite saved while Chain is on keeps all four banks' parts + the chain (shown with ⛓). Loading it restores them</td></tr>
+        </tbody></table>
+      </div>
 
       <div class="help-section">
         <div class="help-section-title">🔴 Loops</div>
@@ -597,7 +677,10 @@
           <tr><td><b>Swing</b></td><td>Pushes every off-beat 16th late. <b>0%</b> = straight, <b>50%</b> = light shuffle, <b>100%</b> = full triplet feel (off-beats delayed ⅓ of a 16th). Shared by the drum sequencer and piano roll, and baked into <b>→ Loop</b> renders and MIDI export</td></tr>
           <tr><td><b>Humanize</b></td><td>Random timing (up to ±15 ms) and velocity (±20%) per hit at 100%. Applies to playback and → Loop renders (not MIDI export)</td></tr>
           <tr><td>Master FX</td><td>Global Reverb, Delay (tempo-synced), and Volume</td></tr>
-          <tr><td>⬇ Export</td><td>Render all loops to a single WAV (one cycle)</td></tr>
+          <tr><td>⬇ Export</td><td>Render all loops (one cycle, EQ + volume baked in) in the format picked in the top bar</td></tr>
+          <tr><td><b>Export</b> format (top bar)</td><td><b>WAV</b> (16-bit) or <b>MP3 320</b> kbps</td></tr>
+          <tr><td><b>Loudness</b> target (top bar)</td><td><b>Off</b>, <b>−14 LUFS</b> (Spotify / YouTube), <b>−16 LUFS</b> (Apple), <b>−9 LUFS</b> (loud club master). The mix is gained to the target and a look-ahead limiter keeps true peak at or below <b>−1 dBTP</b></td></tr>
+          <tr><td>LUFS read-out</td><td>After each export: integrated loudness + true peak, e.g. <b>−14.0 LUFS · −1.1 dBTP</b> (hover for before/after + gain). Turns red if the peak is over −1 dBTP with loudness off</td></tr>
           <tr><td>🎼 Song</td><td>Arrange the loops into a full track — see below</td></tr>
           <tr><td>⚡ Bypass</td><td>Diagnostic — route audio straight to output</td></tr>
         </tbody></table>
@@ -612,7 +695,8 @@
           <tr><td>Break block</td><td>A section with no loops on = silence for those beats. The next block brings the groove back in.</td></tr>
           <tr><td>Master row</td><td>Fade in/out, normalize to a target dBFS + soft limiter (stacked loops never clip), optionally bake in the master Reverb/Delay with a tail, and 16- or 24-bit output.</td></tr>
           <tr><td>▶ Preview</td><td>Audition the whole arrangement (with all master processing) before saving.</td></tr>
-          <tr><td>⬇ Render Full Track</td><td>Renders the arrangement (per-loop EQ baked in) to <b>looper-song.wav</b>.</td></tr>
+          <tr><td>⬇ Render Full Track</td><td>Renders the arrangement (per-loop EQ baked in) and downloads it as <b>&lt;name&gt;-song</b>.</td></tr>
+          <tr><td>format · loudness</td><td>Full track as WAV (16/24-bit) or <b>MP3 320</b>, optionally gained to <b>−14 / −16 / −9 LUFS</b> with true peak ≤ −1 dBTP (after normalize, limiter and fades). The LUFS · dBTP read-out appears next to the length. Stems stay WAV.</td></tr>
           <tr><td>⬇ Stems</td><td>Each loop as its own full-length WAV (arrangement applied, un-normalized so they sum cleanly) for mixing in a DAW.</td></tr>
           <tr><td>⇪ Song / Stems → Studio</td><td>With a Studio window open, send the full track — or every stem as its own track — straight into the Studio to keep producing.</td></tr>
         </tbody></table>
@@ -622,9 +706,9 @@
         <div class="help-section-title">🎹 MIDI Export</div>
         <p class="help-p">Export your piano roll melody and drum pattern as a Standard MIDI File (.mid) for use in any DAW.</p>
         <table class="help-table"><tbody>
-          <tr><td><b>MIDI</b> button</td><td>Downloads the current piano roll + drum sequencer as a .mid file. The file contains a tempo track, a melody track (from the piano roll), and a drum track (channel 10, GM percussion mapping).</td></tr>
+          <tr><td><b>MIDI</b> button</td><td>Downloads the current piano roll + drum sequencer as a .mid file. The file contains a tempo track, a melody track (from the piano roll), and a drum track (channel 10, GM percussion mapping). With <b>⛓ Chain</b> on, every bar of the chain is written in order.</td></tr>
           <tr><td>Format</td><td>Standard MIDI File Format 1, 480 PPQN. Each sequencer step = one 16th note (120 ticks). Swing shifts off-beat 16ths; drum ratchets export as real repeated hits; probability steps export as always-on.</td></tr>
-          <tr><td>Drums</td><td>Mapped to General MIDI percussion: Kick=36, Snare=38, Hi-Hat=42, Open HH=46, Clap=39, Tom=45, 808=36 (low), Perc=56.</td></tr>
+          <tr><td>Drums</td><td>Mapped to General MIDI percussion: Kick=36, Snare=38, Hi-Hat=42, Open HH=46, Clap=39, Tom=45, 808=35 (acoustic bass drum), Perc=56. Import reads this map back (plus 40 snare, 44 pedal hat, other toms; anything else → Perc).</td></tr>
           <tr><td>Melody</td><td>Notes from the piano roll with correct MIDI note numbers, durations from held-note lengths.</td></tr>
         </tbody></table>
       </div>

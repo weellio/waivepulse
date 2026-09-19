@@ -2,6 +2,8 @@
 import { S } from './state.js';
 import { fmtTime } from './util.js';
 import { redrawAll, soloCount } from './waveform.js';
+import { scheduleAutomation, holdAutomation } from './automation.js';
+import { renderMarkers } from './markers.js';
 
 export function getCanvasWidth() { return document.getElementById('content-area').clientWidth * S._zoom; }
 
@@ -38,6 +40,7 @@ export function startPlayback() {
   }
   scheduleMasterFade(offset);
   S._playing = true;
+  scheduleAutomation();              // volume/pan lanes, anchored to this start
   const btn = document.getElementById('play-btn');
   btn.classList.add('active'); btn.textContent = '⏸';
 }
@@ -80,12 +83,14 @@ export function setFadeOut(v) {
 
 export function pausePlayback() {
   S._startOff = currentPosition(); stopSources(); S._playing = false;
+  holdAutomation();
   const btn = document.getElementById('play-btn');
   btn.classList.remove('active'); btn.textContent = '▶';
 }
 
 export function stopPlayback() {
   S._startOff = 0; stopSources(); S._playing = false;
+  holdAutomation();
   if (S._fadeGain) { S._fadeGain.gain.cancelScheduledValues(S._actx.currentTime); S._fadeGain.gain.setValueAtTime(1, S._actx.currentTime); }
   const btn = document.getElementById('play-btn');
   btn.classList.remove('active'); btn.textContent = '▶';
@@ -185,6 +190,7 @@ export function buildRuler() {
     tick.textContent = fmtTime(t);
     ruler.appendChild(tick);
   }
+  renderMarkers();                    // song-section flags live on the ruler
 }
 
 export function niceStep(dur, px) {
