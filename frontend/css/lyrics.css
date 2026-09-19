@@ -42,7 +42,7 @@
     display: block; font-size: 11px; font-weight: 600; color: #6a6a78;
     letter-spacing: .8px; text-transform: uppercase; margin-bottom: 6px;
   }
-  label .hint { color: #444; text-transform: none; font-weight: normal; letter-spacing: 0; margin-left: 6px; }
+  label .hint { color: #666; text-transform: none; font-weight: normal; letter-spacing: 0; margin-left: 6px; }
   input[type=text], textarea, select {
     width: 100%; background: #0a0a10; border: 1px solid #2a2a38; color: #e2e2e8;
     padding: 9px 11px; border-radius: 6px; font-size: 13px; font-family: inherit;
@@ -50,9 +50,16 @@
   }
   input[type=text]:focus, textarea:focus, select:focus { outline: none; border-color: #4a8a8a; }
   textarea { resize: vertical; min-height: 56px; line-height: 1.5; }
+  /* Lyrics editor: textarea over a highlight backdrop, with a gutter on the left.
+     #output and .lyr-backdrop MUST share font, padding and wrapping rules. */
+  #output, .lyr-backdrop {
+    font-family: 'Courier New', monospace; font-size: 13.5px; line-height: 1.75;
+    white-space: pre-wrap; overflow-wrap: break-word; word-break: normal;
+    padding: 9px 11px; letter-spacing: 0; tab-size: 4;
+  }
   #output {
-    min-height: 360px; font-family: 'Courier New', monospace; font-size: 12.5px;
-    line-height: 1.7; white-space: pre-wrap;
+    min-height: 420px; position: relative; z-index: 1; background: transparent;
+    border-radius: 0 6px 6px 0; display: block; overflow-y: auto;
   }
 
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -144,7 +151,7 @@
   #copyToast.show { opacity: 1; }
 
   .help-note {
-    font-size: 11px; color: #555; line-height: 1.6; padding: 10px 12px;
+    font-size: 11.5px; color: #8a8a96; line-height: 1.6; padding: 10px 12px;
     background: #0a0a10; border: 1px solid #1a1a24; border-radius: 6px;
   }
   .help-note code { background: #1a1a24; padding: 1px 5px; border-radius: 3px; color: #8cffff; }
@@ -184,3 +191,110 @@
   .install-options a { color: #8cffff; text-decoration: none; font-size: 12px; }
   .install-options a:hover { text-decoration: underline; }
   .install-hint { color: #666; font-size: 11px; }
+
+  /* ---- Lyrics editor: gutter + backdrop ---------------------------------- */
+  .h2-hint { font-size: 11px; font-weight: 400; color: #8a8a98; letter-spacing: 0; margin-left: 8px; }
+  .lyr-toolbar { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+  .lyr-legend {
+    flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 4px;
+    font-size: 12px; color: #a8a8b4; line-height: 1.5;
+  }
+  .lyr-legend > span { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .lyr-legend b { color: #e2e2e8; }
+  .lg-num { font-weight: 700; color: #e2e2e8; font-size: 12.5px; min-width: 22px; text-align: center; }
+  .lg-num.dev { color: #ffb454; }
+  button.small { padding: 7px 11px; font-size: 12px; flex: none; }
+
+  .lyr-editor { display: flex; align-items: flex-start; }
+  .lyr-gutter {
+    flex: none; width: 84px; position: relative; overflow: hidden;
+    background: #0d0d15; border: 1px solid #2a2a38; border-right: 1px solid #22222e;
+    border-radius: 6px 0 0 6px;
+  }
+  .lyr-gutter-inner { position: absolute; top: 0; left: 0; right: 0; will-change: transform; }
+  .lyr-textwrap { flex: 1; min-width: 0; position: relative; background: #0a0a10; border-radius: 0 6px 6px 0; }
+  .lyr-backdrop {
+    position: absolute; top: 1px; left: 1px; overflow: hidden; pointer-events: none;
+    color: transparent; box-sizing: border-box; z-index: 0;
+  }
+  .lyr-backdrop .bl { position: relative; }
+  .lyr-backdrop .bl-sec { background: rgba(140,255,255,.06); border-radius: 3px; }
+  .lyr-backdrop .bl-dev { background: rgba(255,180,84,.08); border-radius: 3px; }
+  .lyr-backdrop .bd-meta {
+    position: absolute; right: 6px; top: 0; color: #7fc4c4;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 11px;
+  }
+  .lyr-backdrop mark.rh { color: transparent; background: var(--rb); box-shadow: inset 0 -2px 0 var(--rc); border-radius: 3px; }
+
+  .g-row {
+    position: absolute; left: 0; right: 0; display: flex; align-items: center;
+    justify-content: space-between; padding: 0 7px 0 8px; gap: 4px;
+  }
+  .g-click { cursor: pointer; }
+  .g-click:hover { background: rgba(140,255,255,.07); }
+  .g-syl {
+    font-weight: 700; font-size: 13px; color: #e8e8ef; font-variant-numeric: tabular-nums;
+    min-width: 30px; text-align: right;
+  }
+  .g-syl.dev { color: #ffb454; }
+  .g-rh {
+    display: inline-block; min-width: 24px; text-align: center; font-weight: 700; font-size: 13px;
+    line-height: 19px; padding: 0 4px; border-radius: 4px;
+    color: var(--rc, #9a9aa8); background: var(--rb, transparent);
+  }
+  .g-rh small { font-size: 10px; font-weight: 600; opacity: .85; }
+  .g-rh.solo { color: #80808f; }
+  .g-sec { justify-content: center; font-size: 11.5px; color: #8cffff; font-weight: 600; }
+
+  .c0 { --rc: #ff9e64; --rb: rgba(255,158,100,.20); }
+  .c1 { --rc: #7dcfff; --rb: rgba(125,207,255,.20); }
+  .c2 { --rc: #c3a6ff; --rb: rgba(195,166,255,.22); }
+  .c3 { --rc: #9ece6a; --rb: rgba(158,206,106,.20); }
+  .c4 { --rc: #ff7a93; --rb: rgba(255,122,147,.20); }
+  .c5 { --rc: #e8c86a; --rb: rgba(232,200,106,.20); }
+  .c6 { --rc: #5fe0c8; --rb: rgba(95,224,200,.20); }
+  .c7 { --rc: #a9b8ff; --rb: rgba(169,184,255,.22); }
+
+  .lyr-editor.helpers-off .lyr-gutter { display: none; }
+  .lyr-editor.helpers-off #output { border-radius: 6px; }
+  .lyr-editor.helpers-off .lyr-textwrap { border-radius: 6px; }
+
+  .lyr-stats {
+    display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: #9a9aa8;
+    padding: 8px 12px; background: #0a0a10; border: 1px solid #1e1e2a; border-radius: 6px;
+  }
+  .lyr-stats b { color: #e8e8ef; font-weight: 700; }
+  .lyr-stats .st-empty { font-style: italic; color: #777; }
+
+  /* ---- Rhyme finder ------------------------------------------------------ */
+  .rhyme-finder {
+    display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid #1e1e2a;
+  }
+  .rhyme-finder h3 { font-size: .9rem; font-weight: 600; color: #8cffff; letter-spacing: .4px; }
+  .rf-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  .rf-controls input { flex: 1; min-width: 140px; font-size: 14px; }
+  .rf-controls button { padding: 8px 12px; font-size: 12.5px; }
+  .rf-tip { font-size: 12px; color: #9a9aa8; line-height: 1.5; }
+  #rhymeResults { max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+  #rhymeResults:empty { display: none; }
+  .rf-head { font-size: 13px; color: #cfcfd8; }
+  .rf-head b { color: #fff; }
+  .rf-msg { font-size: 12.5px; color: #e0b070; line-height: 1.5; }
+  .rf-block { display: flex; flex-direction: column; gap: 8px; }
+  .rf-title {
+    font-size: 11px; font-weight: 700; color: #8cffff; letter-spacing: .8px; text-transform: uppercase;
+  }
+  .rf-title span { color: #777; font-weight: 400; margin-left: 4px; }
+  .rf-none { font-size: 12px; color: #777; font-style: italic; }
+  .rf-group { display: flex; gap: 10px; align-items: flex-start; }
+  .rf-syl { flex: none; width: 76px; font-size: 11.5px; color: #9a9aa8; padding-top: 6px; }
+  .rf-words { display: flex; flex-wrap: wrap; gap: 6px; }
+  button.rf-word {
+    background: #0a0a10; color: #e8e8ef; border: 1px solid #2f2f40; padding: 4px 11px;
+    border-radius: 14px; font-size: 13px; font-weight: 500; letter-spacing: .2px;
+  }
+  button.rf-word:hover { border-color: #4a8a8a; color: #8cffff; filter: none; }
+  button.rf-word.near { border-style: dashed; color: #c8c8d4; }
+  .dict-state { font-size: 11px; color: #666; }
+  .dict-state.ok { color: #4f9a74; }
+  .dict-state.err { color: #e07a7a; }

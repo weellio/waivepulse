@@ -1,6 +1,6 @@
 docs/
 outputs/
-lyrics/
+/lyrics/
 history.json*
 .claude/
 .credentials/

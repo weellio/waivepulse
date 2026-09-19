@@ -6,6 +6,21 @@
 <title>WAIvePulse Studio</title>
 <link rel="icon" type="image/png" href="/assets/wave small.png">
 <link rel="stylesheet" href="/css/studio.css">
+<style>
+/* Export format / loudness target selects + LUFS meter cell (studio-local styles) */
+#transport{flex-wrap:wrap;row-gap:6px}  /* narrow windows: wrap instead of clipping the right-hand buttons */
+.exp-sel{font-size:10px;background:#0a1e1e;color:#8cffff;border:1px solid #0d6b6b;border-radius:5px;padding:0 2px;cursor:pointer;height:28px;flex-shrink:0}
+#export-fmt{width:62px}#export-target{width:74px}
+.exp-sel:hover{border-color:#1ab8b8}
+.exp-sel option{background:#131313;color:#ddd}
+#loud-cell .lufs-box{display:flex;flex-direction:column;gap:2px;min-width:96px}
+#loud-cell .lufs-nums{display:flex;gap:8px;font-size:10px;color:#666;white-space:nowrap}
+#loud-cell .lufs-nums b{font-family:'Courier New',monospace;color:#8cffff;font-weight:700;display:inline-block;min-width:32px;text-align:right}
+#loud-cell .lufs-track{height:3px;background:#161616;border-radius:2px;overflow:hidden}
+#lufs-bar{height:100%;width:0;background:#1a3a3a;transition:width .09s linear}
+#loud-readout{font-size:10px;color:#8cffff;font-family:'Courier New',monospace;white-space:nowrap;cursor:help}
+#loud-readout b{color:#ddd;font-family:inherit;font-weight:600}
+</style>
 </head>
 <body>
 
@@ -53,6 +68,16 @@
   <span id="master-vol-label" style="font-size:10px;color:#8cffff;min-width:30px;font-family:'Courier New',monospace;text-align:right">100%</span>
   <div class="t-divider"></div>
   <button id="export-btn" disabled onclick="exportMix()">⬇ Export Mix</button>
+  <select id="export-fmt" class="exp-sel" title="Export format — WAV (lossless 16-bit) or MP3 320 kbps">
+    <option value="wav">WAV</option>
+    <option value="mp3">MP3 320</option>
+  </select>
+  <select id="export-target" class="exp-sel" title="Loudness target for Export Mix — gain + true-peak limiter so the file lands on the platform's LUFS, peaks kept ≤ −1 dBTP">
+    <option value="off">LUFS off</option>
+    <option value="yt">−14 YouTube/Spotify</option>
+    <option value="apple">−16 Apple</option>
+    <option value="loud">−9 Loud</option>
+  </select>
   <button id="zip-btn"    disabled onclick="downloadZip()">⬇ Stems</button>
   <div class="t-divider"></div>
   <button class="t-btn" style="font-size:10px;width:auto;padding:0 9px" title="Import audio track (or drag & drop)" onclick="document.getElementById('_importInput').click()">＋ Track</button>
@@ -130,6 +155,16 @@
     <span class="fx-ctl">tgt<select id="sc-tgt-sel" class="fx-sel" style="font-size:10px;background:#1a1a1a;color:#aaa;border:1px solid #333;border-radius:3px;padding:1px 4px"></select></span>
     <span class="fx-ctl">thresh<input type="range" id="sc-thresh" min="-60" max="0" step="1" value="-20" oninput="setSidechainParam('threshold',this.value);document.getElementById('sc-thresh-label').textContent=this.value+'dB'"><span class="fx-rd" id="sc-thresh-label">-20dB</span></span>
     <span class="fx-ctl">ratio<input type="range" id="sc-ratio" min="1" max="20" step="0.5" value="4" oninput="setSidechainParam('ratio',this.value);document.getElementById('sc-ratio-label').textContent=this.value+':1'"><span class="fx-rd" id="sc-ratio-label">4:1</span></span>
+  </div>
+  <div class="t-divider"></div>
+  <div class="fx-cell" id="loud-cell">
+    <span class="fx-rd" style="color:#8cffff;font-weight:700;letter-spacing:.06em;min-width:0" title="Live loudness of the master output (EBU R128): M = momentary (400 ms), S = short-term (3 s), in LUFS. Streaming targets: −14 (YouTube/Spotify), −16 (Apple).">LUFS</span>
+    <div class="lufs-box" title="M = momentary 400 ms · S = short-term 3 s (LUFS, K-weighted). Updates while playing.">
+      <div class="lufs-nums"><span>M <b id="lufs-m">--.-</b></span><span>S <b id="lufs-s">--.-</b></span></div>
+      <div class="lufs-track"><div id="lufs-bar"></div></div>
+    </div>
+    <button class="t-btn fx-toggle" id="measure-btn" disabled title="Render the whole mix offline and measure its integrated loudness (LUFS) and true peak (dBTP) — nothing is downloaded" onclick="measureMix()">MEASURE</button>
+    <span id="loud-readout" title="Integrated loudness + true peak of the last Measure / Export Mix"></span>
   </div>
 </div>
 
@@ -362,7 +397,11 @@
         <div class="help-section-title">💾 Export</div>
         <table class="help-table"><tbody>
           <tr><td><b>Audio info bar</b></td><td>Displays sample rate, channel count, and — when available — detected BPM and musical key (e.g. "44.1 kHz · stereo · 120 BPM · C major").</td></tr>
-          <tr><td><b>⬇ Export Mix</b></td><td>Renders the full mix to a lossless 16-bit WAV file. All knobs, EQ, reverb, delay, mute regions, looped imports, and the master chain are baked in. This is your final output — use it for sharing, uploading, or loading into a DAW.</td></tr>
+          <tr><td><b>⬇ Export Mix</b></td><td>Renders the full mix to a lossless 16-bit WAV (or MP3 320) file. All knobs, EQ, reverb, delay, mute regions, looped imports, and the master chain are baked in. This is your final output — use it for sharing, uploading, or loading into a DAW.</td></tr>
+          <tr><td><b>WAV / MP3 320</b></td><td>Format picker next to Export Mix. <b>WAV</b> is lossless 16-bit. <b>MP3 320</b> encodes a 320 kbps stereo MP3 right in the browser (no upload, works offline) — handy for phones, email, and quick shares.</td></tr>
+          <tr><td><b>Loudness target</b></td><td>Makes the exported file hit a platform's loudness: <b>YouTube/Spotify −14</b>, <b>Apple −16</b>, or <b>Loud −9</b> (club/competitive). The mix is measured (ITU-R BS.1770-4 integrated LUFS), turned up or down to the target, and a look-ahead limiter keeps true peaks at or below <b>−1 dBTP</b> so lossy encoders don't clip. <b>Off</b> exports exactly what you hear. Either way the result shows in the <b>LUFS</b> cell, e.g. <i>Exported: −14.0 LUFS · −1.0 dBTP</i> (hover it for gain and limiting detail).</td></tr>
+          <tr><td><b>LUFS meter</b></td><td>End of the Master FX bar. Live loudness of the master output while playing: <b>M</b> = momentary (last 400 ms), <b>S</b> = short-term (last 3 s). The bar turns red above −8 LUFS.</td></tr>
+          <tr><td><b>MEASURE</b></td><td>Renders the whole mix offline and reports its integrated loudness and true peak, without downloading anything. Use it to see how far you are from −14 before exporting.</td></tr>
           <tr><td><b>⬇ Stems</b></td><td>Download the six raw separated stems as a ZIP. Use them in any DAW (Pro Tools, Logic, Ableton, etc.) for full professional editing.</td></tr>
           <tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Export Mix shortcut</td></tr>
         </tbody></table>

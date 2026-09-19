@@ -6,6 +6,8 @@ import { ensureCtx } from './core.js';
 import { spawnVoice } from './synth.js';
 import { drawWave, playSlot } from './loops.js';
 import { fmtSec, setStatus } from './util.js';
+import { swingOffset, humanizeTime, humanizeVel } from './groove.js';
+import { SCALES, NOTE_NAMES as SC_NAMES, inScale, snapMidi, isLocked } from './scale.js';
 
 const STEPS = 16;
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -237,6 +239,7 @@ export function applyPseqPattern(grid) {
       S.pseqPattern[r][s] = grid[r] ? (grid[r][s] || 0) : 0;
       if (S.pseqCells.length) S.pseqCells[r][s].classList.toggle('on', !!S.pseqPattern[r][s]);
     }
+  S.rollTranspose = 0; syncScaleUI();
   renderSheet();
 }
 
@@ -270,20 +273,98 @@ export function buildPianoRoll() {
     lbl.className = 'proll-lbl' + (p.sharp ? ' sharp' : '');
     lbl.textContent = p.name;
     grid.appendChild(lbl);
+    S.pseqLbls = S.pseqLbls || [];
+    S.pseqLbls[row] = lbl;
     for (let s = 0; s < STEPS; s++) {
       const c = document.createElement('div');
       c.className = 'proll-cell' + (p.sharp ? ' sharp' : '') + (s % 4 === 0 && s > 0 ? ' proll-beat' : '');
       if (S.pseqPattern[row][s]) c.classList.add('on');
       c.addEventListener('pointerdown', e => {
         e.preventDefault();
-        S.pseqPattern[row][s] = S.pseqPattern[row][s] ? 0 : 1;
-        c.classList.toggle('on', !!S.pseqPattern[row][s]);
+        // Scale lock: a click on a dimmed (out-of-scale) row lands on the nearest in-scale row
+        const r = snapRow(row);
+        S.pseqPattern[r][s] = S.pseqPattern[r][s] ? 0 : 1;
+        S.pseqCells[r][s].classList.toggle('on', !!S.pseqPattern[r][s]);
         renderSheet();                  // keep the notation in sync with the grid
       });
       S.pseqCells[row].push(c);
       grid.appendChild(c);
     }
   });
+  paintScaleRows();
+}
+
+// ── Scale lock + transpose ────────────────────────────────────────────────────
+const TOP_MIDI = () => PR[0].midi, BOT_MIDI = () => PR[ROWS - 1].midi;
+
+// Row the click should land on under scale lock (itself when in scale / lock off).
+function snapRow(row) {
+  if (!isLocked(S.scaleName)) return row;
+  const m = snapMidi(PR[row].midi, S.scaleRoot, S.scaleName, BOT_MIDI(), TOP_MIDI());
+  return TOP_MIDI() - m;
+}
+
+// Dim the rows (label + cells) that are outside the locked scale.
+export function paintScaleRows() {
+  if (!S.pseqCells.length) return;
+  const locked = isLocked(S.scaleName);
+  for (let r = 0; r < ROWS; r++) {
+    const out = locked && !inScale(PR[r].midi, S.scaleRoot, S.scaleName);
+    const root = locked && ((PR[r].midi - S.scaleRoot) % 12 + 12) % 12 === 0;
+    S.pseqLbls?.[r]?.classList.toggle('out', out);
+    S.pseqLbls?.[r]?.classList.toggle('root', root);
+    S.pseqCells[r].forEach(c => c.classList.toggle('out', out));
+  }
+}
+
+function syncScaleUI() {
+  const k = document.getElementById('scaleRoot'); if (k) k.value = String(S.scaleRoot);
+  const n = document.getElementById('scaleSel');  if (n) n.value = S.scaleName;
+  const t = document.getElementById('trVal');
+  if (t) t.textContent = (S.rollTranspose > 0 ? '+' : '') + S.rollTranspose;
+}
+
+export function setScaleRoot(v) {
+  S.scaleRoot = ((parseInt(v, 10) || 0) % 12 + 12) % 12;
+  paintScaleRows(); syncScaleUI();
+  if (isLocked(S.scaleName)) setStatus(`Scale lock: ${SC_NAMES[S.scaleRoot]} ${SCALES[S.scaleName].label}`);
+}
+
+export function setScaleName(v) {
+  S.scaleName = SCALES[v] ? v : 'chromatic';
+  paintScaleRows(); syncScaleUI();
+  setStatus(isLocked(S.scaleName)
+    ? `Scale lock: ${SC_NAMES[S.scaleRoot]} ${SCALES[S.scaleName].label} — keys, roll clicks and MIDI snap into the scale`
+    : 'Scale lock off (chromatic)');
+}
+
+// Shift every roll note by `semi` semitones (the whole pattern, not the octave
+// view). Refuses if a note would leave the 2-octave grid. With scale lock on, the
+// key root moves too, so the transposed pattern stays in (the new) key.
+export function transposeRoll(semi) {
+  const next = S.rollTranspose + semi;
+  if (next > 12 || next < -12) { setStatus('Transpose limit is ±12 semitones'); return; }
+  const has = S.pseqPattern.some(row => row.some(v => v));
+  if (has) {
+    for (let r = 0; r < ROWS; r++) {
+      if (!S.pseqPattern[r].some(v => v)) continue;
+      const nr = r - semi;                            // higher pitch = lower row index
+      if (nr < 0 || nr >= ROWS) { setStatus('Can’t transpose — a note would fall off the roll (try OCT)'); return; }
+    }
+    const src = S.pseqPattern.map(row => row.slice());
+    for (let r = 0; r < ROWS; r++) {
+      const from = r + semi;
+      S.pseqPattern[r] = from >= 0 && from < ROWS ? src[from].slice() : new Array(STEPS).fill(0);
+    }
+    for (let r = 0; r < ROWS; r++)
+      for (let s = 0; s < STEPS; s++)
+        if (S.pseqCells.length) S.pseqCells[r][s].classList.toggle('on', !!S.pseqPattern[r][s]);
+  }
+  S.rollTranspose = next;
+  if (isLocked(S.scaleName)) S.scaleRoot = ((S.scaleRoot + semi) % 12 + 12) % 12;
+  paintScaleRows(); syncScaleUI(); renderSheet();
+  setStatus(`Roll transposed ${semi > 0 ? 'up' : 'down'} → ${next > 0 ? '+' : ''}${next} st` +
+            (isLocked(S.scaleName) ? ` (key now ${SC_NAMES[S.scaleRoot]})` : ''));
 }
 
 export function clearPseq() {
@@ -292,6 +373,7 @@ export function clearPseq() {
       S.pseqPattern[r][s] = 0;
       if (S.pseqCells.length) S.pseqCells[r][s].classList.remove('on');
     }
+  S.rollTranspose = 0; syncScaleUI();
   renderSheet();
   setStatus('Piano roll cleared');
 }
@@ -329,9 +411,13 @@ export function runPseq() {
   while (S.pseqNextTime < S.ctx.currentTime + 0.1) {
     const step = S.pseqStep;
     // spawn one sustained voice per run that STARTS on this step (held = its length)
+    // swing: the note starts late on odd steps and ends where its last step ends
+    const on = S.pseqNextTime + swingOffset(step, stepDur, S.swing);
     for (const r of runs) {
       if (r.start !== step) continue;
-      spawnVoice(r.hz, { when: S.pseqNextTime, gate: r.len * stepDur * 0.92, vel: 0.85 });
+      const end  = S.pseqNextTime + r.len * stepDur + swingOffset(r.start + r.len, stepDur, S.swing);
+      const when = Math.max(S.ctx.currentTime, on + humanizeTime(S.humanize));
+      spawnVoice(r.hz, { when, gate: Math.max(0.02, (end - on) * 0.92), vel: humanizeVel(0.85, S.humanize) });
     }
     S.pseqNextTime += stepDur;
     S.pseqStep = (S.pseqStep + 1) % STEPS;
@@ -365,8 +451,12 @@ export async function pushPseqToLoop() {
   const off     = new OfflineAudioContext(2, Math.ceil((bar + tail) * sr), sr);
 
   // one sustained voice per run (held note), so the render matches what you hear/see
+  // (same swing + humanize as live playback)
   for (const r of pseqRuns()) {
-    spawnVoice(r.hz, { when: r.start * stepDur, gate: r.len * stepDur * 0.95, vel: 0.85, actx: off, dest: off.destination });
+    const on  = r.start * stepDur + swingOffset(r.start, stepDur, S.swing);
+    const end = (r.start + r.len) * stepDur + swingOffset(r.start + r.len, stepDur, S.swing);
+    spawnVoice(r.hz, { when: Math.max(0, on + humanizeTime(S.humanize)), gate: Math.max(0.02, (end - on) * 0.95),
+                       vel: humanizeVel(0.85, S.humanize), actx: off, dest: off.destination });
   }
   const rendered = await off.startRendering();
 

@@ -460,3 +460,50 @@ input[type=range].vslider::-webkit-slider-thumb{-webkit-appearance:none;width:11
 .help-modal kbd,#help-panel kbd{display:inline-block;background:#1c1c1c;border:1px solid #383838;
   border-bottom-width:2px;border-radius:3px;padding:1px 5px;font-family:'Courier New',monospace;
   font-size:10px;color:#ccc;white-space:nowrap;line-height:1.4}
+
+/* ── Groove (swing + humanize) in the transport ─────────────── */
+.groove-tg{gap:5px}
+input[type=range].vslider.groove-slider{flex:0 0 54px;width:54px}
+.groove-val{font-size:10px;font-weight:700;color:var(--accent);min-width:28px;
+  font-variant-numeric:tabular-nums}
+
+/* ── Step-edit bar + probability / ratchet / Euclid on the drum sequencer ── */
+.stepedit-bar{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+.stepedit-bar .beat-lbl{margin-right:2px}
+.stepedit-btn{padding:2px 7px;font-size:9px}
+.stepedit-hint{font-size:8px;color:var(--txt2);margin-left:4px}
+.stepedit-hint b{color:var(--amber)}
+.seq-euclid{width:14px;height:19px;padding:0;border-radius:3px;border:1px solid var(--b2);
+  background:var(--b1);color:var(--amber);font-size:8px;font-weight:800;cursor:pointer;line-height:1}
+.seq-euclid:hover{border-color:rgba(251,191,36,.5);background:rgba(251,191,36,.12)}
+.seq-step.prob{border-style:dashed}
+.seq-badge{position:absolute;top:0;right:1px;font-size:6.5px;font-weight:800;line-height:1;
+  color:#fff;text-shadow:0 0 2px #000,0 0 2px #000;pointer-events:none;letter-spacing:-.2px}
+
+/* ── Scale lock: dim out-of-scale piano-roll rows, mark the root ── */
+.scale-sel{flex:0 0 auto;font-size:10px;padding:2px 4px}
+.proll-lbl.out{opacity:.22}
+.proll-lbl.root{color:var(--amber);font-weight:800}
+.proll-cell.out{opacity:.28;background:#0c0c10}
+.proll-cell.out.on{opacity:.85}
+
+/* ── MIDI In card (side column) ─────────────────────────────── */
+#midiIn{background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);
+  padding:12px 14px;display:flex;flex-direction:column;gap:7px;flex-shrink:0}
+#midiIn .fx-hdr{margin-bottom:2px;display:flex;align-items:center;gap:6px}
+.midi-row{display:flex;gap:5px;flex-wrap:wrap}
+.midi-row .ibtn{flex:1}
+.midi-sel{flex:0 0 auto;width:100%;font-size:10px;padding:3px 4px}
+.midi-sel:disabled{opacity:.45}
+.midi-stat{font-size:9px;color:var(--txt2);line-height:1.35}
+.midi-stat.ok{color:var(--green)}
+.midi-stat.warn{color:var(--amber)}
+.midi-stat.err{color:var(--red)}
+.midi-dot{width:7px;height:7px;border-radius:50%;background:var(--b2);margin-left:auto;transition:background .08s}
+.midi-dot.hit{background:var(--accent);box-shadow:0 0 6px rgba(140,255,255,.7)}
+/* With the MIDI card in the side column, Master FX sizes to its content so the
+   mic/autotune card keeps the flexible space (and its mic button isn't clipped). */
+.icol.side #masterFX{flex:0 0 auto}
+/* Short screens: the side column scrolls instead of crushing (clipping) the mic card */
+.icol.side{overflow-y:auto;scrollbar-width:thin}
+.icol.side #micBar{flex:1 0 auto}

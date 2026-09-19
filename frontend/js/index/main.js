@@ -1,12 +1,15 @@
 import { showToast } from './util.js';
 import {
   buildTagGrid, clearTags, randomizeTags, getTagsString,
-  saveTagPreset, applyPreset, deletePreset, renderPresets,
+  saveTagPreset, applyPreset, deletePreset, renderPresets, suggestTags,
 } from './tags.js';
 import {
   toggleSidebar, toggleCard, toggleAdvanced, updateDurLabel,
   loadJobToForm, loadTemplate,
+  updateDurHint, useDurEstimate, onInstrumentalToggle,
+  setSeedLocked, toggleSeedLock, randomizeSeed, onSeedInput, setTakes,
 } from './ui.js';
+import { applyLibraryFilter, toggleFavOnly, toggleFavorite, useSeed } from './library.js';
 import { generate, cancelJob, checkModelStatus } from './generate.js';
 import {
   jobCardHTML, getLMProgress, getCodecProgress,
@@ -28,10 +31,14 @@ import {
 Object.assign(window, {
   // tags
   buildTagGrid, clearTags, randomizeTags, getTagsString,
-  saveTagPreset, applyPreset, deletePreset, renderPresets,
+  saveTagPreset, applyPreset, deletePreset, renderPresets, suggestTags,
   // ui
   toggleSidebar, toggleCard, toggleAdvanced, updateDurLabel,
   loadJobToForm, loadTemplate,
+  updateDurHint, useDurEstimate, onInstrumentalToggle,
+  setSeedLocked, toggleSeedLock, randomizeSeed, onSeedInput, setTakes,
+  // library
+  applyLibraryFilter, toggleFavOnly, toggleFavorite, useSeed,
   // generate
   generate, cancelJob, checkModelStatus,
   // jobs
@@ -69,6 +76,9 @@ buildTagGrid();
 renderPresets();
 loadHistory();
 checkModelStatus();
+setSeedLocked(false);
+document.getElementById('lyrics').addEventListener('input', updateDurHint);
+updateDurHint();
 
 // Pick up lyrics handed off from /lyrics page
 (function consumePendingLyrics() {
@@ -80,6 +90,7 @@ checkModelStatus();
     if (ta) {
       ta.value = pending;
       ta.focus();
+      updateDurHint();
       showToast('Lyrics loaded from Lyric Helper');
     }
   } catch (_) {}
@@ -90,7 +101,7 @@ checkModelStatus();
   const params = new URLSearchParams(window.location.search);
   if (!params.has('lyrics') && !params.has('tags')) return;
 
-  if (params.has('lyrics')) document.getElementById('lyrics').value = params.get('lyrics');
+  if (params.has('lyrics')) { document.getElementById('lyrics').value = params.get('lyrics'); updateDurHint(); }
   if (params.has('title'))  document.getElementById('title').value = params.get('title');
   if (params.has('artist')) document.getElementById('artist').value = params.get('artist');
 
@@ -112,13 +123,18 @@ checkModelStatus();
     document.getElementById('cfgVal').textContent = parseFloat(el.value).toFixed(1);
   }
 
+  if (params.has('seed') && params.get('seed') !== '') {
+    document.getElementById('seed').value = params.get('seed');
+    setSeedLocked(true);
+  }
+
   // Store variation_of so the generate request includes it
   if (params.has('variation_of')) {
     window._variationOf = params.get('variation_of');
   }
 
   // Open the advanced section if any advanced params were set
-  if (params.has('temperature') || params.has('cfg_scale') || params.has('max_duration_sec')) {
+  if (params.has('temperature') || params.has('cfg_scale') || params.has('max_duration_sec') || params.has('seed')) {
     const adv = document.getElementById('advancedSection');
     if (adv && !adv.classList.contains('open')) toggleAdvanced();
   }

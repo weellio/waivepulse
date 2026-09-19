@@ -1,4 +1,6 @@
 // Export Mix (OfflineAudioContext render) + Stems ZIP download + WAV encoder.
+// After render: optional loudness target (BS.1770 LUFS, true peak ≤ −1 dBTP via
+// lookahead limiter), WAV or MP3 320 output, and a loudness readout.
 // The offline render reproduces the entire live signal chain — per-track EQ,
 // sends, mute regions, the master EQ/limiter/clipper/exciter, AND the four new
 // effects (noise gate, bitcrusher, wavefolder, Dattorro plate reverb) — so
@@ -7,6 +9,8 @@ import { S } from './state.js';
 import { applyEqOffline, snapshotEq, eqIsFlat } from '../shared/eq7.js';
 import { makeSatCurve, makeClipperCurve, makeFolderCurve, makeIR } from './audio-graph.js';
 import { soloCount } from './waveform.js';
+import { measureLoudness, normalizeToTarget } from '../shared/loudness.js';
+import { audioBufferToMp3 } from '../shared/mp3enc.js';
 
 // The three worklet-based effects must be available in the offline context too.
 const OFFLINE_WORKLETS = [
@@ -15,10 +19,9 @@ const OFFLINE_WORKLETS = [
   '/worklets/studio-dattorro.js',
 ];
 
-export async function exportMix() {
-  const btn = document.getElementById('export-btn');
-  btn.disabled = true; btn.textContent = '⏳ Rendering…';
-  try {
+// Render the whole mix offline → AudioBuffer (shared by Export Mix and Measure).
+export async function renderMix() {
+  {
     const sc = soloCount();
     const first = Object.values(S.tracks)[0].buffer;
     const sr = first.sampleRate, len = Math.ceil(S._dur * sr);
@@ -147,15 +150,88 @@ export async function exportMix() {
       else { src.start(0); }
     }
 
-    const rendered = await off.startRendering();
-    const wav = audioBufferToWav(rendered);
-    const blob = new Blob([wav], { type: 'audio/wav' });
+    return await off.startRendering();
+  }
+}
+
+const TARGETS = { off: null, yt: -14, apple: -16, loud: -9 };
+const TP_CEILING = -1;   // dBTP — streaming-safe headroom for lossy encoders
+const fmtDb = (v, d = 1) => (isFinite(v) ? (v > 0 ? '+' : '') + v.toFixed(d) : '−∞');
+const lufsTxt = (v) => (isFinite(v) ? v.toFixed(1) : '−∞');
+const nextPaint = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+
+function setReadout(html, title = '') {
+  const el = document.getElementById('loud-readout');
+  if (el) { el.innerHTML = html; el.title = title; }
+}
+
+// Remember the viewer's format/target choice (per-browser convenience only).
+export function initExportPrefs() {
+  for (const id of ['export-fmt', 'export-target']) {
+    const el = document.getElementById(id); if (!el) continue;
+    try { const v = localStorage.getItem('wp.studio.' + id); if (v && [...el.options].some(o => o.value === v)) el.value = v; } catch (_) {}
+    el.addEventListener('change', () => { try { localStorage.setItem('wp.studio.' + id, el.value); } catch (_) {} });
+  }
+}
+
+export async function exportMix() {
+  const btn = document.getElementById('export-btn');
+  const fmt = (document.getElementById('export-fmt') || {}).value || 'wav';
+  const tKey = (document.getElementById('export-target') || {}).value || 'off';
+  const target = TARGETS[tKey] ?? null;
+  btn.disabled = true; btn.textContent = '⏳ Rendering…';
+  try {
+    const rendered = await renderMix();
+    let res, label;
+    btn.textContent = '⏳ Measuring…'; await nextPaint();
+    if (target == null) {
+      res = measureLoudness(rendered);
+      label = 'Mix';
+    } else {
+      res = normalizeToTarget(rendered, target, { ceilingDb: TP_CEILING });
+      label = 'Exported';
+    }
+    const detail = target == null
+      ? `Measured on the rendered mix (no loudness target). Sample peak ${fmtDb(res.samplePeakDb)} dBFS.`
+      : `Target ${target} LUFS, ceiling ${TP_CEILING} dBTP. Was ${lufsTxt(res.before.lufs)} LUFS / ${fmtDb(res.before.truePeakDb)} dBTP; gain ${fmtDb(res.gainDb)} dB` + (res.limitedDb > 0.05 ? `, limiter up to ${res.limitedDb.toFixed(1)} dB.` : ', no limiting.');
+    setReadout(`<b>${label}:</b> ${lufsTxt(res.lufs)} LUFS · ${fmtDb(res.truePeakDb)} dBTP`, detail);
+    S._lastExport = { fmt, target, lufs: res.lufs, truePeakDb: res.truePeakDb, samplePeakDb: res.samplePeakDb, gainDb: res.gainDb ?? 0, limitedDb: res.limitedDb ?? 0 };
+
+    let blob, ext;
+    if (fmt === 'mp3') {
+      btn.textContent = '⏳ MP3 0%'; await nextPaint();
+      blob = await audioBufferToMp3(rendered, 320, (p) => { btn.textContent = `⏳ MP3 ${Math.round(p * 100)}%`; });
+      ext = 'mp3';
+    } else {
+      blob = new Blob([audioBufferToWav(rendered)], { type: 'audio/wav' });
+      ext = 'wav';
+    }
+    S._lastExport.bytes = blob.size;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url;
-    a.download = (S._title || 'mix').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_') + '_mix.wav';
+    const suffix = target == null ? '' : '_' + String(target).replace('-', 'm') + 'LUFS';
+    a.download = (S._title || 'mix').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_') + '_mix' + suffix + '.' + ext;
     a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
   } catch (e) { alert('Export failed: ' + e.message); }
   finally { btn.disabled = false; btn.textContent = '⬇ Export Mix'; }
+}
+
+// Render + measure without downloading anything.
+export async function measureMix() {
+  const btn = document.getElementById('measure-btn');
+  if (!Object.keys(S.tracks || {}).length) return;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  setReadout('<span style="color:#666">rendering…</span>');
+  try {
+    const rendered = await renderMix();
+    await nextPaint();
+    const res = measureLoudness(rendered);
+    S._lastMeasure = res;
+    setReadout(`<b>Mix:</b> ${lufsTxt(res.lufs)} LUFS · ${fmtDb(res.truePeakDb)} dBTP`,
+      `Integrated loudness of the full rendered mix (BS.1770-4, gated). Sample peak ${fmtDb(res.samplePeakDb)} dBFS.` +
+      (res.truePeakDb > TP_CEILING ? ' True peak is above −1 dBTP — pick a loudness target to fix it on export.' : ''));
+  } catch (e) { setReadout('<span style="color:#ff6b5a">measure failed</span>', e.message); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'MEASURE'; } }
 }
 
 export async function downloadZip() {

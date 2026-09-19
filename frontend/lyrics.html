@@ -101,14 +101,46 @@
 
   <!-- RIGHT: output -->
   <div class="panel">
-    <h2>📝 Generated Lyrics</h2>
-    <textarea id="output" placeholder="Lyrics will appear here. You can edit them before sending to the generator."></textarea>
+    <h2>📝 Generated Lyrics <span class="h2-hint">edit freely — counts update as you type</span></h2>
+
+    <div class="lyr-toolbar">
+      <div class="lyr-legend">
+        <span><span class="lg-num">9</span> syllables in the line</span>
+        <span><span class="g-rh c0">A</span><span class="g-rh c1">B</span> lines with the same letter rhyme (<b>~</b> = near rhyme, grey = no rhyme)</span>
+        <span><span class="lg-num dev">⚠12</span> much longer or shorter than the rest of its section</span>
+      </div>
+      <button type="button" class="secondary small" id="btnHelpers" aria-pressed="true">Hide syllables &amp; rhymes</button>
+    </div>
+
+    <div class="lyr-editor" id="lyrEditor">
+      <div class="lyr-gutter" id="lyrGutter" title="Syllables and rhyme letter for each line. Click a row to find rhymes for its last word."><div class="lyr-gutter-inner" id="lyrGutterInner"></div></div>
+      <div class="lyr-textwrap">
+        <div class="lyr-backdrop" id="lyrBackdrop" aria-hidden="true"></div>
+        <textarea id="output" spellcheck="false" placeholder="Lyrics will appear here. You can also paste or type your own and edit them before sending to the generator.&#10;&#10;[Verse 1]&#10;Write a line here…"></textarea>
+      </div>
+    </div>
+    <div class="lyr-stats" id="lyrStats"></div>
+
     <div class="actions">
       <button class="secondary" onclick="copyOutput()">Copy</button>
       <button onclick="sendToGenerator()">Send to Generator →</button>
     </div>
+
+    <div class="rhyme-finder">
+      <h3>🎯 Rhyme Finder</h3>
+      <div class="rf-controls">
+        <input type="text" id="rhymeWord" placeholder="type a word, e.g. night" autocomplete="off" spellcheck="false">
+        <button type="button" id="btnRhyme">Find rhymes</button>
+        <button type="button" class="secondary" id="btnRhymeSel">Rhymes for selected word</button>
+      </div>
+      <div class="rf-tip">Or double-click any word in your lyrics, or click a line's number on the left. Click a rhyme to put it in at your cursor.</div>
+      <div id="rhymeResults"></div>
+      <div class="dict-state" id="dictState">loading pronunciation dictionary…</div>
+    </div>
+
     <div class="help-note">
       <b>Send to Generator</b> stores the lyrics in your browser and switches to the Generate page with the lyrics box pre-filled. Tags and other settings are untouched.
+      Syllables and rhymes use the CMU Pronouncing Dictionary (stored on this page, works offline), with spelling rules for words it doesn't know.
     </div>
   </div>
 </div>

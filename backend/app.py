@@ -135,7 +135,7 @@ sys.stderr   = _TeeStream(_real_stderr)
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 def _write_metadata(path: str, title: str, artist: str, tags: str,
-                    temperature: float, cfg_scale: float):
+                    temperature: float, cfg_scale: float, seed: Optional[int] = None):
     if not _MUTAGEN:
         return
     try:
@@ -152,7 +152,8 @@ def _write_metadata(path: str, title: str, artist: str, tags: str,
         id3["TENC"] = TENC(encoding=3, text="WAIvePulse / HeartMuLa 3B")
         id3["COMM::eng"] = COMM(
             encoding=3, lang="eng", desc="",
-            text=f"Tags: {tags} | Temperature: {temperature} | CFG Scale: {cfg_scale}",
+            text=f"Tags: {tags} | Temperature: {temperature} | CFG Scale: {cfg_scale}"
+                 + (f" | Seed: {seed}" if seed is not None else ""),
         )
         id3.save(path)
     except Exception as e:
@@ -591,12 +592,98 @@ def _apply_c2pa(mp3_path: str, title: str, tags: str, job_id: str) -> bool:
         return False
 
 
+_history_lock = threading.RLock()
+
+
 def _save_history():
+    """Serialize + write history.json atomically. The lock stops two threads (the
+    queue worker and a request handler, e.g. a favorite toggle) from interleaving
+    writes, and temp-file + os.replace means a crash mid-write can never leave a
+    half-written (corrupt) history.json behind."""
+    with _history_lock:
+        try:
+            for attempt in range(3):
+                try:   # a request thread may add a job mid-dump → "changed size during iteration"
+                    payload = json.dumps({"jobs": jobs, "sep_jobs": sep_jobs}, indent=2)
+                    break
+                except RuntimeError:
+                    if attempt == 2:
+                        raise
+            tmp = HISTORY_FILE.with_name(HISTORY_FILE.name + ".tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(payload)
+                f.flush()
+                os.fsync(f.fileno())
+            for attempt in range(5):
+                try:
+                    os.replace(tmp, HISTORY_FILE)
+                    break
+                except PermissionError:   # Windows: file briefly open elsewhere (AV, editor)
+                    if attempt == 4:
+                        raise
+                    import time
+                    time.sleep(0.05 * (attempt + 1))
+        except Exception as e:
+            _real_stderr.write(f"[waivepulse] Failed to save history: {e}\n")
+
+
+# ── Seeds ──────────────────────────────────────────────────────────────────────
+SEED_MAX = 2**32 - 1
+
+
+def _resolve_seed(seed: Optional[int]) -> int:
+    """Return *seed* clamped to the 32-bit range, or a fresh random 32-bit seed."""
+    if seed is None:
+        import secrets
+        return secrets.randbelow(SEED_MAX + 1)
+    return int(seed) % (SEED_MAX + 1)
+
+
+def _seed_everything(seed: int) -> int:
+    """Seed python `random`, numpy and torch (CPU + every CUDA device) so a
+    generation with the same seed + settings is reproducible."""
+    import random
+    seed = int(seed) % (SEED_MAX + 1)
+    random.seed(seed)
     try:
-        data = {"jobs": jobs, "sep_jobs": sep_jobs}
-        HISTORY_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    except Exception as e:
-        _real_stderr.write(f"[waivepulse] Failed to save history: {e}\n")
+        import numpy as np
+        np.random.seed(seed)
+    except ImportError:
+        pass
+    try:
+        import torch
+        torch.manual_seed(seed)          # also seeds all CUDA devices
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+    except ImportError:
+        pass
+    return seed
+
+
+# ── Instrumental ───────────────────────────────────────────────────────────────
+# HeartMuLa has no dedicated instrumental token or mode (heartlib's
+# music_generation.preprocess just lower-cases + tokenizes the lyrics text).
+# The documented convention (heartlib README "Recommended format of lyrics") is
+# that a section marker with no lines under it — e.g. "[Intro]\n\n" — is a
+# non-sung section. So an instrumental = section markers only, plus the
+# "instrumental" tag from the HeartMuLa tag guide (Gender category).
+_SECTION_RE = re.compile(r"^\s*\[[^\]]+\]\s*$")
+_DEFAULT_INSTRUMENTAL_SECTIONS = ["[Intro]", "[Verse]", "[Chorus]", "[Verse]", "[Chorus]", "[Bridge]", "[Chorus]", "[Outro]"]
+
+
+def _instrumental_lyrics(lyrics: str) -> str:
+    """Strip sung lines, keeping the user's section structure (or a default one)."""
+    markers = [ln.strip() for ln in (lyrics or "").splitlines() if _SECTION_RE.match(ln)]
+    if not markers:
+        markers = _DEFAULT_INSTRUMENTAL_SECTIONS
+    return "\n\n".join(markers) + "\n"
+
+
+def _add_tag(tags: str, tag: str) -> str:
+    parts = [t.strip() for t in (tags or "").split(",") if t.strip()]
+    if tag.lower() not in (p.lower() for p in parts):
+        parts.append(tag)
+    return ",".join(parts)
 
 
 def _load_history():
@@ -647,7 +734,7 @@ def get_pipeline():
 
 
 # ── Generation worker ─────────────────────────────────────────────────────────
-def _run_generation(job_id, lyrics, tags, title, artist, max_ms, temperature, cfg_scale, topk):
+def _run_generation(job_id, lyrics, tags, title, artist, max_ms, temperature, cfg_scale, topk, seed=None):
     log = []
     job_logs[job_id]      = log
     _thread_local.job_log = log
@@ -658,6 +745,10 @@ def _run_generation(job_id, lyrics, tags, title, artist, max_ms, temperature, cf
 
     out_path = None
     try:
+        if cancel_flags.get(job_id, threading.Event()).is_set():   # cancelled before model load
+            jobs[job_id]["status"]  = "cancelled"
+            jobs[job_id]["message"] = "Cancelled"
+            return
         import torch
         pipe = get_pipeline()
 
@@ -677,6 +768,10 @@ def _run_generation(job_id, lyrics, tags, title, artist, max_ms, temperature, cf
                 _save_history()
                 return
 
+            if seed is not None:
+                _seed_everything(seed)
+                log.append(f"Seed: {seed}")
+
             with torch.no_grad():
                 pipe(
                     {"lyrics": lp, "tags": tp},
@@ -694,7 +789,7 @@ def _run_generation(job_id, lyrics, tags, title, artist, max_ms, temperature, cf
             jobs[job_id]["message"] = "Cancelled"
         else:
             audio_wm = _apply_audioseal(out_path, job_id)   # re-encodes — must be first
-            _write_metadata(out_path, title, artist, tags, temperature, cfg_scale)
+            _write_metadata(out_path, title, artist, tags, temperature, cfg_scale, seed)
             c2pa_ok  = _apply_c2pa(out_path, title, tags, job_id)
             bpm, key = _detect_bpm_key(out_path)
             filename = _output_filename(title, job_id)
@@ -827,6 +922,9 @@ class GenerateRequest(BaseModel):
     cfg_scale:        Optional[float] = 1.5
     topk:             Optional[int]   = 50
     variation_of:     Optional[str]   = None   # job_id of song being varied
+    seed:             Optional[int]   = None   # None → random 32-bit seed per take
+    count:            Optional[int]   = 1      # batch takes (1-4), each its own queued job
+    instrumental:     Optional[bool]  = False  # strip sung lines + add "instrumental" tag (experimental)
 
 
 def _models_ready() -> dict:
@@ -909,39 +1007,65 @@ def generate(req: GenerateRequest):
             status_code=503,
             detail=f"Models not ready: {ms['incomplete_files']} files still downloading",
         )
-    job_id = str(uuid.uuid4())[:8]
-    jobs[job_id] = {
-        "status":          "queued",
-        "message":         "Queued",
-        "file":            None,
-        "file_size":       None,
-        "title":           req.title,
-        "artist":          req.artist,
-        "tags":            req.tags,
-        "lyrics":          req.lyrics,
-        "max_duration_sec":req.max_duration_sec,
-        "temperature":     req.temperature,
-        "cfg_scale":       req.cfg_scale,
-        "created_at":      datetime.now().isoformat(),
-        "bpm":              None,
-        "key":              None,
-        "watermarked_audio":None,
-        "watermarked_c2pa": None,
-        "variation_of":    req.variation_of,
-    }
-    cancel_flags[job_id] = threading.Event()
-    _job_queue.put(("generate", job_id, {
-        "lyrics":      req.lyrics,
-        "tags":        req.tags,
-        "title":       req.title,
-        "artist":      req.artist,
-        "max_ms":      req.max_duration_sec * 1000,
-        "temperature": req.temperature,
-        "cfg_scale":   req.cfg_scale,
-        "topk":        req.topk,
-    }))
+    count = max(1, min(4, int(req.count or 1)))
+    lyrics, tags = req.lyrics, req.tags
+    if req.instrumental:
+        lyrics = _instrumental_lyrics(lyrics)
+        tags   = _add_tag(tags, "instrumental")
+    elif not (lyrics or "").strip():
+        raise HTTPException(status_code=400, detail="Lyrics are required (or turn on Instrumental)")
+
+    # Locked seed → take i uses seed+i (reproducible); no seed → random per take.
+    base_seed = None if req.seed is None else _resolve_seed(req.seed)
+    group     = str(uuid.uuid4())[:8] if count > 1 else None
+    job_ids, seeds = [], []
+    for i in range(count):
+        job_id = str(uuid.uuid4())[:8]
+        seed   = _resolve_seed(None) if base_seed is None else (base_seed + i) % (SEED_MAX + 1)
+        jobs[job_id] = {
+            "status":          "queued",
+            "message":         "Queued",
+            "file":            None,
+            "file_size":       None,
+            "title":           req.title,
+            "artist":          req.artist,
+            "tags":            tags,
+            "lyrics":          lyrics,
+            "max_duration_sec":req.max_duration_sec,
+            "temperature":     req.temperature,
+            "cfg_scale":       req.cfg_scale,
+            "topk":            req.topk,
+            "seed":            seed,
+            "seed_locked":     base_seed is not None,
+            "instrumental":    bool(req.instrumental),
+            "take":            i + 1,
+            "takes":           count,
+            "take_group":      group,
+            "favorite":        False,
+            "created_at":      datetime.now().isoformat(),
+            "bpm":              None,
+            "key":              None,
+            "watermarked_audio":None,
+            "watermarked_c2pa": None,
+            "variation_of":    req.variation_of,
+        }
+        cancel_flags[job_id] = threading.Event()
+        _job_queue.put(("generate", job_id, {
+            "lyrics":      lyrics,
+            "tags":        tags,
+            "title":       req.title,
+            "artist":      req.artist,
+            "max_ms":      req.max_duration_sec * 1000,
+            "temperature": req.temperature,
+            "cfg_scale":   req.cfg_scale,
+            "topk":        req.topk,
+            "seed":        seed,
+        }))
+        job_ids.append(job_id)
+        seeds.append(seed)
     _save_history()
-    return {"job_id": job_id}
+    return {"job_id": job_ids[0], "job_ids": job_ids, "seeds": seeds,
+            "lyrics": lyrics, "tags": tags}
 
 
 def _recover_job(job_id: str) -> bool:
@@ -1066,28 +1190,39 @@ def history():
 
 
 class MetaUpdate(BaseModel):
-    title:  Optional[str] = None
-    artist: Optional[str] = None
+    title:    Optional[str]  = None
+    artist:   Optional[str]  = None
+    favorite: Optional[bool] = None
+    rating:   Optional[int]  = None   # 0-5 (0 = unrated)
 
 
 @app.patch("/history/{job_id}")
 def update_job_meta(job_id: str, meta: MetaUpdate):
-    """Edit display metadata (title / artist) for a song. Does NOT rename the mp3
-    file — only the history record (and the sep_jobs title copy) is updated."""
-    job = jobs.get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
-    if meta.title is not None:
-        job["title"] = meta.title.strip() or "Untitled"
-    if meta.artist is not None:
-        job["artist"] = meta.artist.strip()
-    # keep the duplicate title in any separation record (used by Studio/Karaoke) in sync
-    if meta.title is not None:
-        for sep in sep_jobs.values():
-            if sep.get("job_id") == job_id:
-                sep["title"] = job["title"]
-    _save_history()
-    return {"job_id": job_id, "title": job.get("title"), "artist": job.get("artist", "")}
+    """Edit library metadata for a song: title / artist / favorite / rating.
+    Does NOT rename the mp3 file — only the history record (and the sep_jobs
+    title copy) is updated."""
+    if meta.rating is not None and not 0 <= meta.rating <= 5:
+        raise HTTPException(status_code=400, detail="rating must be 0-5")
+    with _history_lock:
+        job = jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if meta.title is not None:
+            job["title"] = meta.title.strip() or "Untitled"
+        if meta.artist is not None:
+            job["artist"] = meta.artist.strip()
+        if meta.favorite is not None:
+            job["favorite"] = bool(meta.favorite)
+        if meta.rating is not None:
+            job["rating"] = int(meta.rating)
+        # keep the duplicate title in any separation record (used by Studio/Karaoke) in sync
+        if meta.title is not None:
+            for sep in sep_jobs.values():
+                if sep.get("job_id") == job_id:
+                    sep["title"] = job["title"]
+        _save_history()
+    return {"job_id": job_id, "title": job.get("title"), "artist": job.get("artist", ""),
+            "favorite": bool(job.get("favorite")), "rating": job.get("rating", 0)}
 
 
 @app.delete("/history/{job_id}")
@@ -1455,34 +1590,123 @@ def _build_lyrics_prompt(req: LyricsRequest) -> str:
     return "\n".join(parts)
 
 
-@app.post("/lyrics/suggest")
-def suggest_lyrics(req: LyricsRequest):
-    """Generate lyrics via local Ollama. Requires Ollama running on localhost:11434."""
+def _ollama_generate(model: str, prompt: str, options: dict,
+                     fmt: Optional[str] = None, timeout: int = 300) -> str:
+    """One-shot (non-streaming) Ollama /api/generate call. keep_alive 0 unloads the
+    model from VRAM the moment the response is returned — prevents Ollama holding
+    ~5 GB while the user moves on to a HeartMuLa generation (12 GB card = OOM).
+    Raises HTTPException 503 if Ollama is unreachable."""
     import urllib.request, urllib.error
-    body = json.dumps({
-        "model":      req.model,
-        "prompt":     _build_lyrics_prompt(req),
-        "stream":     False,
-        "options":    {"temperature": req.temperature, "top_p": 0.9},
-        # Unload the model from VRAM the moment the response is returned.
-        # Prevents Ollama from holding ~5 GB while the user moves on to a
-        # HeartMuLa generation job (12 GB card = OOM otherwise).
-        "keep_alive": 0,
-    }).encode("utf-8")
+    payload = {"model": model, "prompt": prompt, "stream": False,
+               "options": options, "keep_alive": 0}
+    if fmt:
+        payload["format"] = fmt
     request = urllib.request.Request(
         "http://localhost:11434/api/generate",
-        data=body,
+        data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=300) as r:
+        with urllib.request.urlopen(request, timeout=timeout) as r:
             data = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", "replace")[:300]
+        raise HTTPException(status_code=502, detail=f"Ollama error ({e.code}): {detail}")
     except urllib.error.URLError as e:
         raise HTTPException(status_code=503, detail=f"Ollama not reachable on localhost:11434. Is it running? ({e.reason})")
+    return (data.get("response") or "").strip()
+
+
+@app.post("/lyrics/suggest")
+def suggest_lyrics(req: LyricsRequest):
+    """Generate lyrics via local Ollama. Requires Ollama running on localhost:11434."""
+    try:
+        text = _ollama_generate(req.model, _build_lyrics_prompt(req),
+                                {"temperature": req.temperature, "top_p": 0.9})
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lyric generation failed: {e}")
-    return {"lyrics": (data.get("response") or "").strip(), "model": req.model}
+    return {"lyrics": text, "model": req.model}
+
+
+class TagSuggestRequest(BaseModel):
+    idea:       str = ""
+    lyrics:     str = ""
+    title:      str = ""
+    categories: dict = {}           # {"Genre": ["pop", ...], ...} — the allowed vocabulary
+    model:      str = "llama3.1:8b"  # same default as /lyrics/suggest
+
+
+def _filter_suggested_tags(raw, categories: dict) -> list:
+    """Keep only tags that exist in the allowed vocabulary, max one per category,
+    in vocabulary spelling. *raw* may be a list or a comma string."""
+    if isinstance(raw, str):
+        raw = raw.split(",")
+    lookup = {}   # lower-case tag → (category, canonical tag); first category wins
+    for cat, tags in categories.items():
+        for t in tags or []:
+            lookup.setdefault(str(t).strip().lower(), (cat, str(t).strip()))
+    picked, used = [], set()
+    for item in raw or []:
+        key = str(item).strip().strip("#").lower()
+        if key not in lookup:
+            continue
+        cat, canon = lookup[key]
+        if cat in used:
+            continue
+        used.add(cat)
+        picked.append(canon)
+    return picked
+
+
+@app.post("/tags/suggest")
+def suggest_tags(req: TagSuggestRequest):
+    """Ask local Ollama to pick style tags for an idea / lyrics, constrained to the
+    Generate page's tag vocabulary (one per category)."""
+    if not req.categories:
+        raise HTTPException(status_code=400, detail="categories (allowed tag vocabulary) is required")
+    source = "\n".join(p for p in (
+        f"Title: {req.title}" if req.title.strip() else "",
+        f"Idea: {req.idea}" if req.idea.strip() else "",
+        f"Lyrics:\n{req.lyrics[:2500]}" if req.lyrics.strip() else "",
+    ) if p)
+    if not source:
+        raise HTTPException(status_code=400, detail="Give an idea or some lyrics to tag")
+
+    model = req.model
+    status = ollama_status()
+    if not status["available"]:
+        raise HTTPException(status_code=503, detail="Ollama not reachable on localhost:11434. Is it running?")
+    if status["models"] and model not in status["models"]:
+        model = status["models"][0]   # requested default not installed → first installed model
+
+    vocab = "\n".join(f"- {cat}: {', '.join(tags)}" for cat, tags in req.categories.items())
+    prompt = (
+        "You are a music producer choosing style tags for an AI song generator.\n"
+        "Pick the tags that best fit the song below. Rules:\n"
+        "- Choose AT MOST ONE tag per category. Genre is required; skip a category if nothing fits.\n"
+        "- Use ONLY tags copied exactly from this list:\n"
+        f"{vocab}\n\n"
+        f"{source}\n\n"
+        'Respond with JSON only, like {"tags": ["pop", "warm", "female vocals", "hopeful"]}'
+    )
+    try:
+        text = _ollama_generate(model, prompt, {"temperature": 0.4}, fmt="json", timeout=120)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Tag suggestion failed: {e}")
+    try:
+        parsed = json.loads(text)
+        raw = parsed.get("tags", []) if isinstance(parsed, dict) else parsed
+    except Exception:
+        raw = re.split(r"[,\n]", text)
+    tags = _filter_suggested_tags(raw, req.categories)
+    if not tags:
+        raise HTTPException(status_code=502, detail="The model didn't return any usable tags — try again")
+    return {"tags": tags, "model": model}
 
 
 @app.post("/lyrics/suggest/stream")

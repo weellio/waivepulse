@@ -11,6 +11,12 @@ const STEP_TICKS = 120;        // 16th note = PPQN / 4
 // GM drum map: row index → MIDI note
 const DRUM_MAP = [36, 38, 42, 46, 39, 45, 35, 56];
 
+// Swing in ticks: odd 16ths are pushed late by swing × ⅓ step (same as playback).
+// Humanize is a live-feel effect and is NOT written to the file; probability steps
+// are exported as always-on (a DAW has no per-note chance), ratchets as real hits.
+const swingTicks = step => (step % 2 === 1) ? Math.round((S.swing || 0) * STEP_TICKS / 3) : 0;
+const stepTick   = step => step * STEP_TICKS + swingTicks(step);
+
 // ── Binary helpers ────────────────────────────────────────────────────────────
 
 /** Variable-length quantity encoding (MIDI standard) */
@@ -82,8 +88,8 @@ function buildMelodyTrack() {
   // Collect note-on and note-off events, then sort by absolute tick
   const noteEvents = [];
   for (const r of runs) {
-    const onTick  = r.start * STEP_TICKS;
-    const offTick = onTick + r.len * STEP_TICKS;
+    const onTick  = stepTick(r.start);
+    const offTick = stepTick(r.start + r.len);
     noteEvents.push({ tick: onTick,  type: 'on',  midi: r.midi, vel: 100 });
     noteEvents.push({ tick: offTick, type: 'off', midi: r.midi, vel: 0 });
   }
@@ -120,11 +126,16 @@ function buildDrumTrack() {
       const vel = S.seqPattern[row][step];
       if (!vel) continue;
       hasNotes = true;
-      const onTick  = step * STEP_TICKS;
-      const offTick = onTick + STEP_TICKS;            // one 16th note duration
-      const midiVel = Math.max(1, Math.min(127, Math.round(vel * 127)));
-      noteEvents.push({ tick: onTick,  type: 'on',  midi: midiNote, vel: midiVel });
-      noteEvents.push({ tick: offTick, type: 'off', midi: midiNote, vel: 0 });
+      const t0   = stepTick(step);
+      const span = stepTick(step + 1) - t0;            // swung step length
+      const rat  = Math.max(1, Math.min(4, S.seqRatchet?.[row]?.[step] ?? 1));
+      for (let h = 0; h < rat; h++) {                  // ratchet = N evenly split hits
+        const onTick  = t0 + Math.round(h * span / rat);
+        const offTick = t0 + Math.round((h + 1) * span / rat);
+        const midiVel = Math.max(1, Math.min(127, Math.round(vel * (h ? 0.8 : 1) * 127)));
+        noteEvents.push({ tick: onTick,  type: 'on',  midi: midiNote, vel: midiVel });
+        noteEvents.push({ tick: offTick, type: 'off', midi: midiNote, vel: 0 });
+      }
     }
   }
   if (!hasNotes) return null;

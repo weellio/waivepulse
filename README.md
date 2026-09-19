@@ -32,6 +32,10 @@ Open the Lyrics page. Pick a theme, song structure, tone, and optional rhyme sch
 - Auto-detects Ollama. If it's missing, the page shows an install card with the winget command, the Linux curl one-liner, and a download link
 - Passes `keep_alive: 0` so the lyric model unloads from VRAM the moment generation ends. Lyrics, then generate, on a 12 GB card with no contention
 - Pulsing dot, shimmering button, indeterminate progress bar, and glowing output panel so the UI stays alive during the 1 to 3 second model-load wait before the first token
+- **Edit and polish:** the lyrics box is fully editable. A gutter shows syllables per line, each section's average, and ⚠ on lines that break the section's flow
+- **Rhyme scheme:** coloured A/B/C letters per section (`~` = near rhyme)
+- **Rhyme Finder:** double-click any word (or type one) for perfect and near rhymes grouped by syllable count; click one to drop it in
+- **Stats bar:** words, lines, sections, and estimated sung length. All offline, using a bundled 30k-word CMU pronunciation dictionary
 
 [Detail section below](#lyric-helper-in-depth)
 
@@ -45,6 +49,13 @@ The main page. Paste lyrics, pick tags from an organised grid (Genre, Timbre, Mo
 - ID3 metadata baked into every MP3 with title, artist, tags, temperature, CFG scale
 - AudioSeal neural watermark and C2PA provenance manifest embedded when the libs are installed
 - Tag presets saved to browser localStorage so your favourite combos stay one click away
+- **Seed control:** a Seed field with 🎲 roll and 🔒 lock. The seed is saved on every song (card chip, Details, ID3), so any take can be reproduced
+- **Takes 1–4:** queue several takes of the same prompt in one click, labelled "Take 2/3"
+- **↺ Reuse** on any card refills the whole form (lyrics, tags, duration, temperature, CFG, seed)
+- **Instrumental (experimental):** sends only section markers plus the `instrumental` tag. HeartMuLa has no true instrumental mode
+- **Duration estimate:** "≈ 2:45 for these lyrics · use" under the duration slider
+- **✨ Suggest tags:** local Ollama picks tags from the page's own tag list based on your idea or lyrics
+- **Library:** search, ★ favorites filter, and sort above the song list
 - Drop external MP3s onto the history panel to play them, or to send them into Studio for stem separation
 
 [Detail section below](#generate-page-in-depth)
@@ -71,6 +82,9 @@ Click the Studio button on any finished song card. Demucs splits the song into s
 - **BPM/key display:** the audio info bar now shows detected BPM and musical key alongside sample rate and channel count (e.g. "44.1 kHz · stereo · 120 BPM · C major")
 - **Time-stretch:** server-side phase-vocoder stretching (pitch-preserved) on any stem or imported track, with auto-BPM detection on drag-and-drop import and an auto-stretch prompt when importing stems at a different tempo
 - **Section variation + splice:** "Variation" opens the Generate page pre-filled with the same lyrics and tags at a bumped temperature for a fresh take; "Splice" replaces audio in a ruler-selected region with audio from a file, crossfaded at boundaries, with full undo support
+- **Loudness-ready exports:** Export Mix can hit a streaming target — YouTube/Spotify −14 LUFS, Apple −16, or Loud −9. It measures the mix to ITU-R BS.1770-4, applies gain, and a look-ahead limiter holds true peak at or below −1 dBTP. The result shows next to the button (e.g. "−14.0 LUFS · −1.2 dBTP")
+- **WAV or MP3 320:** MP3 is encoded in the browser (bundled lamejs), fully offline
+- **LUFS metering:** a live momentary + short-term LUFS meter in the Master FX bar; **MEASURE** reports integrated loudness and true peak without exporting
 
 External songs work too. Drop an MP3 into the history panel, click Studio, and Demucs runs on it the same way. The full Studio feature set is available on imports.
 
@@ -96,6 +110,11 @@ Open the Looper page at any time — it works independently of the AI generation
 - **F1–F6** record loops hands-free (each card shows its key); **Export Mix** renders all loops to a single WAV
 - **MIDI export:** a "MIDI" button next to Export renders the piano roll and drum pattern as a Standard MIDI File (.mid) — SMF Format 1, 480 PPQN, melody track + drum track on channel 9 with GM percussion mapping
 - **Vocal harmonizer:** an AudioWorklet adds pitch-shifted harmony voices to the mic input — two configurable voices (default +4 and +7 semitones, major 3rd and perfect 5th) with per-voice volume and semitone controls, wired after autotune in the mic chain
+- **MIDI input:** plug in any USB/Bluetooth MIDI keyboard or pad controller (Chrome/Edge). Velocity, sustain pedal, hot-plug. Channel 10 or "MIDI → Drums" plays the pads. Recorded like any other input
+- **Swing & Humanize:** one groove for the drum sequencer and piano roll (0% straight → 100% triplet feel), baked into → Loop renders and MIDI export
+- **Probability & ratchets:** per-step 100/75/50/25% chance and 1–4 hit rolls (Prob/Ratchet mode, or Alt/Shift-click), saved with favorites
+- **Euclidean fill:** "E" on any drum row spreads N hits evenly, with rotation
+- **Scale lock & transpose:** 7 scales; keys, piano roll, arpeggiator and MIDI snap into key; shift the whole roll ±12 semitones
 
 [Detail section below](#looper-in-depth)
 
@@ -1070,9 +1089,14 @@ The backend is a plain REST API. Call it from curl, Python, or any HTTP client.
   "max_duration_sec": 60,
   "temperature": 1.0,
   "cfg_scale": 1.5,
-  "topk": 50
+  "topk": 50,
+  "seed": 12345,
+  "count": 1,
+  "instrumental": false
 }
 ```
+
+`seed` is optional (random if omitted, saved on the job). `count` (1–4) queues that many takes; with a fixed seed, takes use seed, seed+1, …
 
 Returns `{"job_id": "abc12345"}`. The job goes onto the FIFO queue.
 
@@ -1131,6 +1155,14 @@ Returns all jobs in reverse chronological order. Includes full job data (lyrics,
 ### `DELETE /history/{job_id}`
 
 Deletes the job record and the corresponding MP3 file on disk.
+
+### `PATCH /history/{job_id}`
+
+Update a history entry: `{title, artist, favorite, rating}` (rating 0–5). Writes are locked and atomic.
+
+### `POST /tags/suggest`
+
+`{idea, lyrics, title, categories}` → `{tags, model}`. Asks local Ollama for tags, filtered to the allowed tag list.
 
 ### `POST /upload`
 

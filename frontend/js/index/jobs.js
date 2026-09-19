@@ -1,6 +1,7 @@
 import { S, VIZ_LABELS } from './state.js';
 import { escHtml, formatSize } from './util.js';
 import { attachVizListeners, attachMetaListeners, stopViz } from './viz.js';
+import { applyLibraryFilter } from './library.js';
 
 // ── Card HTML ─────────────────────────────────────────────────────────────────
 export function jobCardHTML(jobId, title, tags, status, message, file, fileSize, createdAt, bpm, key) {
@@ -9,6 +10,15 @@ export function jobCardHTML(jobId, title, tags, status, message, file, fileSize,
   const vizStyle = S.vizStyles[jobId] || 'ring';
   const vizLabel = VIZ_LABELS[vizStyle] || '◉ Ring';
   const isActive = status === "queued" || status === "generating";
+  const full     = S.jobFull[jobId] || {};
+  const isLocal  = jobId.startsWith('local_');
+  const canReuse = !!(full.lyrics || full.tags || S.jobSettings[jobId]);
+  const reuseBtn = canReuse
+    ? `<button class="btn-action" onclick="loadJobToForm('${jobId}')" title="Fill the form with this song's title, artist, lyrics, tags, duration, temperature, CFG and seed">↺ Reuse</button>`
+    : '';
+  const takeBadge = full.takes > 1 ? `<span class="take-badge">Take ${full.take}/${full.takes}</span>` : '';
+  const starBtn = isLocal ? '' :
+    `<button class="btn-star${full.favorite ? ' on' : ''}" onclick="event.stopPropagation();toggleFavorite('${jobId}')" title="${full.favorite ? 'Unstar' : 'Star as favorite'}">${full.favorite ? '★' : '☆'}</button>`;
 
   const cancelBtn = isActive
     ? `<button class="btn-cancel" onclick="event.stopPropagation();cancelJob('${jobId}')" title="Cancel">Cancel</button>`
@@ -22,13 +32,14 @@ export function jobCardHTML(jobId, title, tags, status, message, file, fileSize,
     <div class="job-row" onclick="toggleCard('${jobId}')">
       <div class="dot dot-${status}"></div>
       <div class="job-row-text">
-        <span class="job-title">${escHtml(title)}</span>
+        <span class="job-title">${escHtml(title)}${takeBadge}</span>
         <span class="job-tags">${escHtml(tags)}</span>
       </div>
       ${durSpan}
       <span class="job-time">${timeStr}</span>
       <span class="expand-icon" id="arrow-${jobId}">${isOpen ? "▼" : "▶"}</span>
       ${cancelBtn}
+      ${starBtn}
       <button class="btn-delete" onclick="event.stopPropagation();deleteJob('${jobId}')" title="Delete">✕</button>
     </div>`;
 
@@ -62,7 +73,7 @@ export function jobCardHTML(jobId, title, tags, status, message, file, fileSize,
       <div class="card-actions">
         <a class="btn-action" href="${file}" download>⬇ Download</a>
         ${!jobId.startsWith('local_') ? `<button class="btn-action" onclick="openDetails('${jobId}')">ℹ Details</button>` : ''}
-        ${!jobId.startsWith('local_') ? `<button class="btn-action" onclick="loadJobToForm('${jobId}')">↺ Use Settings</button>` : ''}
+        ${!isLocal ? reuseBtn : ''}
         ${!jobId.startsWith('local_')
           ? `<a class="btn-action" href="/studio?job=${jobId}" target="_blank">🎛 Studio</a>`
           : `<button class="btn-action" id="studio-btn-${jobId}" onclick="openStudioForLocal('${jobId}')">🎛 Studio</button>`}
@@ -71,15 +82,17 @@ export function jobCardHTML(jobId, title, tags, status, message, file, fileSize,
         ${sizeStr ? `<span>${sizeStr}</span>` : ''}
         ${bpm  ? `<span class="chip chip-bpm">♩ ${bpm} BPM</span>` : ''}
         ${key  ? `<span class="chip chip-key">♬ ${escHtml(key)}</span>` : ''}
+        ${full.seed != null ? `<span class="chip chip-seed" onclick="useSeed(${Number(full.seed)})" title="Click to load &amp; lock this seed in the form">seed ${Number(full.seed)}</span>` : ''}
+        ${full.instrumental ? `<span class="chip chip-inst">instrumental</span>` : ''}
       </div>`;
   } else if (status === "error") {
     bodyContent = `
       <div style="font-size:0.82rem;color:#e05555;padding:8px 0;white-space:pre-wrap">${escHtml(message)}</div>
-      ${S.jobSettings[jobId] ? `<div class="card-actions"><button class="btn-action" onclick="loadJobToForm('${jobId}')">↺ Use Settings</button></div>` : ''}`;
+      ${reuseBtn ? `<div class="card-actions">${reuseBtn}</div>` : ''}`;
   } else if (status === "cancelled") {
     bodyContent = `
       <div style="font-size:0.82rem;color:#666;padding:8px 0">Cancelled</div>
-      ${S.jobSettings[jobId] ? `<div class="card-actions"><button class="btn-action" onclick="loadJobToForm('${jobId}')">↺ Use Settings</button></div>` : ''}`;
+      ${reuseBtn ? `<div class="card-actions">${reuseBtn}</div>` : ''}`;
   }
 
   return `${row}
@@ -155,14 +168,14 @@ export function parseLogProgress(jobId, line) {
 export function addJobCard(jobId, title, tags, createdAt) {
   S.openCards.add(jobId);
   const list  = document.getElementById("historyList");
-  const empty = list.querySelector(".empty-state");
-  if (empty) empty.remove();
+  list.querySelectorAll(".empty-state, .lib-empty").forEach(el => el.remove());
 
   const card = document.createElement("div");
   card.className = "job-card active-job";
   card.id = `job-${jobId}`;
   card.innerHTML = jobCardHTML(jobId, title, tags, "queued", "Queued", null, null, createdAt);
   list.insertBefore(card, list.firstChild);
+  applyLibraryFilter();
 }
 
 export function updateJobCard(jobId, data) {
@@ -200,6 +213,7 @@ export async function deleteJob(jobId) {
   try { await fetch(`/history/${jobId}`, { method: "DELETE" }); } catch(e) {}
   const card = document.getElementById(`job-${jobId}`);
   if (card) card.remove();
+  applyLibraryFilter();
   if (!document.querySelector(".job-card")) {
     document.getElementById("historyList").innerHTML =
       '<div class="empty-state">No songs yet — generate your first one!<div class="drag-hint">or drag MP3 files here</div></div>';
@@ -254,5 +268,6 @@ export async function loadHistory() {
       }
       if (j.status === "done") setTimeout(() => { attachVizListeners(j.job_id); attachMetaListeners(j.job_id); }, 0);
     });
+    applyLibraryFilter();
   } catch(e) {}
 }

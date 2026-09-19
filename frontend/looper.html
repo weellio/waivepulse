@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WAIvePulse Looper</title>
 <link rel="icon" type="image/png" href="/assets/wave small.png">
-<link rel="stylesheet" href="/css/looper.css?v=21">
+<link rel="stylesheet" href="/css/looper.css?v=22">
 </head>
 <body>
 
@@ -50,6 +50,18 @@
   <div class="tg">
     <button class="t-btn" id="quantBtn" onclick="toggleQuantize()"
             title="Snap loop lengths to the nearest bar">Quantize</button>
+  </div>
+  <div class="tg groove-tg">
+    <span class="tg-label" title="Delays every off-beat 16th. 0% = straight · 100% = full triplet shuffle. Applies to the drum sequencer, piano roll, → Loop renders and MIDI export">Swing</span>
+    <input type="range" id="swingSlider" min="0" max="100" step="1" value="0"
+           class="vslider groove-slider" oninput="setSwing(this.value)"
+           title="Swing: 0% straight · 50% light shuffle · 100% triplet feel">
+    <span id="swingVal" class="groove-val">0%</span>
+    <span class="tg-label" style="margin-left:6px" title="Random timing (±15 ms) and velocity (±20%) at 100% — takes the machine edge off">Humanize</span>
+    <input type="range" id="humanSlider" min="0" max="100" step="1" value="0"
+           class="vslider groove-slider" oninput="setHumanize(this.value)"
+           title="Humanize: random timing + velocity per hit">
+    <span id="humanVal" class="groove-val">0%</span>
   </div>
   <div class="tg tg-actions">
     <button class="t-btn" id="bypassBtn" onclick="toggleBypass()">⚡ Bypass</button>
@@ -103,6 +115,13 @@
           <div class="drum-grid" id="drumGrid"></div>
         </div>
         <div id="seqView" style="display:none">
+          <div class="stepedit-bar">
+            <span class="beat-lbl">CLICK</span>
+            <button class="ibtn stepedit-btn on" data-mode="steps"   onclick="setStepEdit('steps')"   title="Click toggles a step · drag up/down = velocity">Steps</button>
+            <button class="ibtn stepedit-btn"    data-mode="prob"    onclick="setStepEdit('prob')"    title="Click an ON step to cycle its chance 100 → 75 → 50 → 25% (or Alt-click in any mode)">Prob %</button>
+            <button class="ibtn stepedit-btn"    data-mode="ratchet" onclick="setStepEdit('ratchet')" title="Click an ON step to cycle 1 → 2 → 3 → 4 rapid hits (or Shift-click in any mode)">Ratchet</button>
+            <span class="stepedit-hint">Alt-click = prob · Shift-click = ratchet · <b>E</b> = Euclid fill</span>
+          </div>
           <div id="seqGrid"></div>
           <div id="beatPresets" class="beat-bar"></div>
         </div>
@@ -151,6 +170,34 @@
               <button class="spin-btn" onclick="chOctave(-1)">−</button>
               <span id="octDisplay" class="ctrl-val">4</span>
               <button class="spin-btn" onclick="chOctave(1)">+</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="ctrl-section">
+          <span class="sect-label">Scale Lock &amp; Transpose <span class="sub">— keys, roll &amp; MIDI snap to the scale</span></span>
+          <div class="ctrl-row">
+            <select id="scaleRoot" class="at-sel scale-sel" onchange="setScaleRoot(this.value)" title="Key root">
+              <option value="0">C</option><option value="1">C#</option><option value="2">D</option>
+              <option value="3">D#</option><option value="4">E</option><option value="5">F</option>
+              <option value="6">F#</option><option value="7">G</option><option value="8">G#</option>
+              <option value="9">A</option><option value="10">A#</option><option value="11">B</option>
+            </select>
+            <select id="scaleSel" class="at-sel scale-sel" onchange="setScaleName(this.value)" title="Scale (Off = chromatic, no lock)">
+              <option value="chromatic">Off (chromatic)</option>
+              <option value="major">Major</option>
+              <option value="minor">Minor</option>
+              <option value="dorian">Dorian</option>
+              <option value="mixolydian">Mixolydian</option>
+              <option value="pentMaj">Pentatonic maj</option>
+              <option value="pentMin">Pentatonic min</option>
+              <option value="blues">Blues</option>
+            </select>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:5px" title="Shift every piano-roll note by a semitone (±12). With scale lock on, the key moves with it.">
+              <span style="font-size:9px;color:var(--txt3);font-weight:700;text-transform:uppercase;letter-spacing:.08em">Transpose</span>
+              <button class="spin-btn" id="trDownBtn" onclick="transposeRoll(-1)">−</button>
+              <span id="trVal" class="ctrl-val">0</span>
+              <button class="spin-btn" id="trUpBtn" onclick="transposeRoll(1)">+</button>
             </div>
           </div>
         </div>
@@ -278,6 +325,17 @@
             <option value="12">+Oct</option>
           </select>
         </div>
+      </div>
+      <div id="midiIn">
+        <div class="fx-hdr">MIDI In <span id="midiDot" class="midi-dot"></span></div>
+        <div class="midi-row">
+          <button class="ibtn" id="midiConnBtn" onclick="connectMidi()" title="Use a USB/Bluetooth MIDI keyboard or pad controller">🎹 Connect</button>
+          <button class="ibtn" id="midiDrumBtn" onclick="toggleMidiDrums()" title="Route every MIDI note to the drum pads (GM map). Channel 10 always plays drums.">🥁 MIDI → Drums</button>
+        </div>
+        <select id="midiDev" class="at-sel midi-sel" onchange="setMidiDevice(this.value)" disabled>
+          <option value="all">No devices</option>
+        </select>
+        <div id="midiStat" class="midi-stat">Click Connect to use a MIDI keyboard / pads</div>
       </div>
       <div id="masterFX">
         <div class="fx-hdr">Master FX</div>
@@ -452,7 +510,10 @@
           <tr><td><b>→ Loop</b></td><td>Render the beat into the next empty loop slot — perfectly timed</td></tr>
           <tr><td><b>Reset</b></td><td>Clear all steps for a fresh pattern</td></tr>
           <tr><td><b>Preset beats</b></td><td>The buttons under the grid (Four-Floor, Boom Bap, Trap, Rock, Funk, House, Breakbeat, Half-Time, Bossa, Reggaeton) fill the sequencer with a ready-made pattern — tweak it from there</td></tr>
-          <tr><td><b>★ Save</b></td><td>Save the current grid as a named favorite (stored in your browser). Saved beats appear as their own buttons; ✕ removes one</td></tr>
+          <tr><td><b>★ Save</b></td><td>Save the current grid as a named favorite (stored in your browser). Saved beats appear as their own buttons; ✕ removes one. Probability, ratchets and swing are saved with it</td></tr>
+          <tr><td><b>Prob %</b> mode · <kbd>Alt</kbd>-click</td><td>Cycle a step's chance of playing: 100 → 75 → 50 → 25%. Chancy steps look fainter and show their % — every pass rolls the dice, so the beat keeps varying</td></tr>
+          <tr><td><b>Ratchet</b> mode · <kbd>Shift</kbd>-click</td><td>Cycle 1 → 2 → 3 → 4 rapid hits inside one step (rolls, trap hats). The step's fill splits into slices</td></tr>
+          <tr><td><b>E</b> next to a row</td><td>Euclidean fill: type hits (1–16) and an optional rotation, e.g. <b>5, 2</b> — spreads the hits as evenly as possible across the bar (rotation shifts them later)</td></tr>
         </tbody></table>
       </div>
 
@@ -478,6 +539,8 @@
           <tr><td><b>▶ Play</b></td><td>Play the pattern with the current instrument (waveform/guitar/sample + ADSR + filter), locked to BPM</td></tr>
           <tr><td><b>→ Loop</b></td><td>Render the roll into the next empty loop slot — perfectly timed</td></tr>
           <tr><td><b>Reset</b></td><td>Clear all notes</td></tr>
+          <tr><td><b>Scale Lock</b> (key + scale)</td><td>Major, Minor, Dorian, Mixolydian, Pentatonic maj/min, Blues. Out-of-scale rows dim, and clicking one drops the note on the nearest in-scale row. The synth keyboard and MIDI input snap too (ties snap down). <b>Off</b> = chromatic</td></tr>
+          <tr><td><b>Transpose − / +</b></td><td>Shift the whole roll pattern one semitone (up to ±12). With scale lock on, the key moves along with it so the pattern stays in key</td></tr>
         </tbody></table>
       </div>
 
@@ -490,6 +553,17 @@
           <tr><td>Filter — Cutoff / Reso</td><td>Low-pass filter sweep + resonance</td></tr>
           <tr><td>⇅ Arp + Rate / Mode</td><td>Hold keys to arpeggiate; 1/8–1/32, Up / Down / Up-Dn / Rand</td></tr>
           <tr><td>📁 Import</td><td>Load any audio file as a pitched keyboard sample</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">🎛 MIDI Input</div>
+        <p class="help-p">Play the Looper from a USB / Bluetooth MIDI keyboard or pad controller (Chrome / Edge). MIDI goes through the same path as the computer keys, so it's captured when a loop is recording.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>🎹 Connect</b></td><td>Ask the browser for MIDI access (once — after that it reconnects automatically). Devices can be plugged / unplugged any time</td></tr>
+          <tr><td>Device menu</td><td>Listen to all inputs, or just one</td></tr>
+          <tr><td>Keys</td><td>Play the synth with velocity → loudness. Sustain pedal (CC64) holds notes. Arp, ADSR, filter, instrument and scale lock all apply. MIDI note 60 = middle C, whatever OCT is set to</td></tr>
+          <tr><td><b>🥁 MIDI → Drums</b></td><td>Send every note to the drum pads (channel 10 always does). GM map: 36 Kick · 35 → 808 · 38/40 Snare · 42/44 HiHat · 46 Open · 39 Clap · 41–50 Toms · anything else → Perc</td></tr>
         </tbody></table>
       </div>
 
@@ -520,6 +594,8 @@
           <tr><td>Metro</td><td>Toggle the metronome click</td></tr>
           <tr><td>Count-in</td><td>Beats of lead-in before recording starts</td></tr>
           <tr><td>Quantize</td><td>Snap the first loop's length to the nearest bar</td></tr>
+          <tr><td><b>Swing</b></td><td>Pushes every off-beat 16th late. <b>0%</b> = straight, <b>50%</b> = light shuffle, <b>100%</b> = full triplet feel (off-beats delayed ⅓ of a 16th). Shared by the drum sequencer and piano roll, and baked into <b>→ Loop</b> renders and MIDI export</td></tr>
+          <tr><td><b>Humanize</b></td><td>Random timing (up to ±15 ms) and velocity (±20%) per hit at 100%. Applies to playback and → Loop renders (not MIDI export)</td></tr>
           <tr><td>Master FX</td><td>Global Reverb, Delay (tempo-synced), and Volume</td></tr>
           <tr><td>⬇ Export</td><td>Render all loops to a single WAV (one cycle)</td></tr>
           <tr><td>🎼 Song</td><td>Arrange the loops into a full track — see below</td></tr>
@@ -547,7 +623,7 @@
         <p class="help-p">Export your piano roll melody and drum pattern as a Standard MIDI File (.mid) for use in any DAW.</p>
         <table class="help-table"><tbody>
           <tr><td><b>MIDI</b> button</td><td>Downloads the current piano roll + drum sequencer as a .mid file. The file contains a tempo track, a melody track (from the piano roll), and a drum track (channel 10, GM percussion mapping).</td></tr>
-          <tr><td>Format</td><td>Standard MIDI File Format 1, 480 PPQN. Each sequencer step = one 16th note (120 ticks).</td></tr>
+          <tr><td>Format</td><td>Standard MIDI File Format 1, 480 PPQN. Each sequencer step = one 16th note (120 ticks). Swing shifts off-beat 16ths; drum ratchets export as real repeated hits; probability steps export as always-on.</td></tr>
           <tr><td>Drums</td><td>Mapped to General MIDI percussion: Kick=36, Snare=38, Hi-Hat=42, Open HH=46, Clap=39, Tom=45, 808=36 (low), Perc=56.</td></tr>
           <tr><td>Melody</td><td>Notes from the piano roll with correct MIDI note numbers, durations from held-note lengths.</td></tr>
         </tbody></table>

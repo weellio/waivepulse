@@ -106,7 +106,25 @@ export const S = {
   pseqStartTime: 0,
   pseqTimerId: null,
   pseqCells: [],
+  pseqLbls: [],             // row label elements (dimmed by scale lock)
 
   // ── Quantize ──
   quantize: false,
+
+  // ── Groove (shared by drum seq + piano roll + → Loop renders + MIDI export) ──
+  swing: 0,                 // 0–1; 1 = full triplet shuffle (odd 16ths +⅓ step)
+  humanize: 0,              // 0–1; random ±15 ms timing, ±20% velocity at 1
+
+  // ── Drum step modifiers (parallel to seqPattern) ──
+  seqProb:    Array.from({ length: 8 }, () => new Array(16).fill(1)),   // 1 / .75 / .5 / .25
+  seqRatchet: Array.from({ length: 8 }, () => new Array(16).fill(1)),   // hits per step 1–4
+  stepEdit: 'steps',        // what a plain click on a step does: steps | prob | ratchet
+
+  // ── Scale lock + transpose (piano roll, synth keyboard, MIDI in) ──
+  scaleRoot: 0,             // 0 = C … 11 = B
+  scaleName: 'chromatic',   // chromatic = lock off
+  rollTranspose: 0,         // cumulative semitone shift applied by the ± buttons (−12…+12)
+
+  // ── Web MIDI input ──
+  midiDrums: false,         // route ALL MIDI notes to the drum pads (ch 10 always does)
 };

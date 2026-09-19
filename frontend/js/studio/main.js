@@ -23,7 +23,7 @@ import {
   toggleSidechain, setSidechainParam, populateSidechainDropdowns,
 } from './audio-graph.js';
 import { openTrackEQ, closeTrackEQ, resetTrackEQ } from './eq-modal.js';
-import { exportMix, downloadZip } from './export.js';
+import { exportMix, downloadZip, measureMix, initExportPrefs } from './export.js';
 import { cutRegion, undoCut, spliceRegion, generateVariation } from './edit.js';
 import { openStemLibrary, closeStemLibrary } from './stem-library.js';
 import { initStudioReceiver } from './bridge.js';
@@ -55,7 +55,7 @@ Object.assign(window, {
   // EQ modal
   closeTrackEQ, resetTrackEQ,
   // export / import / stretch
-  exportMix, downloadZip, handleImportFiles, stretchTrack,
+  exportMix, downloadZip, measureMix, handleImportFiles, stretchTrack,
   // timeline edit
   cutRegion, undoCut, spliceRegion, generateVariation,
   // master fades
@@ -205,6 +205,7 @@ document.addEventListener('drop', e => {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
+  initExportPrefs();      // restore Export format / loudness-target choice
   await boot();
   initStudioReceiver();   // announce presence + listen for loops once the audio context exists
 });

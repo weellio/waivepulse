@@ -7,6 +7,7 @@ import { addTrackToUI } from './tracks.js';
 import { applyZoom, buildRuler, startRAF, getCanvasWidth } from './transport.js';
 import { renderMixPresetBar } from './presets.js';
 import { snapshotEq } from '../shared/eq7.js';
+import { setupLufsMeter } from './lufs-meter.js';
 
 // ── Boot ────────────────────────────────────────────────────────────────────
 export async function boot() {
@@ -91,6 +92,7 @@ async function loadStems(stems) {
   S._actx = new AudioContext();
   await loadWorklets(S._actx);
   setupGlobalFX();
+  setupLufsMeter();
 
   const stemNames = STEM_ORDER.filter(s => stems[s]);
   let loaded = 0;
@@ -142,6 +144,7 @@ function buildUI() {
   document.getElementById('duration-display').textContent = '/ ' + fmtTime(S._dur);
   document.getElementById('export-btn').disabled = false;
   document.getElementById('zip-btn').disabled = false;
+  { const mb = document.getElementById('measure-btn'); if (mb) mb.disabled = false; }
 
   document.getElementById('sidebar-tracks').innerHTML = '';
   document.getElementById('scroll-content').querySelectorAll('.track-row').forEach(e => e.remove());

@@ -99,6 +99,13 @@ export const S = {
   _localFileObjects: new Map(), // jobId → File, for Studio upload
   _actx: null,
 
+  // Generate form
+  seedLocked: false,  // true → send the Seed field; false → server picks a random seed
+  takes:      1,      // batch takes per Generate click (1-4)
+
+  // Library filter
+  favOnly: false,
+
   // Progress state
   _lmProgress:    {},   // job_id → 0-100
   _codecProgress: {},   // job_id → 0-100

@@ -3,6 +3,15 @@ import { S } from './state.js';
 import { ensureCtx } from './core.js';
 import { setStatus } from './util.js';
 import { refreshRollOctave } from './pianoseq.js';
+import { snapMidi, isLocked } from './scale.js';
+
+// Scale lock: semitone correction for a key/MIDI note (0 when unlocked / in scale).
+// A note's MIDI = 60 (C4) + its semi + the OCT shift, exactly as noteOn pitches it.
+function scaleDelta(n) {
+  if (!isLocked(S.scaleName) || n.semi == null) return 0;
+  const midi = 60 + n.semi + (S.octave - 4) * 12;
+  return snapMidi(midi, S.scaleRoot, S.scaleName) - midi;
+}
 
 // `semi` = semitones above C4 (for sample pitch-shifting)
 export const WHITE_KEYS = [
@@ -89,10 +98,12 @@ export function noteOn(n) {
   const uid = n.uid ?? n.k ?? n.note;
   if (S.activeOsc[uid]) return;
   const t   = ctx.currentTime;
-  const hz  = n.hz * Math.pow(2, S.octave - 4);
+  const sd  = scaleDelta(n);                         // scale lock snap (semitones)
+  const hz  = n.hz * Math.pow(2, S.octave - 4 + sd / 12);
   const atk = Math.max(0.004, S.attackMs / 1000);  // ≥4 ms so the onset can't click
   const dec = S.decayMs     / 1000;
-  const pk  = 0.65;
+  const vel = n.vel ?? 1;                            // MIDI velocity (keys/mouse = 1)
+  const pk  = 0.65 * vel;
   const sus = pk * S.sustainLevel;
 
   if (S.guitarMode) {
@@ -112,7 +123,7 @@ export function noteOn(n) {
     // Fast (but not instant) attack to soften the transient spike, then decay ~2.5 s
     const env  = ctx.createGain();
     env.gain.setValueAtTime(0.0001, t);
-    env.gain.linearRampToValueAtTime(S.guitarVol, t + 0.006);
+    env.gain.linearRampToValueAtTime(Math.max(0.0002, S.guitarVol * vel), t + 0.006);
     env.gain.exponentialRampToValueAtTime(0.0001, t + 2.5);
     osc.connect(filt); filt.connect(env); env.connect(S.inputBus);
     osc.start(t); osc.stop(t + 2.6);
@@ -120,7 +131,7 @@ export function noteOn(n) {
 
   } else if (S.sampleMode && S.sampleBuffer) {
     // ── Sample pitched by playbackRate ─────────────────────────────
-    const rate = Math.pow(2, (n.semi + (S.octave - 4) * 12) / 12);
+    const rate = Math.pow(2, (n.semi + sd + (S.octave - 4) * 12) / 12);
     const src  = ctx.createBufferSource();
     src.buffer = S.sampleBuffer;
     src.playbackRate.value = rate;

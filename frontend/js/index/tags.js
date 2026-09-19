@@ -1,5 +1,5 @@
 import { S, TAG_CATEGORIES } from './state.js';
-import { escHtml } from './util.js';
+import { escHtml, showToast } from './util.js';
 
 // ── Tag grid ──────────────────────────────────────────────────────────────────
 export function buildTagGrid() {
@@ -61,6 +61,50 @@ export function getTagsString() {
   const all = [...S.selectedTags];
   if (custom) all.push(...custom.split(",").map(t => t.trim()).filter(Boolean));
   return all.join(",");
+}
+
+// ── ✨ Suggest tags (local Ollama, constrained to TAG_CATEGORIES) ────────────────
+export async function suggestTags() {
+  const lyrics = document.getElementById('lyrics').value.trim();
+  const title  = document.getElementById('title').value.trim();
+  let idea = '';
+  if (!lyrics) {
+    idea = (prompt('Describe the song in a few words (e.g. "rainy late-night breakup, slow"):') || '').trim();
+    if (!idea) return;
+  }
+  const categories = Object.fromEntries(TAG_CATEGORIES.map(c => [c.label, c.tags]));
+  const btn = document.getElementById('btnSuggestTags');
+  btn.disabled = true; btn.textContent = '✨ Thinking…';
+  try {
+    const res = await fetch('/tags/suggest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idea, lyrics, title: title === 'Untitled' ? '' : title, categories }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+
+    S.selectedTags.clear();
+    document.querySelectorAll('.tag-btn').forEach(b => b.classList.remove('active', 'suggested'));
+    data.tags.forEach(t => {
+      const b = [...document.querySelectorAll('.tag-btn')].find(x => x.textContent === t);
+      if (!b) return;
+      S.selectedTags.add(t);
+      b.classList.add('active', 'suggested');
+      // open the category so the pick is visible
+      const body = b.parentElement, hdr = body.previousElementSibling;
+      body.classList.remove('collapsed'); hdr.classList.add('open');
+    });
+    setTimeout(() => document.querySelectorAll('.tag-btn.suggested').forEach(b => b.classList.remove('suggested')), 4000);
+    showToast(`✨ ${data.tags.join(', ')}  (${data.model})`);
+  } catch (e) {
+    const msg = /not reachable|Failed to fetch/i.test(e.message)
+      ? 'Ollama isn’t running — start it (ollama serve) to use ✨ Suggest tags'
+      : 'Suggest tags failed: ' + e.message;
+    showToast(msg);
+  } finally {
+    btn.disabled = false; btn.textContent = '✨ Suggest tags';
+  }
 }
 
 // ── Tag presets ───────────────────────────────────────────────────────────────

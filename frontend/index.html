@@ -56,6 +56,10 @@ I hear the traffic outside the door
 Every day the light returns
 Every day the fire burns"></textarea>
       <div class="notice">Use [Verse], [Chorus], [Bridge], [Outro] section markers for best results.</div>
+      <label class="check-row" title="Sends only your section markers (no sung words) and adds the “instrumental” tag. HeartMuLa has no official instrumental mode, so results vary — some takes may still hum or vocalise.">
+        <input type="checkbox" id="instrumental" onchange="onInstrumentalToggle()">
+        Instrumental <span class="exp-badge">experimental</span>
+      </label>
     </div>
 
     <div>
@@ -63,6 +67,7 @@ Every day the fire burns"></textarea>
         <label style="margin-bottom:0">Style Tags</label>
         <button type="button" onclick="randomizeTags()" style="background:#0a1e1e;border:1px solid #1a5a5a;color:#8cffff;padding:2px 10px;border-radius:12px;cursor:pointer;font-size:0.7rem;font-weight:600" title="Pick random tags from each category">Randomize</button>
         <button type="button" onclick="clearTags()" style="background:none;border:1px solid #2a2a38;color:#555;padding:2px 10px;border-radius:12px;cursor:pointer;font-size:0.7rem" title="Clear all selected tags">Clear</button>
+        <button type="button" id="btnSuggestTags" class="btn-suggest" onclick="suggestTags()" title="Ask your local Ollama model to pick one tag per category from your title + lyrics (or a short idea). Needs Ollama running; the first call can take up to a minute while the model loads.">✨ Suggest tags</button>
       </div>
       <div class="tag-grid-tip">8 categories — <strong>Genre is required</strong>, others are recommended or optional. Pick <strong>one tag per category</strong>; stacking multiple same-category tags blurs the style.</div>
       <div class="tags-grid" id="tagGrid"></div>
@@ -90,6 +95,16 @@ Every day the fire burns"></textarea>
           <div class="slider-row">
             <input type="range" id="maxDur" min="30" max="300" step="10" value="300" oninput="updateDurLabel()">
           </div>
+          <div class="dur-hint" id="durHint" title="Rough guess: ~2.2 sung words/sec + 8 s per section break + ~12 s intro/outro"></div>
+        </div>
+        <div>
+          <label>Seed <span style="color:#555">(same seed + settings = same song)</span></label>
+          <div class="seed-row">
+            <input type="number" id="seed" min="0" max="4294967295" step="1" placeholder="random" oninput="onSeedInput()">
+            <button type="button" class="btn-icon" onclick="randomizeSeed()" title="Roll a new random seed">🎲</button>
+            <button type="button" class="btn-icon" id="seedLock" onclick="toggleSeedLock()" title="Unlocked: every generation gets a fresh random seed. Locked: reuse this seed (to reproduce or tweak a song).">🔓</button>
+          </div>
+          <div class="field-help" id="seedHelp">Unlocked — a new random seed is picked each time.</div>
         </div>
         <div>
           <label>Temperature <span style="color:#555">(creativity)</span></label>
@@ -108,6 +123,17 @@ Every day the fire burns"></textarea>
       </div>
     </div>
 
+    <div class="takes-row" title="Queue several versions of the same song in one click. Each take gets its own seed and waits its turn in the queue.">
+      <label style="margin-bottom:0">Takes</label>
+      <div class="takes-seg" id="takesSeg">
+        <button type="button" class="active" onclick="setTakes(1)">1</button>
+        <button type="button" onclick="setTakes(2)">2</button>
+        <button type="button" onclick="setTakes(3)">3</button>
+        <button type="button" onclick="setTakes(4)">4</button>
+      </div>
+      <span class="field-help" id="takesHelp" style="margin:0"></span>
+    </div>
+
     <button class="btn-generate" id="btnGenerate" onclick="generate()">Generate Song</button>
   </div><!-- end panel-create-inner -->
   </div><!-- end panel-create -->
@@ -118,6 +144,16 @@ Every day the fire burns"></textarea>
       <h2>Generated Songs</h2>
       <button class="btn-load-mp3" onclick="document.getElementById('mp3FileInput').click()">▶ Load MP3</button>
       <input type="file" id="mp3FileInput" accept="audio/*" style="display:none" multiple onchange="loadLocalMP3(this)">
+    </div>
+    <div class="lib-toolbar">
+      <input type="search" id="libSearch" placeholder="Search title, artist, tags, lyrics…" oninput="applyLibraryFilter()" title="Filters the song list as you type">
+      <button type="button" class="lib-fav" id="libFavOnly" onclick="toggleFavOnly()" title="Show only starred songs">★ Favorites</button>
+      <select id="libSort" onchange="applyLibraryFilter()" title="Sort the song list">
+        <option value="newest">Newest</option>
+        <option value="oldest">Oldest</option>
+        <option value="title">Title A–Z</option>
+      </select>
+      <span class="lib-count" id="libCount"></span>
     </div>
     <div id="historyList"><div class="empty-state">No songs yet — generate your first one!<div class="drag-hint">or drag MP3 files here</div></div></div>
   </div>

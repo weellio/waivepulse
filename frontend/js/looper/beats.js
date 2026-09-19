@@ -3,6 +3,7 @@
 import { S } from './state.js';
 import { setDrumMode, buildSeq, paintSeqCell } from './drums.js';
 import { setStatus } from './util.js';
+import { setSwing } from './transport.js';
 
 // Per-row default velocity (rows: 0 Kick · 1 Snare · 2 HiHat · 3 Open · 4 Clap · 5 Tom · 6 808 · 7 Perc)
 const V = [1.0, 0.9, 0.62, 0.68, 0.9, 0.85, 0.95, 0.68];
@@ -28,11 +29,15 @@ function ensureSeqReady() {
   if (S.seqCells.length === 0) buildSeq();
 }
 
-function applyGrid(grid) {
+// prob / rat are optional (older favorites and presets have none → 100% / 1 hit).
+function applyGrid(grid, prob, rat) {
   ensureSeqReady();
   for (let r = 0; r < S.seqPattern.length; r++)
     for (let s = 0; s < 16; s++) {
       S.seqPattern[r][s] = grid[r] ? (grid[r][s] || 0) : 0;
+      const p = prob?.[r]?.[s], k = rat?.[r]?.[s];
+      S.seqProb[r][s]    = [1, 0.75, 0.5, 0.25].includes(p) ? p : 1;
+      S.seqRatchet[r][s] = [1, 2, 3, 4].includes(k) ? k : 1;
       paintSeqCell(r, s);
     }
 }
@@ -63,8 +68,13 @@ function saveBeat() {
   const name = (prompt('Name this beat:', 'My beat') || '').trim();
   if (!name) return;
   const grid = S.seqPattern.map(row => row.map(v => +v.toFixed(2)));
+  const fav  = { name, grid };
+  // only store the extras when used, so plain beats stay small + old-format compatible
+  if (S.seqProb.some(row => row.some(p => p !== 1)))    fav.prob  = S.seqProb.map(row => row.slice());
+  if (S.seqRatchet.some(row => row.some(k => k !== 1))) fav.rat   = S.seqRatchet.map(row => row.slice());
+  if (S.swing) fav.swing = +S.swing.toFixed(2);
   const favs = getFavs();
-  favs.push({ name, grid });
+  favs.push(fav);
   setFavs(favs);
   renderBeatBar();
   setStatus(`Saved "${name}" to your favorites`);
@@ -72,8 +82,9 @@ function saveBeat() {
 
 function loadFav(i) {
   const f = getFavs()[i]; if (!f) return;
-  applyGrid(f.grid);
-  setStatus(`Loaded "${f.name}"`);
+  applyGrid(f.grid, f.prob, f.rat);
+  if (typeof f.swing === 'number') setSwing(f.swing * 100);   // restore the groove it was saved with
+  setStatus(`Loaded "${f.name}"` + (f.swing ? ` (swing ${Math.round(f.swing * 100)}%)` : ''));
 }
 
 function deleteFav(i) {

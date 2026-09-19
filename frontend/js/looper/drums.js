@@ -3,6 +3,7 @@ import { S } from './state.js';
 import { ensureCtx } from './core.js';
 import { fmtSec, setStatus } from './util.js';
 import { drawWave, playSlot } from './loops.js';
+import { swingOffset, stepSpan, humanizeTime, humanizeVel, ratchetHits, nextProb, nextRatchet, euclid } from './groove.js';
 
 // ── Drum synth ────────────────────────────────────────────────────────────────
 function gn(t, peak, decay) {
@@ -151,10 +152,10 @@ export function buildDrums() {
   });
 }
 
-export function hitDrum(d) {
+export function hitDrum(d, vel) {
   ensureCtx();
   if (S.ctx.state === 'suspended') S.ctx.resume();
-  d.play();
+  d.play(undefined, vel);             // vel undefined = full (pads/keys); MIDI passes its velocity
   const el = document.getElementById('dp-' + d.key);
   if (el) { el.classList.add('hit'); setTimeout(() => el.classList.remove('hit'), 110); }
 }
@@ -181,6 +182,8 @@ export function clearSeq() {
   for (let row = 0; row < S.seqPattern.length; row++) {
     for (let s = 0; s < SEQ_STEPS; s++) {
       S.seqPattern[row][s] = 0;
+      S.seqProb[row][s] = 1;
+      S.seqRatchet[row][s] = 1;
       if (S.seqCells.length) paintSeqCell(row, s);
     }
   }
@@ -207,10 +210,8 @@ export async function pushSeqToLoop() {
   const savedCtx = S.ctx, savedBus = S.inputBus;
   S.ctx = off; S.inputBus = off.destination;
   try {
-    for (let step = 0; step < SEQ_STEPS; step++) {
-      const when = step * stepDur;
-      DRUMS.forEach((d, row) => { const v = S.seqPattern[row][step]; if (v) d.play(when, v); });
-    }
+    // same swing / probability / ratchet / humanize path as live playback
+    for (let step = 0; step < SEQ_STEPS; step++) scheduleDrumStep(step, step * stepDur, stepDur, 0);
   } finally {
     S.ctx = savedCtx; S.inputBus = savedBus;
   }
@@ -237,13 +238,13 @@ export async function pushSeqToLoop() {
     S.masterSlot   = id;
   }
   playSlot(id);
-  setStatus('Beat pushed to Loop ' + (id + 1) + ' — perfectly timed');
+  setStatus('Beat pushed to Loop ' + (id + 1) + (S.swing ? ' — swung ' + Math.round(S.swing * 100) + '%' : ' — perfectly timed'));
 }
 
 export function buildSeq() {
   const grid = document.getElementById('seqGrid');
   grid.style.display = 'grid';
-  grid.style.gridTemplateColumns = '40px repeat(' + SEQ_STEPS + ',19px)';
+  grid.style.gridTemplateColumns = '40px 16px repeat(' + SEQ_STEPS + ',19px)';
   grid.style.gap = '2px';
   grid.innerHTML = '';
   S.seqCells = [];
@@ -254,6 +255,13 @@ export function buildSeq() {
     lbl.textContent = d.name;
     lbl.style.color = SEQ_COLORS[row];
     grid.appendChild(lbl);
+    // "E" = Euclidean fill for this row
+    const eb = document.createElement('button');
+    eb.className = 'seq-euclid';
+    eb.textContent = 'E';
+    eb.title = 'Euclidean fill — spread N hits evenly across the 16 steps (with rotation)';
+    eb.addEventListener('click', () => euclidFill(row));
+    grid.appendChild(eb);
     for (let s = 0; s < SEQ_STEPS; s++) {
       const c = document.createElement('div');
       c.className = 'seq-step' + (s % 4 === 0 && s > 0 ? ' seq-beat-line' : '');
@@ -261,12 +269,18 @@ export function buildSeq() {
       const fill = document.createElement('div');
       fill.className = 'seq-fill';
       c.appendChild(fill);
-      S.seqCells[row].push({ el: c, fill });
+      const badge = document.createElement('span');     // probability % (e.g. "50")
+      badge.className = 'seq-badge';
+      c.appendChild(badge);
+      S.seqCells[row].push({ el: c, fill, badge });
 
       // Click toggles on/off; vertical drag (or wheel) sets velocity like a fader.
+      // Prob / Ratchet edit modes (or Alt / Shift + click) cycle the step's modifiers.
       let dragging = false, moved = false, startY = 0, startVel = 0;
       c.addEventListener('pointerdown', e => {
         e.preventDefault();
+        const kind = e.altKey ? 'prob' : e.shiftKey ? 'ratchet' : (S.stepEdit !== 'steps' ? S.stepEdit : null);
+        if (kind) { cycleStep(row, s, kind); return; }
         dragging = true; moved = false; startY = e.clientY;
         startVel = S.seqPattern[row][s] || 0.8;
         c.setPointerCapture(e.pointerId);
@@ -284,6 +298,7 @@ export function buildSeq() {
         dragging = false;
         if (!moved) {                                  // a tap = toggle
           S.seqPattern[row][s] = S.seqPattern[row][s] ? 0 : 0.8;
+          if (!S.seqPattern[row][s]) { S.seqProb[row][s] = 1; S.seqRatchet[row][s] = 1; }   // off = forget modifiers
           paintSeqCell(row, s);
         }
       });
@@ -303,8 +318,17 @@ export function buildSeq() {
 export function paintSeqCell(row, s) {
   const cell = S.seqCells[row][s];
   const v = S.seqPattern[row][s] || 0;
+  const p = S.seqProb[row][s] ?? 1, r = S.seqRatchet[row][s] ?? 1;
   cell.el.classList.toggle('on', v > 0);
+  cell.el.classList.toggle('prob', v > 0 && p < 1);
   cell.fill.style.height = (v * 100) + '%';
+  // probability → fainter fill + a tiny % badge; ratchet → the fill splits into N slices
+  cell.fill.style.opacity = v > 0 && p < 1 ? (0.3 + 0.55 * p).toFixed(2) : '';
+  cell.fill.style.backgroundImage = v > 0 && r > 1
+    ? `repeating-linear-gradient(90deg, transparent 0 calc(${100 / r}% - 1.5px), rgba(0,0,0,.75) calc(${100 / r}% - 1.5px) ${100 / r}%)`
+    : '';
+  cell.badge.textContent = v > 0 && p < 1 ? String(Math.round(p * 100)) : '';
+  cell.el.title = v > 0 ? `vel ${Math.round(v * 100)}% · chance ${Math.round(p * 100)}% · ${r} hit${r > 1 ? 's' : ''}` : '';
 }
 
 export function toggleSeq() {
@@ -336,8 +360,7 @@ export function stopSeq() {
 export function runSeq() {
   const stepDur = (60 / S.bpm) / 4;
   while (S.seqNextTime < S.ctx.currentTime + 0.1) {
-    const step = S.seqStep;
-    DRUMS.forEach((d, row) => { const v = S.seqPattern[row][step]; if (v) d.play(S.seqNextTime, v); });
+    scheduleDrumStep(S.seqStep, S.seqNextTime, stepDur, S.ctx.currentTime);
     S.seqNextTime += stepDur;
     S.seqStep = (S.seqStep + 1) % SEQ_STEPS;
   }
@@ -349,4 +372,61 @@ export function seqVisLoop() {
   const vis = Math.floor(Math.max(0, S.ctx.currentTime - S.seqAnchor) / stepDur) % SEQ_STEPS;
   S.seqCells.forEach((row) => row.forEach((c, ci) => c.el.classList.toggle('cur', ci === vis)));
   requestAnimationFrame(seqVisLoop);
+}
+
+// ── Step scheduling (shared by live playback and → Loop render) ───────────────
+// gridTime = the step's straight-grid time; swing, probability, ratchets and
+// humanize are all applied here so every path sounds the same. `floor` keeps
+// humanized hits from landing in the past (live) or before 0 (render).
+export function scheduleDrumStep(step, gridTime, stepDur, floor) {
+  const t0   = gridTime + swingOffset(step, stepDur, S.swing);
+  const span = stepSpan(step, stepDur, S.swing);
+  DRUMS.forEach((d, row) => {
+    const v = S.seqPattern[row][step];
+    if (!v) return;
+    const p = S.seqProb[row][step] ?? 1;
+    if (p < 1 && Math.random() >= p) return;                 // probability roll
+    for (const h of ratchetHits(S.seqRatchet[row][step] ?? 1, span, v)) {
+      const when = Math.max(floor, t0 + h.dt + humanizeTime(S.humanize));
+      d.play(when, humanizeVel(h.vel, S.humanize));
+    }
+  });
+}
+
+// ── Step edit mode: what a plain click on a step does ─────────────────────────
+// steps = toggle on/off (+ drag for velocity) · prob = cycle 100/75/50/25% ·
+// ratchet = cycle 1/2/3/4 hits. Alt-click = prob and Shift-click = ratchet in any mode.
+export function setStepEdit(mode) {
+  S.stepEdit = mode;
+  document.querySelectorAll('.stepedit-btn').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+  setStatus({ steps: 'Click toggles steps · drag = velocity',
+              prob: 'Click an ON step to cycle its chance: 100 → 75 → 50 → 25%',
+              ratchet: 'Click an ON step to cycle its ratchet: 1 → 2 → 3 → 4 hits' }[mode] || '');
+}
+
+function cycleStep(row, s, kind) {
+  if (!S.seqPattern[row][s]) { S.seqPattern[row][s] = 0.8; paintSeqCell(row, s); return; }   // off → just turn it on
+  if (kind === 'prob') S.seqProb[row][s]    = nextProb(S.seqProb[row][s]);
+  else                 S.seqRatchet[row][s] = nextRatchet(S.seqRatchet[row][s]);
+  paintSeqCell(row, s);
+}
+
+// ── Euclidean fill for one drum row ───────────────────────────────────────────
+export function euclidFill(row) {
+  const d = DRUMS[row];
+  const cur = S.seqPattern[row].filter(v => v).length || 4;
+  const ans = prompt(`Euclidean fill — ${d.name}\nHits (1–16), rotation (0–15). e.g. "5, 2"`, cur + ', 0');
+  if (ans == null) return;
+  const nums = ans.split(/[^0-9-]+/).filter(Boolean).map(Number);
+  const hits = Math.max(1, Math.min(SEQ_STEPS, nums[0] || 0));
+  if (!nums.length || !Number.isFinite(nums[0])) { setStatus('Euclid: enter a hit count 1–16'); return; }
+  const rot = nums[1] || 0;
+  const pat = euclid(hits, SEQ_STEPS, rot);
+  const vel = S.seqPattern[row].find(v => v) || 0.8;
+  for (let s = 0; s < SEQ_STEPS; s++) {
+    S.seqPattern[row][s] = pat[s] ? vel : 0;
+    S.seqProb[row][s] = 1; S.seqRatchet[row][s] = 1;
+    if (S.seqCells.length) paintSeqCell(row, s);
+  }
+  setStatus(`${d.name}: Euclid E(${hits},${SEQ_STEPS})${rot ? ' rotated ' + rot : ''}`);
 }

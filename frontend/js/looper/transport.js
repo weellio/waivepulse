@@ -86,3 +86,19 @@ export function quantizeLen(len) {
   const bar = (60 / S.bpm) * 4;
   return bar * Math.max(1, Math.round(len / bar));
 }
+
+// ── Groove: swing + humanize (global — drum seq, piano roll, → Loop, MIDI export) ─
+// Slider value is 0–100 (%). 100% swing = full triplet shuffle (see groove.js).
+export function setSwing(val) {
+  S.swing = Math.max(0, Math.min(1, (parseFloat(val) || 0) / 100));
+  const el = document.getElementById('swingVal');
+  if (el) el.textContent = Math.round(S.swing * 100) + '%';
+  const sl = document.getElementById('swingSlider');
+  if (sl && +sl.value !== Math.round(S.swing * 100)) sl.value = Math.round(S.swing * 100);
+}
+
+export function setHumanize(val) {
+  S.humanize = Math.max(0, Math.min(1, (parseFloat(val) || 0) / 100));
+  const el = document.getElementById('humanVal');
+  if (el) el.textContent = Math.round(S.humanize * 100) + '%';
+}

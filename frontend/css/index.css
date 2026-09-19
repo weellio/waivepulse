@@ -347,3 +347,84 @@
 .dmodal-foot button:hover { border-color: #3a3a48; }
 .dmodal-foot .dm-save { background: #0a1e1e; border-color: #1a5a5a; color: #8cffff; font-weight: 600; }
 .dmodal-foot .dm-save:hover { background: #0e2a2a; }
+
+/* ── Generate: instrumental / seed / takes / duration hint ─────── */
+.check-row {
+  display: flex; align-items: center; gap: 8px; margin: 10px 0 0; cursor: pointer;
+  text-transform: none; letter-spacing: 0; font-size: 0.82rem; font-weight: 500; color: #aaa;
+}
+.check-row input { accent-color: #2ab8b8; width: 15px; height: 15px; cursor: pointer; }
+.exp-badge {
+  font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: #c9a227; border: 1px solid #3d3010; background: #1e1808; border-radius: 8px; padding: 1px 6px;
+}
+textarea.instrumental-on { opacity: 0.45; }
+.btn-suggest {
+  margin-left: auto; background: #16122a; border: 1px solid #4a3a80; color: #c8b8ff;
+  padding: 2px 10px; border-radius: 12px; cursor: pointer; font-size: 0.7rem; font-weight: 600;
+  font-family: inherit; transition: all .15s;
+}
+.btn-suggest:hover { border-color: #8a70e0; color: #e4dcff; }
+.btn-suggest:disabled { opacity: 0.5; cursor: wait; }
+.tag-btn.suggested { box-shadow: 0 0 0 2px #6a50c0; }
+
+.dur-hint { font-size: 0.74rem; color: #666; margin-top: 6px; min-height: 1em; }
+.dur-hint a { color: #2ab8b8; cursor: pointer; text-decoration: none; margin-left: 6px; }
+.dur-hint a:hover { text-decoration: underline; }
+
+.seed-row { display: flex; gap: 6px; align-items: center; }
+input[type=number] {
+  flex: 1; min-width: 0; background: #1a1a24; border: 1px solid #2a2a38; border-radius: 8px;
+  color: #e2e2e8; padding: 8px 10px; font-size: 0.88rem; outline: none; font-family: 'Consolas', monospace;
+}
+input[type=number]:focus { border-color: #2ab8b8; }
+.btn-icon {
+  background: #1a1a24; border: 1px solid #2a2a38; border-radius: 8px; width: 36px; height: 36px;
+  cursor: pointer; font-size: 1rem; flex-shrink: 0; transition: all .15s; padding: 0;
+}
+.btn-icon:hover { border-color: #2ab8b8; }
+.btn-icon.locked { background: #0a3030; border-color: #2ab8b8; }
+.field-help { font-size: 0.72rem; color: #555; margin-top: 5px; line-height: 1.4; }
+.field-help.warn { color: #c9a227; }
+
+.takes-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.takes-seg { display: flex; border: 1px solid #2a2a38; border-radius: 8px; overflow: hidden; }
+.takes-seg button {
+  background: #1a1a24; border: none; border-right: 1px solid #2a2a38; color: #888;
+  width: 34px; height: 28px; cursor: pointer; font-size: 0.82rem; font-family: inherit; transition: all .12s;
+}
+.takes-seg button:last-child { border-right: none; }
+.takes-seg button:hover { color: #ddd; }
+.takes-seg button.active { background: #0a3030; color: #b8ffff; font-weight: 700; }
+
+/* ── Library toolbar + card extras ─────────────────────────────── */
+.lib-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.lib-toolbar input[type=search] {
+  flex: 1; min-width: 160px; background: #1a1a24; border: 1px solid #2a2a38; border-radius: 8px;
+  color: #e2e2e8; padding: 7px 11px; font-size: 0.82rem; outline: none; font-family: inherit;
+}
+.lib-toolbar input[type=search]:focus { border-color: #2ab8b8; }
+.lib-toolbar select { width: auto; padding: 6px 10px; font-size: 0.8rem; }
+.lib-fav {
+  background: #1a1a24; border: 1px solid #2a2a38; border-radius: 8px; color: #888;
+  font-size: 0.78rem; padding: 6px 12px; cursor: pointer; font-family: inherit; transition: all .15s;
+}
+.lib-fav:hover { border-color: #c9a227; color: #f5d060; }
+.lib-fav.active { background: #1e1808; border-color: #c9a227; color: #f5d060; }
+.lib-count { font-size: 0.72rem; color: #555; }
+.lib-empty { color: #444; font-size: 0.85rem; text-align: center; margin-top: 30px; }
+
+.btn-star {
+  background: none; border: none; color: #444; cursor: pointer; font-size: 1rem;
+  padding: 2px 4px; transition: color .15s, transform .1s; flex-shrink: 0; line-height: 1;
+}
+.btn-star:hover { color: #c9a227; }
+.btn-star.on { color: #f5c542; }
+.btn-star:active { transform: scale(1.25); }
+.take-badge {
+  display: inline-block; font-size: 0.62rem; font-weight: 700; color: #c8b8ff;
+  background: #16122a; border: 1px solid #4a3a80; border-radius: 8px; padding: 0 6px;
+  margin-left: 6px; vertical-align: 1px; letter-spacing: 0.03em;
+}
+.chip-seed { background: #16122a; color: #c8b8ff; border: 1px solid #4a3a80; font-family: 'Consolas', monospace; cursor: pointer; }
+.chip-inst { background: #1e1808; color: #f5d060; border: 1px solid #3d3010; }
