@@ -501,6 +501,27 @@ input[type=range].vslider.groove-slider{flex:0 0 54px;width:54px}
 .midi-stat.err{color:var(--red)}
 .midi-dot{width:7px;height:7px;border-radius:50%;background:var(--b2);margin-left:auto;transition:background .08s}
 .midi-dot.hit{background:var(--accent);box-shadow:0 0 6px rgba(140,255,255,.7)}
+/* ── Air Band card (side column): webcam hands → drums / keys ─ */
+#airBand{background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);
+  padding:12px 14px;display:flex;flex-direction:column;gap:7px;flex-shrink:0}
+#airBand .fx-hdr{margin-bottom:2px;display:flex;align-items:center;gap:6px}
+.air-stage{position:relative;width:100%;aspect-ratio:4/3;background:#000;border-radius:var(--rs);
+  overflow:hidden;border:1px solid var(--b2)}
+.air-stage video,.air-stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
+.air-stage video.mirror{transform:scaleX(-1)}
+.air-stage .air-close{display:none}
+.air-stage.big{position:fixed;inset:3vh 3vw;width:auto;height:auto;aspect-ratio:auto;z-index:80;
+  border-color:var(--accent);box-shadow:0 0 0 100vmax rgba(0,0,0,.88)}
+.air-stage.big .air-close{display:block;position:absolute;top:10px;right:10px;z-index:2;font-size:14px;padding:4px 10px}
+.air-row{display:flex;gap:5px;align-items:center}
+.air-lbl{font-size:9px;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.05em;min-width:36px}
+.air-zones{display:grid;gap:3px}
+.air-zone{font-size:9px;background:var(--s2);color:var(--txt);border:1px solid var(--b2);border-radius:3px;
+  padding:2px 0;min-width:0;width:100%;text-overflow:ellipsis}
+.air-zone.d{color:var(--amber)}
+.air-zone.n{color:var(--green)}
+.air-zone.x{color:var(--txt2)}
+.air-zone:focus{border-color:var(--accent)}
 /* With the MIDI card in the side column, Master FX sizes to its content so the
    mic/autotune card keeps the flexible space (and its mic button isn't clipped). */
 .icol.side #masterFX{flex:0 0 auto}

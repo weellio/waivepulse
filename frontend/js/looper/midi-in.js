@@ -25,6 +25,7 @@ export { gmToPad };
 // A note object noteOn/noteOff understand. noteOn multiplies hz by 2^(OCT-4) and
 // computes the sample pitch from `semi` + OCT, so divide the OCT shift back out:
 // MIDI note 60 always sounds middle C regardless of the OCT control.
+export function midiNoteObj(m, vel) { return noteObj(m, vel); }   // shared with Air Band (airband.js)
 function noteObj(m, vel) {
   const shift = (S.octave - 4) * 12;
   return { note: keyName(m), hz: 440 * Math.pow(2, (m - 69 - shift) / 12), semi: m - 60 - shift, uid: 'midi_' + m, vel };

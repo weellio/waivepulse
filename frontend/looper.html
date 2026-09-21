@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WAIvePulse Looper</title>
 <link rel="icon" type="image/png" href="/assets/wave small.png">
-<link rel="stylesheet" href="/css/looper.css?v=23">
+<link rel="stylesheet" href="/css/looper.css?v=24">
 </head>
 <body>
 
@@ -377,6 +377,30 @@
         </select>
         <div id="midiStat" class="midi-stat">Click Connect to use a MIDI keyboard / pads</div>
       </div>
+      <div id="airBand">
+        <div class="fx-hdr">Air Band <span style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--b3)">— webcam hands</span> <span id="airDot" class="midi-dot"></span></div>
+        <div class="air-stage" id="airStage">
+          <video id="airVideo" class="mirror" playsinline muted autoplay></video>
+          <canvas id="airCanvas" width="640" height="480"></canvas>
+          <button class="ibtn air-close" onclick="toggleAirBig()" title="Close big view (Esc)">✕</button>
+        </div>
+        <div class="midi-row">
+          <button class="ibtn" id="airConnBtn" onclick="toggleAirBand()" title="Turn the webcam on. Strike DOWN in a zone to hit its drum; hold an OPEN hand in a zone to play its note. Nothing leaves your computer.">🎥 Camera</button>
+          <button class="ibtn" id="airBigBtn" onclick="toggleAirBig()" title="Big view for performing / recording a clip (Esc closes)">⛶ Big</button>
+        </div>
+        <div class="air-row">
+          <span class="air-lbl">Layout</span>
+          <select id="airPreset" class="at-sel midi-sel" style="width:auto;flex:1" onchange="setAirPreset(this.value)" title="Load a zone layout (editing any zone makes it Custom)"></select>
+          <select id="airGrid" class="at-sel midi-sel" style="width:auto;flex:0 0 54px" onchange="setAirGrid(this.value)" title="How many zones the camera view is split into (rows × columns)"></select>
+        </div>
+        <div id="airZones" class="air-zones" title="One box per zone, laid out like the camera view. Pick what each zone plays."></div>
+        <div class="air-row">
+          <span class="air-lbl" title="Strike sensitivity">Hit</span>
+          <input type="range" id="airSens" min="0" max="1" step="0.01" value="0.5" class="vslider" oninput="setAirSens(this.value)" title="Strike sensitivity — left: needs a firm whack · right: hair trigger">
+          <button class="ibtn" id="airMirrorBtn" onclick="toggleAirMirror()" title="Mirror the picture (selfie view — your left hand on the left)" style="flex:0 0 auto;padding:2px 7px">🪞</button>
+        </div>
+        <div id="airStat" class="midi-stat">Click Camera to play drums &amp; keys in the air</div>
+      </div>
       <div id="masterFX">
         <div class="fx-hdr">Master FX</div>
         <div class="fx-row">
@@ -644,6 +668,22 @@
           <tr><td>Device menu</td><td>Listen to all inputs, or just one</td></tr>
           <tr><td>Keys</td><td>Play the synth with velocity → loudness. Sustain pedal (CC64) holds notes. Arp, ADSR, filter, instrument and scale lock all apply. MIDI note 60 = middle C, whatever OCT is set to</td></tr>
           <tr><td><b>🥁 MIDI → Drums</b></td><td>Send every note to the drum pads (channel 10 always does). GM map: 36 Kick · 35 → 808 · 38/40 Snare · 42/44 HiHat · 46 Open · 39 Clap · 41–50 Toms · anything else → Perc</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">🎥 Air Band (webcam)</div>
+        <p class="help-p">Play the drums and keys with your hands in the air. The camera view is split into zones and every zone plays one sound. Hand tracking runs on your own GPU in the browser — no video is uploaded. Hits go through the same path as the keys and MIDI, so they are recorded into loops and follow scale lock, ADSR, filter, arp and the chosen instrument.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>🎥 Camera</b></td><td>Turns the webcam on (first time downloads the ≈10 MB hand tracker). Works in Chrome / Edge on localhost or https. Click again to stop</td></tr>
+          <tr><td>Drum zone (amber)</td><td>A quick <b>downward strike</b> of the hand = one hit. Faster = louder. Zones flash when they fire</td></tr>
+          <tr><td>Note zone (green)</td><td>Hold an <b>open hand</b> inside the zone and the note sustains; slide to another zone to change note; make a <b>fist</b> or leave to release. Two hands = two notes</td></tr>
+          <tr><td>Layout</td><td><b>Drum kit</b> (8 pads) · <b>Keys</b> (8 notes) · <b>Band</b> (drums left, chord tones right) · <b>Chord tones</b> · or your own <b>Custom</b> mix. Grid picks how many zones (rows × columns)</td></tr>
+          <tr><td>Zone boxes</td><td>Laid out like the camera view — pick what each zone plays. Note names follow the Scale Lock key. Saved in this browser</td></tr>
+          <tr><td>Hit</td><td>Strike sensitivity. Left = needs a firm whack (no accidental hits), right = hair trigger</td></tr>
+          <tr><td>🪞 Mirror</td><td>Selfie view: your left hand appears on the left. Off = camera view as-is</td></tr>
+          <tr><td><b>⛶ Big</b></td><td>Full-window view for performing or recording a clip. <b>Esc</b> closes</td></tr>
+          <tr><td>Tips</td><td>Stand back so the whole hand is in frame · plain background and good light track best · a fist strikes cleaner than an open hand · rest hands OUT of the note zones between phrases</td></tr>
         </tbody></table>
       </div>
 

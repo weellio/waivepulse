@@ -18,6 +18,7 @@ import { chBPM, toggleMetro, chCountIn, tapTempo, toggleQuantize, setSwing, setH
 import { toggleMic, toggleAutotune, setAtKey, setAtScaleSel, setAtSpeed, toggleHarmonizer, setHarmInterval, toggleHarmVoice2 } from './mic.js';
 import { setSynthMode, togglePseq, pushPseqToLoop, clearPseq, renderSheet, setScaleRoot, setScaleName, transposeRoll, pseqRuns } from './pianoseq.js';
 import { initMidi, connectMidi, setMidiDevice, toggleMidiDrums } from './midi-in.js';
+import { initAirBand, toggleAirBand, toggleAirBig, setAirPreset, setAirGrid, setAirSens, toggleAirMirror, airAssign } from './airband.js';
 import { exportMIDI, setMidiBarsProvider } from './midi-export.js';
 import { importMidiDialog, importMidiFile } from './midi-import.js';
 import { initBanks, clickBank, toggleBankCopy, setChainStr, toggleChain, renderPlan } from './banks.js';
@@ -56,6 +57,8 @@ Object.assign(window, {
   setScaleRoot, setScaleName, transposeRoll,
   // MIDI input
   connectMidi, setMidiDevice, toggleMidiDrums,
+  // Air Band (webcam hands -> drums / keys)
+  toggleAirBand, toggleAirBig, setAirPreset, setAirGrid, setAirSens, toggleAirMirror, airAssign,
   // per-loop EQ
   openLoopEq, closeLoopEq, resetLoopEq,
   // per-loop trim
@@ -122,6 +125,7 @@ for (const id of ['expFmt', 'expTarget']) {
   el.addEventListener('change', () => { try { localStorage.setItem('wp.looper.' + id, el.value); } catch (_) {} });
 }
 initMidi();        // Web MIDI: auto-reconnects if already granted, else shows the Connect button
+initAirBand();     // Air Band: zone editor + saved layout (camera only starts on click)
 initStudioBridge(() => { refreshStudioButtons(); refreshSongStudioBtns(); });   // heartbeat: greys the "Send to Studio" buttons (loops + song builder) when no Studio is open
 refreshExportButtons();                                   // grey ⬇Export / 🎼Song / ⬇MIDI until there's something to export…
 setInterval(refreshExportButtons, 350);                   // …and keep them in sync as loops/sequencer/piano-roll change

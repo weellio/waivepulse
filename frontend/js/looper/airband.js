@@ -1,0 +1,350 @@
+// ── Air Band: play the drums + keys with your hands in front of the webcam ────
+// MediaPipe Hand Landmarker (runs on the GPU in the browser, nothing leaves the
+// machine) tracks up to two hands. The camera view is split into a grid of zones,
+// each assigned a drum pad or a note (airband-logic.js). Hits go through the SAME
+// hitDrum / noteOn / noteOff path as the computer keys and MIDI input, so they are
+// recorded into loops and honour scale lock, ADSR, filter, arp and instrument.
+//   · drum zone: a quick downward strike of the hand = one hit, velocity from speed
+//   · note zone: an OPEN hand inside the zone holds the note; fist / leaving releases
+import { S } from './state.js';
+import { setStatus } from './util.js';
+import { noteOn, noteOff } from './synth.js';
+import { DRUMS, hitDrum } from './drums.js';
+import { midiNoteObj } from './midi-in.js';
+import { NOTE_NAMES } from './scale.js';
+import {
+  PRESETS, GRID_SIZES, presetMapping, resizeMapping, serializeMapping, parseMapping,
+  zoneRect, HandTracker, sensToThreshold, degreeToMidi, mirrorLandmarks, HAND_BONES,
+} from './airband-logic.js';
+
+const MP_VER    = '1.0.1';
+const MP_BASE   = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
+const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+const LS_KEY    = 'wp.looper.airband';
+const HOLD_VEL  = 0.9;
+
+const A = {
+  on: false, loading: false, stream: null, landmarker: null,
+  mapping: presetMapping('drums'), preset: 'drums', sens: 0.5, mirror: true, big: false,
+  hands: {},            // handedness label → HandTracker
+  heldNote: {},         // label → note object currently held (for noteOff)
+  seen: {},             // label → true when seen this frame
+  flash: {},            // zone → ms until the hit flash fades
+  raf: 0, lastVideoT: -1, frames: 0, fpsT: 0, fps: 0, handsNow: 0,
+  labelKey: '',         // scale root+name the zone labels were built for
+  log: [],              // recent events (page tests read this)
+};
+
+const $ = id => document.getElementById(id);
+
+// ── Persistence ───────────────────────────────────────────────────────────────
+function save() {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({ m: serializeMapping(A.mapping), preset: A.preset, sens: A.sens, mirror: A.mirror }));
+  } catch (_) {}
+}
+function restore() {
+  try {
+    const o = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); if (!o) return;
+    const m = parseMapping(o.m); if (m) A.mapping = m;
+    if (typeof o.preset === 'string') A.preset = o.preset;
+    if (typeof o.sens === 'number') A.sens = Math.min(1, Math.max(0, o.sens));
+    if (typeof o.mirror === 'boolean') A.mirror = o.mirror;
+  } catch (_) {}
+}
+
+// ── Labels ────────────────────────────────────────────────────────────────────
+function noteName(deg) {
+  const m = degreeToMidi(deg, S.scaleRoot, S.scaleName);
+  return NOTE_NAMES[m % 12] + (Math.floor(m / 12) - 1);
+}
+function cellLabel(c) {
+  if (!c) return '·';
+  if (c.t === 'd') return DRUMS[c.i] ? DRUMS[c.i].icon + ' ' + DRUMS[c.i].name : '?';
+  return noteName(c.deg);
+}
+function cellValue(c) { return !c ? 'none' : c.t + ':' + (c.t === 'd' ? c.i : c.deg); }
+function valueToCell(v) {
+  if (!v || v === 'none') return null;
+  const [t, n] = v.split(':'); const k = parseInt(n, 10);
+  if (t === 'd' && DRUMS[k]) return { t: 'd', i: k };
+  if (t === 'n' && k >= 0 && k < 24) return { t: 'n', deg: k };
+  return null;
+}
+function scaleKey() { return S.scaleRoot + ':' + S.scaleName; }
+
+// ── Zone editor (one <select> per zone, laid out like the camera grid) ────────
+function buildZoneEditor() {
+  const box = $('airZones'); if (!box) return;
+  const m = A.mapping;
+  box.style.gridTemplateColumns = `repeat(${m.cols}, 1fr)`;
+  box.innerHTML = '';
+  m.cells.forEach((c, i) => {
+    const sel = document.createElement('select');
+    sel.className = 'air-zone ' + (c ? c.t : 'x');
+    sel.title = `Zone ${i + 1}: what this part of the camera view plays`;
+    sel.appendChild(new Option('— none —', 'none'));
+    const gd = document.createElement('optgroup'); gd.label = 'Drums (strike)';
+    DRUMS.forEach((d, k) => gd.appendChild(new Option(d.icon + ' ' + d.name, 'd:' + k)));
+    sel.appendChild(gd);
+    const gn = document.createElement('optgroup'); gn.label = 'Notes (hold open hand)';
+    for (let k = 0; k < 15; k++) gn.appendChild(new Option(`${k + 1} · ${noteName(k)}`, 'n:' + k));
+    sel.appendChild(gn);
+    sel.value = cellValue(c);
+    sel.addEventListener('change', () => airAssign(i, sel.value));
+    box.appendChild(sel);
+  });
+  A.labelKey = scaleKey();
+}
+// Note names depend on the scale lock: refresh the option labels when it changes.
+function refreshLabels() {
+  if (A.labelKey === scaleKey()) return;
+  const box = $('airZones'); if (!box) return;
+  [...box.querySelectorAll('select')].forEach(sel => {
+    [...sel.options].forEach(o => { if (o.value.startsWith('n:')) { const k = +o.value.slice(2); o.textContent = `${k + 1} · ${noteName(k)}`; } });
+  });
+  A.labelKey = scaleKey();
+}
+function syncControls() {
+  const p = $('airPreset'); if (p) p.value = A.preset;
+  const g = $('airGrid');   if (g) g.value = A.mapping.grid;
+  const s = $('airSens');   if (s) s.value = A.sens;
+  $('airMirrorBtn')?.classList.toggle('on', A.mirror);
+  $('airVideo')?.classList.toggle('mirror', A.mirror);
+  Object.values(A.hands).forEach(h => h.setThreshold(sensToThreshold(A.sens)));
+}
+
+// ── Public controls (exposed on window by main.js) ────────────────────────────
+export function setAirPreset(name) {
+  if (!PRESETS[name]) return;
+  A.preset = name; A.mapping = presetMapping(name);
+  releaseAll(); buildZoneEditor(); syncControls(); save(); draw();
+  setStatus('Air Band layout: ' + PRESETS[name].label);
+}
+export function setAirGrid(grid) {
+  if (!GRID_SIZES[grid]) return;
+  A.mapping = resizeMapping(A.mapping, grid); A.preset = 'custom';
+  releaseAll(); buildZoneEditor(); syncControls(); save(); draw();
+}
+export function airAssign(zone, value) {
+  if (zone < 0 || zone >= A.mapping.cells.length) return;
+  A.mapping.cells[zone] = valueToCell(value); A.preset = 'custom';
+  releaseAll();
+  const sel = $('airZones')?.children[zone]; if (sel) sel.className = 'air-zone ' + (A.mapping.cells[zone] ? A.mapping.cells[zone].t : 'x');
+  syncControls(); save(); draw();
+}
+export function setAirSens(v) {
+  A.sens = Math.min(1, Math.max(0, parseFloat(v) || 0));
+  Object.values(A.hands).forEach(h => h.setThreshold(sensToThreshold(A.sens)));
+  save();
+}
+export function toggleAirMirror() {
+  A.mirror = !A.mirror; releaseAll(); syncControls(); save();
+  setStatus(A.mirror ? 'Air Band: mirror on (selfie view)' : 'Air Band: mirror off');
+}
+export function toggleAirBig() {
+  A.big = !A.big;
+  $('airStage')?.classList.toggle('big', A.big);
+  $('airBigBtn')?.classList.toggle('on', A.big);
+  draw();
+}
+export async function toggleAirBand() {
+  if (A.on || A.loading) { stop(); return; }
+  await start();
+}
+
+// ── Camera + model ────────────────────────────────────────────────────────────
+function setStat(msg, cls) {
+  const el = $('airStat'); if (el) { el.textContent = msg; el.className = 'midi-stat' + (cls ? ' ' + cls : ''); }
+}
+function setBtn(on, label) {
+  const b = $('airConnBtn'); if (b) { b.classList.toggle('on', on); b.textContent = label; }
+}
+
+async function loadLandmarker() {
+  if (A.landmarker) return A.landmarker;
+  setStat('Loading hand tracker (first time ≈ 10 MB)…');
+  const mp = await import(/* webpackIgnore: true */ `${MP_BASE}/vision_bundle.mjs`);
+  const files = await mp.FilesetResolver.forVisionTasks(`${MP_BASE}/wasm`);
+  const opts = delegate => ({ baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numHands: 2, minHandDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+  try { A.landmarker = await mp.HandLandmarker.createFromOptions(files, opts('GPU')); }
+  catch (e) { console.warn('Air Band: GPU delegate failed, using CPU', e); A.landmarker = await mp.HandLandmarker.createFromOptions(files, opts('CPU')); }
+  return A.landmarker;
+}
+
+async function start() {
+  const video = $('airVideo'); if (!video) return;
+  if (!navigator.mediaDevices?.getUserMedia) { setStat('Camera not available here — needs https or localhost in Chrome / Edge', 'err'); return; }
+  A.loading = true; setBtn(true, '⏳ Starting…');
+  try {
+    setStat('Asking for the camera…');
+    A.stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }, audio: false });
+    video.srcObject = A.stream;
+    await new Promise(res => { if (video.readyState >= 1) res(); else video.onloadedmetadata = () => res(); });
+    await video.play().catch(() => {});
+    const c = $('airCanvas'); if (c && video.videoWidth) { c.width = video.videoWidth; c.height = video.videoHeight; }
+    await loadLandmarker();
+    if (!A.stream) return;                                  // stopped while loading
+    A.on = true; A.loading = false; A.frames = 0; A.fpsT = performance.now(); A.lastVideoT = -1;
+    setBtn(true, '🎥 Camera on');
+    setStat('Tracking — strike down for drums, hold an open hand for notes', 'ok');
+    setStatus('Air Band on: play the zones with your hands');
+    A.raf = requestAnimationFrame(loop);
+  } catch (err) {
+    console.warn('Air Band start failed', err);
+    A.loading = false; stop();
+    const name = err?.name || '';
+    if (name === 'NotAllowedError')      setStat('Camera blocked — allow the camera for this site in the browser address bar', 'err');
+    else if (name === 'NotFoundError')   setStat('No camera found — plug one in and try again', 'err');
+    else if (name === 'NotReadableError')setStat('Camera is busy in another app — close it and try again', 'err');
+    else if (/import|fetch|network|wasm/i.test(String(err))) setStat('Could not download the hand tracker — check the internet connection', 'err');
+    else setStat('Air Band failed: ' + (err?.message || err), 'err');
+  }
+}
+
+function stop() {
+  cancelAnimationFrame(A.raf); A.raf = 0;
+  releaseAll();
+  A.hands = {}; A.seen = {}; A.handsNow = 0; A.fps = 0;
+  if (A.stream) { A.stream.getTracks().forEach(t => t.stop()); A.stream = null; }
+  const v = $('airVideo'); if (v) v.srcObject = null;
+  const wasOn = A.on; A.on = false; A.loading = false;
+  setBtn(false, '🎥 Camera');
+  setStat('Click Camera to play drums & keys in the air');
+  if (wasOn) setStatus('Air Band off');
+  draw();
+}
+
+// Release every held note (layout change, stop, mirror flip…)
+function releaseAll() {
+  for (const label of Object.keys(A.heldNote)) { try { noteOff(A.heldNote[label]); } catch (_) {} delete A.heldNote[label]; }
+  Object.values(A.hands).forEach(h => h.lost());
+}
+
+// ── Frame loop ────────────────────────────────────────────────────────────────
+function loop() {
+  if (!A.on) return;
+  const video = $('airVideo');
+  if (video && video.readyState >= 2 && video.currentTime !== A.lastVideoT) {
+    A.lastVideoT = video.currentTime;
+    const now = performance.now();
+    let res = null;
+    try { res = A.landmarker.detectForVideo(video, now); } catch (e) { console.warn('detect', e); }
+    if (res) {
+      const hands = (res.landmarks || []).map((lm, i) => ({ label: res.handedness?.[i]?.[0]?.categoryName || ('H' + i), landmarks: lm }));
+      processHands(hands, now);
+    }
+    A.frames++;
+    if (now - A.fpsT >= 1000) { A.fps = Math.round(A.frames * 1000 / (now - A.fpsT)); A.frames = 0; A.fpsT = now; }
+  }
+  draw();
+  A.raf = requestAnimationFrame(loop);
+}
+
+// Turn one frame of detected hands into sounds. Exposed for tests via window.__airband.feed.
+function processHands(hands, tMs) {
+  refreshLabels();
+  const m = A.mapping, seen = {};
+  A.handsNow = hands.length;
+  for (const h of hands) {
+    const label = h.label || 'H0';
+    if (seen[label]) continue;                              // two hands with the same label: keep the first
+    seen[label] = true;
+    const lm = A.mirror ? mirrorLandmarks(h.landmarks) : h.landmarks;
+    const tr = A.hands[label] || (A.hands[label] = new HandTracker({ threshold: sensToThreshold(A.sens) }));
+    apply(label, tr.update(m, lm, tMs), tMs);
+  }
+  for (const label of Object.keys(A.hands)) if (!seen[label]) { apply(label, A.hands[label].lost(), tMs); delete A.hands[label]; }
+  A.seen = seen;
+}
+
+function apply(label, events, tMs) {
+  for (const ev of events) {
+    const cell = A.mapping.cells[ev.zone];
+    if (ev.type === 'hit' && cell?.t === 'd') {
+      hitDrum(DRUMS[cell.i], ev.vel);
+      A.flash[ev.zone] = performance.now() + 160; blink();     // wall clock: draw() compares against performance.now()
+      pushLog({ type: 'hit', zone: ev.zone, name: DRUMS[cell.i].name, vel: ev.vel, t: tMs });
+    } else if (ev.type === 'hold' && cell?.t === 'n') {
+      if (A.heldNote[label]) { noteOff(A.heldNote[label]); delete A.heldNote[label]; }
+      const midi = degreeToMidi(cell.deg, S.scaleRoot, S.scaleName);
+      const n = midiNoteObj(midi, HOLD_VEL); n.uid = 'air_' + label + '_' + midi;
+      A.heldNote[label] = n; noteOn(n); blink();
+      pushLog({ type: 'hold', zone: ev.zone, midi, t: tMs });
+    } else if (ev.type === 'release') {
+      if (A.heldNote[label]) { noteOff(A.heldNote[label]); delete A.heldNote[label]; }
+      pushLog({ type: 'release', zone: ev.zone, t: tMs });
+    }
+  }
+}
+function pushLog(e) { A.log.push(e); if (A.log.length > 200) A.log.shift(); }
+
+let blinkT = 0;
+function blink() {
+  const dot = $('airDot'); if (!dot) return;
+  dot.classList.add('hit'); clearTimeout(blinkT); blinkT = setTimeout(() => dot.classList.remove('hit'), 90);
+}
+
+// ── Overlay drawing ───────────────────────────────────────────────────────────
+function draw() {
+  const c = $('airCanvas'); if (!c) return;
+  const g = c.getContext('2d'), W = c.width, H = c.height, m = A.mapping, now = performance.now();
+  g.clearRect(0, 0, W, H);
+  if (!A.on) { g.fillStyle = '#0b0b0e'; g.fillRect(0, 0, W, H); }
+  const heldZones = new Set(Object.values(A.hands).map(h => h.held).filter(z => z >= 0));
+  const font = Math.round(Math.min(W / m.cols, H / m.rows) * 0.16);
+  g.lineWidth = Math.max(1, W / 640);
+  for (let i = 0; i < m.cells.length; i++) {
+    const r = zoneRect(m, i), x = r.x * W, y = r.y * H, w = r.w * W, h = r.h * H, cell = m.cells[i];
+    const fl = A.flash[i] && A.flash[i] > now ? (A.flash[i] - now) / 160 : 0;
+    if (fl > 0)               { g.fillStyle = `rgba(251,191,36,${0.45 * fl})`; g.fillRect(x, y, w, h); }
+    else if (heldZones.has(i)){ g.fillStyle = 'rgba(74,222,128,.28)';        g.fillRect(x, y, w, h); }
+    else if (cell)            { g.fillStyle = cell.t === 'd' ? 'rgba(251,191,36,.06)' : 'rgba(74,222,128,.06)'; g.fillRect(x, y, w, h); }
+    g.strokeStyle = 'rgba(140,255,255,.35)'; g.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    g.font = `700 ${font}px 'Segoe UI',system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = cell ? (cell.t === 'd' ? 'rgba(251,191,36,.95)' : 'rgba(74,222,128,.95)') : 'rgba(112,112,120,.6)';
+    g.shadowColor = 'rgba(0,0,0,.9)'; g.shadowBlur = 4;
+    g.fillText(cellLabel(cell), x + w / 2, y + h / 2);
+    g.shadowBlur = 0;
+  }
+  // hands
+  for (const tr of Object.values(A.hands)) {
+    if (!tr.lm) continue;
+    g.strokeStyle = 'rgba(140,255,255,.85)'; g.lineWidth = Math.max(1.5, W / 420);
+    g.beginPath();
+    for (const [a, b] of HAND_BONES) { g.moveTo(tr.lm[a].x * W, tr.lm[a].y * H); g.lineTo(tr.lm[b].x * W, tr.lm[b].y * H); }
+    g.stroke();
+    g.fillStyle = '#8cffff';
+    for (const p of tr.lm) { g.beginPath(); g.arc(p.x * W, p.y * H, Math.max(2, W / 260), 0, Math.PI * 2); g.fill(); }
+    if (tr.palm) {
+      g.fillStyle = tr.open ? '#4ade80' : '#fbbf24';
+      g.beginPath(); g.arc(tr.palm.x * W, tr.palm.y * H, Math.max(5, W / 90), 0, Math.PI * 2); g.fill();
+    }
+  }
+  // corner read-out
+  g.font = `600 ${Math.round(W / 46)}px 'Segoe UI',system-ui,sans-serif`; g.textAlign = 'left'; g.textBaseline = 'top';
+  g.fillStyle = 'rgba(210,210,216,.85)'; g.shadowColor = 'rgba(0,0,0,.9)'; g.shadowBlur = 4;
+  if (A.on) g.fillText(`${A.fps} fps · ${A.handsNow} hand${A.handsNow === 1 ? '' : 's'}`, 8, 6);
+  else if (!A.loading) { g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `600 ${Math.round(W / 30)}px 'Segoe UI',system-ui,sans-serif`; g.fillStyle = 'rgba(210,210,216,.7)'; g.fillText('🎥 Camera off — click Camera', W / 2, H / 2); }
+  g.shadowBlur = 0;
+}
+
+// HandTracker keeps its last landmarks for drawing
+const _update = HandTracker.prototype.update;
+HandTracker.prototype.update = function (m, lm, t) { this.lm = lm; return _update.call(this, m, lm, t); };
+const _lost = HandTracker.prototype.lost;
+HandTracker.prototype.lost = function () { this.lm = null; this.palm = null; return _lost.call(this); };
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+export function initAirBand() {
+  restore();
+  const p = $('airPreset');
+  if (p) { p.innerHTML = ''; Object.entries(PRESETS).forEach(([k, v]) => p.appendChild(new Option(v.label, k))); p.appendChild(new Option('Custom', 'custom')); }
+  const gsel = $('airGrid');
+  if (gsel) { gsel.innerHTML = ''; Object.keys(GRID_SIZES).forEach(k => gsel.appendChild(new Option(k.replace('x', '×'), k))); }
+  buildZoneEditor(); syncControls(); draw();
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && A.big) toggleAirBig(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
+  // test / automation hook
+  window.__airband = { A, feed: (hands, t) => processHands(hands, t ?? performance.now()), mapping: () => A.mapping, draw };
+}

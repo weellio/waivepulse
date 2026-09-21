@@ -120,6 +120,7 @@ Open the Looper page at any time — it works independently of the AI generation
 - **MIDI export:** a "MIDI" button next to Export renders the piano roll and drum pattern as a Standard MIDI File (.mid) — SMF Format 1, 480 PPQN, melody track + drum track on channel 9 with GM percussion mapping
 - **Vocal harmonizer:** an AudioWorklet adds pitch-shifted harmony voices to the mic input — two configurable voices (default +4 and +7 semitones, major 3rd and perfect 5th) with per-voice volume and semitone controls, wired after autotune in the mic chain
 - **MIDI input:** plug in any USB/Bluetooth MIDI keyboard or pad controller (Chrome/Edge). Velocity, sustain pedal, hot-plug. Channel 10 or "MIDI → Drums" plays the pads. Recorded like any other input
+- **Air Band (webcam):** play the drums and keys with your hands in the air. The camera view is split into zones (Drum kit, Keys, Band, Chord tones, or your own Custom mix); a downward strike hits a drum, an open hand held in a zone sustains a note. Hand tracking (MediaPipe) runs on your GPU in the browser, nothing is uploaded. Same input path as keys/MIDI, so it is recorded into loops and follows scale lock, ADSR, filter and arp. ⛶ Big view for recording clips
 - **Swing & Humanize:** one groove for the drum sequencer and piano roll (0% straight → 100% triplet feel), baked into → Loop renders and MIDI export
 - **Probability & ratchets:** per-step 100/75/50/25% chance and 1–4 hit rolls (Prob/Ratchet mode, or Alt/Shift-click), saved with favorites
 - **Euclidean fill:** "E" on any drum row spreads N hits evenly, with rotation
@@ -1016,6 +1017,7 @@ waivepulse/
 │   │   ├── studio/presets.js        Mix presets / genre template save/load
 │   │   ├── studio/stem-library.js   Stem swap modal (browse & import stems from other songs)
 │   │   ├── looper/midi-export.js    MIDI export (piano roll + drum pattern → .mid)
+│   │   ├── looper/airband.js        Air Band: webcam hand tracking → drum / note zones (airband-logic.js = pure logic)
 │   │   └── karaoke/recorder.js      Built-in lyric video recorder (WebM export)
 │   └── worklets/               AudioWorkletProcessor files (looper-capture, looper-autotune,
 │                               studio-dattorro, studio-bitcrusher, studio-gate,
