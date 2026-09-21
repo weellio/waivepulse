@@ -247,26 +247,29 @@ function webglRenderer() {
     return dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : (gl ? 'unknown' : 'no WebGL');
   } catch (_) { return 'unknown'; }
 }
-function slowHint(fps) {
+// Why the GPU tracker was slow, and what unlocks it. Shown whenever we end up on the
+// CPU delegate (playable, but the GPU path does ~60 fps on a real GPU).
+function gpuHint(fps, delegate) {
   const r = webglRenderer();
+  const lead = delegate === 'CPU' ? `Tracking on the CPU (${fps} fps)` : `Slow tracking (${fps} fps)`;
   if (/swiftshader|software|llvmpipe|no webgl/i.test(r))
-    return `Slow tracking (${fps} fps): the browser's graphics acceleration is OFF, so the tracker can't use your GPU. Chrome: chrome://settings/system → "Use graphics acceleration when available" → Relaunch. (WebGL: ${r})`;
+    return `${lead}: the browser's graphics acceleration is OFF, so the tracker can't use your GPU. Chrome: chrome://settings/system → "Use graphics acceleration when available" → Relaunch → ~60 fps.`;
   if (/intel|uhd|iris|radeon\(tm\) graphics/i.test(r))
-    return `Slow tracking (${fps} fps): the browser is on the integrated GPU (${r}). Windows Settings → System → Display → Graphics → add the browser → High performance.`;
-  return `Slow tracking (${fps} fps) on ${r}. Close GPU-heavy apps or lower the camera load. It still works, just laggy.`;
+    return `${lead}: the browser is running on the integrated GPU (${r}). Windows Settings → System → Display → Graphics → add the browser → High performance.`;
+  return `${lead}: the GPU path was slow on ${r}. Close GPU-heavy apps (games, video generation) and restart the camera.`;
 }
 async function autoDelegate(now) {
   const b = A.bench; if (!b || b.phase === 'done') return;
-  if (now - b.since < 4000) return;
+  if (now - b.since < 3000) return;
   if (b.phase === 'gpu') {
     if (A.fps >= SLOW_FPS || A.delegate !== 'GPU') { b.phase = 'done'; return; }
     b.gpuFps = A.fps; b.phase = 'switching';
-    try { const cpu = await makeLandmarker('CPU'); if (!A.on) return; A.landmarker = cpu; A.delegate = 'CPU'; b.phase = 'cpu'; b.since = performance.now(); }
+    try { const cpu = await makeLandmarker('CPU'); if (!A.on) return; A.landmarker = cpu; A.delegate = 'CPU'; b.phase = 'cpu'; b.since = performance.now(); setStat('Trying the CPU tracker…', 'ok'); }
     catch (e) { console.warn('CPU delegate failed', e); b.phase = 'done'; }
   } else if (b.phase === 'cpu') {
     if (A.fps < b.gpuFps) { A.landmarker = A.lms.GPU; A.delegate = 'GPU'; }
     b.phase = 'done';
-    if (Math.max(A.fps, b.gpuFps) < 10) setStat(slowHint(Math.max(A.fps, b.gpuFps)), 'warn');
+    setStat(gpuHint(Math.max(A.fps, b.gpuFps), A.delegate), 'warn');   // we only get here because the GPU path was slow
   }
 }
 

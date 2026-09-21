@@ -93,11 +93,11 @@ async def main():
 
         # 2b) headless Chromium renders WebGL in software: the app must notice, try the CPU
         #     delegate, and name the graphics-acceleration setting in its hint
-        await page.wait_for_function("document.getElementById('airStat').textContent.includes('Slow tracking')", timeout=25_000)
+        await page.wait_for_function("document.getElementById('airStat').textContent.includes('graphics acceleration')", timeout=25_000)
         hint = await page.text_content('#airStat')
         delegate = await page.evaluate('window.__airband.A.delegate')
-        print('slow hint:', hint[:120], '| delegate:', delegate)
-        assert 'graphics acceleration' in hint and 'SwiftShader' in hint, 'hint must diagnose software WebGL'
+        print('gpu hint:', hint[:140], '| delegate:', delegate)
+        assert delegate == 'CPU' and 'chrome://settings/system' in hint, 'must land on the CPU delegate and name the Chrome setting'
 
         # 3) synthetic strike in the top-left zone of the default kit area (drum kit: zone 0 = HiHat)
         await page.evaluate("window.__airband.A.log.length = 0")
