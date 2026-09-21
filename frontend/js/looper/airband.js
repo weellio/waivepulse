@@ -238,6 +238,23 @@ async function loadLandmarker() {
 // The GPU path is fast on a real GPU but crawls when the browser has hardware
 // acceleration off. After a few seconds on the GPU below SLOW_FPS, try the CPU
 // delegate for a few seconds and keep whichever is faster; then say so if it's still slow.
+// Which GPU the browser is really using for WebGL. "SwiftShader" = software rendering
+// = the browser's graphics acceleration is off (Chrome: chrome://settings/system).
+function webglRenderer() {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2') || document.createElement('canvas').getContext('webgl');
+    const dbg = gl && gl.getExtension('WEBGL_debug_renderer_info');
+    return dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : (gl ? 'unknown' : 'no WebGL');
+  } catch (_) { return 'unknown'; }
+}
+function slowHint(fps) {
+  const r = webglRenderer();
+  if (/swiftshader|software|llvmpipe|no webgl/i.test(r))
+    return `Slow tracking (${fps} fps): the browser's graphics acceleration is OFF, so the tracker can't use your GPU. Chrome: chrome://settings/system → "Use graphics acceleration when available" → Relaunch. (WebGL: ${r})`;
+  if (/intel|uhd|iris|radeon\(tm\) graphics/i.test(r))
+    return `Slow tracking (${fps} fps): the browser is on the integrated GPU (${r}). Windows Settings → System → Display → Graphics → add the browser → High performance.`;
+  return `Slow tracking (${fps} fps) on ${r}. Close GPU-heavy apps or lower the camera load. It still works, just laggy.`;
+}
 async function autoDelegate(now) {
   const b = A.bench; if (!b || b.phase === 'done') return;
   if (now - b.since < 4000) return;
@@ -249,7 +266,7 @@ async function autoDelegate(now) {
   } else if (b.phase === 'cpu') {
     if (A.fps < b.gpuFps) { A.landmarker = A.lms.GPU; A.delegate = 'GPU'; }
     b.phase = 'done';
-    if (Math.max(A.fps, b.gpuFps) < 10) setStat(`Slow tracking (${Math.max(A.fps, b.gpuFps)} fps) — in Chrome turn on Settings → System → "Use graphics acceleration", or close GPU-heavy apps. It still works, just laggy.`, 'warn');
+    if (Math.max(A.fps, b.gpuFps) < 10) setStat(slowHint(Math.max(A.fps, b.gpuFps)), 'warn');
   }
 }
 

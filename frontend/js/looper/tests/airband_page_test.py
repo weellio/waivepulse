@@ -91,6 +91,14 @@ async def main():
         assert fps > 0, 'tracker frames must flow'
         await page.locator('#airStage').screenshot(path=str(OUT / 'airband_live.png'))
 
+        # 2b) headless Chromium renders WebGL in software: the app must notice, try the CPU
+        #     delegate, and name the graphics-acceleration setting in its hint
+        await page.wait_for_function("document.getElementById('airStat').textContent.includes('Slow tracking')", timeout=25_000)
+        hint = await page.text_content('#airStat')
+        delegate = await page.evaluate('window.__airband.A.delegate')
+        print('slow hint:', hint[:120], '| delegate:', delegate)
+        assert 'graphics acceleration' in hint and 'SwiftShader' in hint, 'hint must diagnose software WebGL'
+
         # 3) synthetic strike in the top-left zone of the default kit area (drum kit: zone 0 = HiHat)
         await page.evaluate("window.__airband.A.log.length = 0")
         strike = """async (handJs) => {
