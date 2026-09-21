@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   PRESETS, GRID_SIZES, presetMapping, resizeMapping, serializeMapping, parseMapping,
   zoneAt, zoneRect, palmCenter, fingersExtended, isOpenHand, isPinch,
-  StrikeDetector, sensToThreshold, degreeToMidi, HandTracker, mirrorLandmarks, matchHands,
+  StrikeDetector, sensToThreshold, degreeToMidi, HandTracker, mirrorLandmarks, matchHands, strikePoint,
 } from '../airband-logic.js';
 
 let passed = 0;
@@ -27,6 +27,13 @@ function hand({ cx = 0.5, cy = 0.5, size = 0.1, open = true, pinch = false } = {
   lm[3] = { x: cx - 0.9 * size, y: cy, z: 0 };
   lm[4] = pinch ? { x: lm[8].x - 0.02 * size, y: lm[8].y, z: 0 } : { x: cx - 1.0 * size, y: cy - 0.3 * size, z: 0 };
   return lm;
+}
+// Wrist flick as the camera sees it: the hand pitches forward about the wrist, so every
+// point's height above the wrist shrinks by cos(pitch) (foreshortening) — the knuckles
+// and fingertips drop, the wrist stays put.
+function flick(h, pitch) {
+  const w = h[0], c = Math.cos(pitch);
+  return h.map((p, i) => i === 0 ? { ...p } : { x: p.x, y: w.y + (p.y - w.y) * c, z: 0 });
 }
 
 await test('presets are complete and valid', () => {
@@ -106,8 +113,10 @@ await test('strike detector: fires once per downward whack, not on slow drift, h
   assert.equal(up, 0);
   // gap > 250 ms (hand lost) doesn't fake a strike
   const sd4 = new StrikeDetector(); sd4.update(0.1, 0); assert.equal(sd4.update(0.9, 400), null); assert.equal(sd4.update(0.9, 433), null);
-  assert.ok(sensToThreshold(0) > sensToThreshold(1)); assert.equal(sensToThreshold(0.5), 1.35);
-  assert.ok(sensToThreshold(0.65) < 1.5, 'default sensitivity catches a normal air-drum tap (~1.5 frame-heights/s)');
+  assert.ok(sensToThreshold(0) > sensToThreshold(1)); assert.equal(sensToThreshold(0.5), 4.25);
+  // unit scaling: the same pixels count for more when the hand is small (far away)
+  const sdU = new StrikeDetector({ threshold: 4 }); sdU.update(0.5, 0); assert.ok(sdU.update(0.54, 100, 0.08), '0.04 fh in 100 ms = 5 hand-lengths/s at hand size 0.08');
+  const sdV = new StrikeDetector({ threshold: 4 }); sdV.update(0.5, 0); assert.equal(sdV.update(0.54, 100, 0.2), null, 'same pixels, big hand = 2 hand-lengths/s: no hit');
 });
 
 await test('hand tracker: hold / slide / release notes, strike hits drums, lost() releases', () => {
@@ -131,6 +140,18 @@ await test('hand tracker: hold / slide / release notes, strike hits drums, lost(
   const tr2 = new HandTracker({ threshold: 1.4 }); let t = 0, hits = [];
   for (const cy of [0.55, 0.62, 0.69, 0.76, 0.83, 0.84, 0.84]) { for (const e of tr2.update(m, hand({ cx: 0.1, cy, open: false }), t)) if (e.type === 'hit') hits.push(e); t += 33; }
   assert.equal(hits.length, 1); assert.equal(hits[0].zone, 4);
+  // a WRIST FLICK (wrist still, fingers swing down) fires at the default sensitivity, at 12 fps
+  const trF = new HandTracker({ threshold: sensToThreshold(0.65) }); t = 0; hits = [];
+  const base = hand({ cx: 0.1, cy: 0.7, open: false, size: 0.12 });
+  for (const a of [0, 0, 0, 1.0, 1.1, 1.1]) { for (const e of trF.update(m, flick(base, a), t)) if (e.type === 'hit') hits.push(e); t += 83; }
+  assert.equal(hits.length, 1, 'wrist flick = one hit');
+  const ob = hand({ cx: 0.1, cy: 0.7, open: true, size: 0.12 });
+  const pStill = palmCenter(ob), pDown = palmCenter(flick(ob, 1.0));
+  assert.ok(Math.abs(pDown.y - pStill.y) < 0.6 * Math.abs(strikePoint(flick(ob, 1.0)).y - strikePoint(ob).y), 'palm moves much less than the fingers');
+  // a strike that carries the hand across a zone border lands in the zone it STARTED in
+  const trZ = new HandTracker({ threshold: 4 }); t = 0; hits = [];
+  for (const cy of [0.30, 0.30, 0.30, 0.55, 0.60, 0.60]) { for (const e of trZ.update(m, hand({ cx: 0.1, cy, open: false }), t)) if (e.type === 'hit') hits.push(e); t += 83; }
+  assert.equal(hits.length, 1); assert.equal(hits[0].zone, 0, 'started in the top-left zone → HiHat, not Kick');
   // same strike over a NOTE zone → no hit event
   const tr3 = new HandTracker({ threshold: 1.4 }); t = 0; hits = [];
   for (const cy of [0.55, 0.62, 0.69, 0.76, 0.83, 0.84, 0.84]) { for (const e of tr3.update(m, hand({ cx: 0.62, cy, open: false }), t)) if (e.type === 'hit') hits.push(e); t += 33; }

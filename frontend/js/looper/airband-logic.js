@@ -4,7 +4,8 @@
 //   { t: 'n', deg } → scale degree `deg` above the root (0 = root, 7 = octave in a
 //                     7-note scale); pitched through the current Scale Lock
 //   null            → silent zone
-// Drums fire on a STRIKE (a fast downward hand motion that stops / reverses).
+// Drums fire on a STRIKE: a fast downward flick of the fingers/knuckles, measured in
+// hand-lengths per second, so a wrist flick counts and distance from the camera doesn't.
 // Notes HOLD while an open hand sits in the zone and release when it closes/leaves.
 // airband.js owns the camera + drawing; everything here is unit-testable in node.
 
@@ -93,6 +94,16 @@ export function palmCenter(lm) {
   return { x: x / ids.length, y: y / ids.length };
 }
 
+// Strike point: mean of the four knuckles + four fingertips. It swings a full hand-length
+// on a wrist flick while the palm centre barely moves — that's what makes drumming a
+// flick instead of an arm movement. Works for a fist too (tips sit on the knuckles).
+export function strikePoint(lm) {
+  const ids = [LM.INDEX_MCP, LM.MIDDLE_MCP, LM.RING_MCP, LM.PINKY_MCP, LM.INDEX_TIP, LM.MIDDLE_TIP, LM.RING_TIP, LM.PINKY_TIP];
+  let x = 0, y = 0;
+  for (const i of ids) { x += lm[i].x; y += lm[i].y; }
+  return { x: x / ids.length, y: y / ids.length };
+}
+
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 // Hand size (wrist → middle knuckle) normalises gesture thresholds against distance from the camera.
@@ -110,20 +121,22 @@ export function isOpenHand(lm) { return fingersExtended(lm) >= 3; }
 export function isPinch(lm)    { return dist(lm[LM.THUMB_TIP], lm[LM.INDEX_TIP]) < handSize(lm) * 0.35; }
 
 // ── Strike detector (one per hand) ────────────────────────────────────────────
-// Feed the palm y (0 top … 1 bottom) every frame. Speed is measured over the last
-// ~100 ms (or the previous frame when the camera is slower than that), so the
-// detector behaves the same at 5 fps and at 60 fps. A strike fires the moment the
-// downward speed crosses `threshold` (frame-heights per second) — lowest latency —
+// Feed the strike-point y (0 top … 1 bottom) every frame, plus `unit` = hand size so
+// speed is in hand-lengths per second. Speed is measured over the last ~100 ms (or the
+// previous frame when the camera is slower than that), so the detector behaves the
+// same at 5 fps and at 60 fps. A strike fires the moment the downward speed crosses
+// `threshold` — lowest latency — and reports `refT`, the time the swing was measured
+// from, so the caller can use where the hand WAS when the swing began.
 // and re-arms once the hand slows below half of it, so one swing = one hit.
 // Velocity 0.4–1 scales with how fast the hand came down.
 export class StrikeDetector {
-  constructor({ threshold = 1.1, cooldownMs = 140, maxVel = 4.0, windowMs = 100, maxGapMs = 350 } = {}) {
+  constructor({ threshold = 4, cooldownMs = 140, maxVel = 14, windowMs = 100, maxGapMs = 350 } = {}) {
     Object.assign(this, { threshold, cooldownMs, maxVel, windowMs, maxGapMs });
     this.reset();
   }
   reset() { this.hist = []; this.armed = true; this.lastHit = -1e9; this.vy = 0; }
   setThreshold(t) { this.threshold = t; }
-  update(y, tMs) {
+  update(y, tMs, unit = 1) {
     const h = this.hist;
     if (h.length && tMs - h[h.length - 1].t > this.maxGapMs) { h.length = 0; this.armed = true; }   // hand was gone: fresh start
     if (h.length && tMs <= h[h.length - 1].t) return null;
@@ -131,22 +144,23 @@ export class StrikeDetector {
     while (h.length > 2 && tMs - h[1].t >= this.windowMs) h.shift();   // h[0] = newest sample ≥ windowMs old
     if (h.length < 2) { this.vy = 0; return null; }
     const ref = h[0];
-    const vy = (y - ref.y) / ((tMs - ref.t) / 1000);      // + = moving down
+    const vy = (y - ref.y) / Math.max(1e-3, unit) / ((tMs - ref.t) / 1000);      // + = moving down, hand-lengths/s
     this.vy = vy;
     let hit = null;
     if (this.armed) {
       if (vy > this.threshold && tMs - this.lastHit >= this.cooldownMs) {
         this.armed = false; this.lastHit = tMs;
         const vel = Math.min(1, 0.4 + 0.6 * (vy - this.threshold) / Math.max(0.1, this.maxVel - this.threshold));
-        hit = { vel: +vel.toFixed(3), peak: vy };
+        hit = { vel: +vel.toFixed(3), peak: vy, refT: ref.t };
       }
     } else if (vy < this.threshold * 0.5) this.armed = true;
     return hit;
   }
 }
 
-// Sensitivity 0–1 → strike threshold (frame-heights / second). 0 = needs a big whack, 1 = hair trigger.
-export function sensToThreshold(s) { const k = Math.min(1, Math.max(0, +s || 0)); return +(2.2 - 1.7 * k).toFixed(3); }
+// Sensitivity 0–1 → strike threshold (hand-lengths / second). 0 = needs a big whack, 1 = hair trigger.
+// A relaxed wrist flick measures ≈ 6–14, slow arm drift ≈ 1–3.
+export function sensToThreshold(s) { const k = Math.min(1, Math.max(0, +s || 0)); return +(6.5 - 4.5 * k).toFixed(3); }
 
 // ── Notes ─────────────────────────────────────────────────────────────────────
 // Scale degree → MIDI note. Unlocked (chromatic) plays a major scale so the zones
@@ -161,7 +175,7 @@ export function degreeToMidi(deg, root = 0, scaleName = 'chromatic') {
 // ── Per-hand tracker: turns landmark frames into hit / hold / release events ──
 // events: { type:'hit', zone, vel } · { type:'hold', zone } · { type:'release' }
 export class HandTracker {
-  constructor(opts) { this.strike = new StrikeDetector(opts); this.held = -1; this.zone = -1; this.open = false; }
+  constructor(opts) { this.strike = new StrikeDetector(opts); this.held = -1; this.zone = -1; this.open = false; this.size = 0; this.palms = []; }
   setThreshold(t) { this.strike.setThreshold(t); }
   // lm = 21 landmarks (already mirrored if desired); returns the events for this frame
   update(mapping, lm, tMs) {
@@ -170,8 +184,18 @@ export class HandTracker {
     const zone = zoneAt(mapping, p.x, p.y);
     const cell = mapping.cells[zone];
     this.zone = zone; this.open = isOpenHand(lm); this.palm = p;
-    const hit = this.strike.update(p.y, tMs);
-    if (hit && cell && cell.t === 'd') ev.push({ type: 'hit', zone, vel: hit.vel });
+    // smoothed hand size (2-D wrist→knuckle shrinks when the hand turns edge-on)
+    const hs = handSize(lm); this.size = this.size ? this.size * 0.7 + hs * 0.3 : hs;
+    this.palms.push({ t: tMs, x: p.x, y: p.y });
+    while (this.palms.length > 1 && tMs - this.palms[0].t > 600) this.palms.shift();
+    const hit = this.strike.update(strikePoint(lm).y, tMs, Math.max(0.03, this.size));
+    if (hit) {
+      // the zone is where the hand WAS when the swing began (not where the flick carried it)
+      let ref = this.palms[0];
+      for (const s of this.palms) if (s.t <= hit.refT) ref = s;
+      const hz = zoneAt(mapping, ref.x, ref.y), hc = mapping.cells[hz];
+      if (hc && hc.t === 'd') ev.push({ type: 'hit', zone: hz, vel: hit.vel });
+    }
     // notes: hold while open-handed inside a note zone
     const wantHold = this.open && cell && cell.t === 'n';
     if (wantHold) {
@@ -179,7 +203,7 @@ export class HandTracker {
     } else if (this.held >= 0) { ev.push({ type: 'release', zone: this.held }); this.held = -1; }
     return ev;
   }
-  lost() { const ev = []; if (this.held >= 0) { ev.push({ type: 'release', zone: this.held }); this.held = -1; } this.strike.reset(); this.zone = -1; return ev; }
+  lost() { const ev = []; if (this.held >= 0) { ev.push({ type: 'release', zone: this.held }); this.held = -1; } this.strike.reset(); this.zone = -1; this.palms = []; this.size = 0; return ev; }
 }
 
 // Match this frame's hands to last frame's trackers by palm position (greedy
