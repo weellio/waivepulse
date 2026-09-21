@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   PRESETS, GRID_SIZES, presetMapping, resizeMapping, serializeMapping, parseMapping,
   zoneAt, zoneRect, palmCenter, fingersExtended, isOpenHand, isPinch,
-  StrikeDetector, sensToThreshold, degreeToMidi, HandTracker, mirrorLandmarks,
+  StrikeDetector, sensToThreshold, degreeToMidi, HandTracker, mirrorLandmarks, matchHands,
 } from '../airband-logic.js';
 
 let passed = 0;
@@ -102,7 +102,8 @@ await test('strike detector: fires once per downward whack, not on slow drift, h
   assert.equal(up, 0);
   // gap > 250 ms (hand lost) doesn't fake a strike
   const sd4 = new StrikeDetector(); sd4.update(0.1, 0); assert.equal(sd4.update(0.9, 400), null); assert.equal(sd4.update(0.9, 433), null);
-  assert.ok(sensToThreshold(0) > sensToThreshold(1)); assert.equal(sensToThreshold(0.5), 1.65);
+  assert.ok(sensToThreshold(0) > sensToThreshold(1)); assert.equal(sensToThreshold(0.5), 1.35);
+  assert.ok(sensToThreshold(0.65) < 1.5, 'default sensitivity catches a normal air-drum tap (~1.5 frame-heights/s)');
 });
 
 await test('hand tracker: hold / slide / release notes, strike hits drums, lost() releases', () => {
@@ -134,6 +135,15 @@ await test('hand tracker: hold / slide / release notes, strike hits drums, lost(
   const tr4 = new HandTracker(); tr4.update(m, hand({ cx: 0.62, cy: 0.7, open: true }), 0);
   assert.deepEqual(tr4.lost(), [{ type: 'release', zone: 6 }]);
   assert.deepEqual(tr4.lost(), []);
+});
+
+await test('matchHands keeps hand identity by position, ignoring label flicker', () => {
+  const prev = [{ x: 0.2, y: 0.5 }, { x: 0.8, y: 0.5 }];
+  assert.deepEqual(matchHands(prev, [{ x: 0.82, y: 0.52 }, { x: 0.18, y: 0.49 }]), [1, 0], 'swapped order still matches');
+  assert.deepEqual(matchHands(prev, [{ x: 0.5, y: 0.9 }]), [-1], 'too far = new hand');
+  assert.deepEqual(matchHands(prev, [{ x: 0.21, y: 0.5 }, { x: 0.23, y: 0.5 }]), [0, -1], 'one tracker can only match one hand');
+  assert.deepEqual(matchHands([], [{ x: 0.5, y: 0.5 }]), [-1]);
+  assert.deepEqual(matchHands([null, { x: 0.8, y: 0.5 }], [{ x: 0.8, y: 0.5 }]), [1], 'trackers without a palm yet are skipped');
 });
 
 console.log(`\n${passed} tests passed`);

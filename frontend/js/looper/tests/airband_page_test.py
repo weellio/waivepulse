@@ -82,6 +82,9 @@ async def main():
         await page.wait_for_function('window.__airband.A.fps > 0', timeout=20_000)
         fps = await page.evaluate('window.__airband.A.fps')
         hands = await page.evaluate('window.__airband.A.handsNow')
+        audio = await page.evaluate("window.__looper.S.ctx && window.__looper.S.ctx.state")
+        print('audio context:', audio)
+        assert audio == 'running', 'the Camera click must start the audio engine'
         vw = await page.evaluate("document.getElementById('airVideo').videoWidth + 'x' + document.getElementById('airVideo').videoHeight")
         stat = await page.text_content('#airStat')
         print(f'camera: {vw} fps={fps} hands_now={hands} stat={stat!r}')
@@ -116,7 +119,7 @@ async def main():
         }"""
         r = await page.evaluate(note, HAND_JS)
         print('note ->', r)
-        assert r['held'] == ['air_Left_60'], 'open hand in the root zone holds C4 (midi 60)'
+        assert len(r['held']) == 1 and r['held'][0].startswith('air_') and r['held'][0].endswith('_60'), 'open hand in the root zone holds C4 (midi 60)'
         assert r['after'] == [], 'fist releases it'
 
         # 5) custom assignment persists + Big view renders

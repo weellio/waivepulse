@@ -8,13 +8,14 @@
 //   · note zone: an OPEN hand inside the zone holds the note; fist / leaving releases
 import { S } from './state.js';
 import { setStatus } from './util.js';
+import { ensureCtx } from './core.js';
 import { noteOn, noteOff } from './synth.js';
 import { DRUMS, hitDrum } from './drums.js';
 import { midiNoteObj } from './midi-in.js';
 import { NOTE_NAMES } from './scale.js';
 import {
   PRESETS, GRID_SIZES, presetMapping, resizeMapping, serializeMapping, parseMapping,
-  zoneRect, HandTracker, sensToThreshold, degreeToMidi, mirrorLandmarks, HAND_BONES,
+  zoneRect, HandTracker, sensToThreshold, degreeToMidi, mirrorLandmarks, HAND_BONES, palmCenter, matchHands,
 } from './airband-logic.js';
 
 const MP_VER    = '1.0.1';
@@ -25,10 +26,12 @@ const HOLD_VEL  = 0.9;
 
 const A = {
   on: false, loading: false, stream: null, landmarker: null,
-  mapping: presetMapping('drums'), preset: 'drums', sens: 0.5, mirror: true, big: false,
-  hands: {},            // handedness label → HandTracker
-  heldNote: {},         // label → note object currently held (for noteOff)
-  seen: {},             // label → true when seen this frame
+  mapping: presetMapping('drums'), preset: 'drums', sens: 0.65, mirror: true, big: false,
+  trackers: [],         // [{ id, tr: HandTracker, label }] matched frame-to-frame by palm position
+  seq: 0,               // tracker id counter
+  heldNote: {},         // tracker id → note object currently held (for noteOff)
+  lastHit: null,        // { name, vel, t } for the read-out
+  audioWarned: false,
   flash: {},            // zone → ms until the hit flash fades
   raf: 0, lastVideoT: -1, frames: 0, fpsT: 0, fps: 0, handsNow: 0,
   labelKey: '',         // scale root+name the zone labels were built for
@@ -111,7 +114,7 @@ function syncControls() {
   const s = $('airSens');   if (s) s.value = A.sens;
   $('airMirrorBtn')?.classList.toggle('on', A.mirror);
   $('airVideo')?.classList.toggle('mirror', A.mirror);
-  Object.values(A.hands).forEach(h => h.setThreshold(sensToThreshold(A.sens)));
+  A.trackers.forEach(t => t.tr.setThreshold(sensToThreshold(A.sens)));
 }
 
 // ── Public controls (exposed on window by main.js) ────────────────────────────
@@ -135,7 +138,7 @@ export function airAssign(zone, value) {
 }
 export function setAirSens(v) {
   A.sens = Math.min(1, Math.max(0, parseFloat(v) || 0));
-  Object.values(A.hands).forEach(h => h.setThreshold(sensToThreshold(A.sens)));
+  A.trackers.forEach(t => t.tr.setThreshold(sensToThreshold(A.sens)));
   save();
 }
 export function toggleAirMirror() {
@@ -175,6 +178,7 @@ async function loadLandmarker() {
 async function start() {
   const video = $('airVideo'); if (!video) return;
   if (!navigator.mediaDevices?.getUserMedia) { setStat('Camera not available here — needs https or localhost in Chrome / Edge', 'err'); return; }
+  wakeAudio();                                              // inside the click: the browser lets audio start here
   A.loading = true; setBtn(true, '⏳ Starting…');
   try {
     setStat('Asking for the camera…');
@@ -202,10 +206,25 @@ async function start() {
   }
 }
 
+// Create / resume the Web Audio graph. Browsers only allow this after a user gesture;
+// the Camera click is one, and any later click / key press unblocks it too.
+function wakeAudio() {
+  try { ensureCtx(); if (S.ctx.state === 'suspended') S.ctx.resume(); } catch (e) { console.warn('audio', e); }
+}
+function audioRunning() { return !!S.ctx && S.ctx.state === 'running'; }
+function checkAudio() {
+  if (audioRunning()) { if (A.audioWarned) { A.audioWarned = false; setStat('Tracking — strike down for drums, hold an open hand for notes', 'ok'); } return; }
+  if (A.audioWarned) return;
+  A.audioWarned = true;
+  setStat('No sound yet — click anywhere on the page (or press a key) to unblock audio', 'warn');
+  const once = () => { wakeAudio(); document.removeEventListener('pointerdown', once); document.removeEventListener('keydown', once); };
+  document.addEventListener('pointerdown', once); document.addEventListener('keydown', once);
+}
+
 function stop() {
   cancelAnimationFrame(A.raf); A.raf = 0;
   releaseAll();
-  A.hands = {}; A.seen = {}; A.handsNow = 0; A.fps = 0;
+  A.trackers = []; A.handsNow = 0; A.fps = 0; A.lastHit = null; A.audioWarned = false;
   if (A.stream) { A.stream.getTracks().forEach(t => t.stop()); A.stream = null; }
   const v = $('airVideo'); if (v) v.srcObject = null;
   const wasOn = A.on; A.on = false; A.loading = false;
@@ -217,8 +236,8 @@ function stop() {
 
 // Release every held note (layout change, stop, mirror flip…)
 function releaseAll() {
-  for (const label of Object.keys(A.heldNote)) { try { noteOff(A.heldNote[label]); } catch (_) {} delete A.heldNote[label]; }
-  Object.values(A.hands).forEach(h => h.lost());
+  for (const id of Object.keys(A.heldNote)) { try { noteOff(A.heldNote[id]); } catch (_) {} delete A.heldNote[id]; }
+  A.trackers.forEach(t => t.tr.lost());
 }
 
 // ── Frame loop ────────────────────────────────────────────────────────────────
@@ -235,7 +254,7 @@ function loop() {
       processHands(hands, now);
     }
     A.frames++;
-    if (now - A.fpsT >= 1000) { A.fps = Math.round(A.frames * 1000 / (now - A.fpsT)); A.frames = 0; A.fpsT = now; }
+    if (now - A.fpsT >= 1000) { A.fps = Math.round(A.frames * 1000 / (now - A.fpsT)); A.frames = 0; A.fpsT = now; checkAudio(); }
   }
   draw();
   A.raf = requestAnimationFrame(loop);
@@ -244,18 +263,21 @@ function loop() {
 // Turn one frame of detected hands into sounds. Exposed for tests via window.__airband.feed.
 function processHands(hands, tMs) {
   refreshLabels();
-  const m = A.mapping, seen = {};
+  const m = A.mapping;
   A.handsNow = hands.length;
-  for (const h of hands) {
-    const label = h.label || 'H0';
-    if (seen[label]) continue;                              // two hands with the same label: keep the first
-    seen[label] = true;
-    const lm = A.mirror ? mirrorLandmarks(h.landmarks) : h.landmarks;
-    const tr = A.hands[label] || (A.hands[label] = new HandTracker({ threshold: sensToThreshold(A.sens) }));
-    apply(label, tr.update(m, lm, tMs), tMs);
-  }
-  for (const label of Object.keys(A.hands)) if (!seen[label]) { apply(label, A.hands[label].lost(), tMs); delete A.hands[label]; }
-  A.seen = seen;
+  const lms = hands.map(h => (A.mirror ? mirrorLandmarks(h.landmarks) : h.landmarks));
+  const match = matchHands(A.trackers.map(t => t.tr.palm), lms.map(palmCenter), 0.3);
+  const next = [], used = new Set();
+  lms.forEach((lm, j) => {
+    let t;
+    if (match[j] >= 0) { t = A.trackers[match[j]]; used.add(match[j]); }
+    else t = { id: ++A.seq, tr: new HandTracker({ threshold: sensToThreshold(A.sens) }) };
+    t.label = hands[j].label || '';
+    apply(t.id, t.tr.update(m, lm, tMs), tMs);
+    next.push(t);
+  });
+  A.trackers.forEach((t, i) => { if (!used.has(i)) apply(t.id, t.tr.lost(), tMs); });
+  A.trackers = next;
 }
 
 function apply(label, events, tMs) {
@@ -264,12 +286,14 @@ function apply(label, events, tMs) {
     if (ev.type === 'hit' && cell?.t === 'd') {
       hitDrum(DRUMS[cell.i], ev.vel);
       A.flash[ev.zone] = performance.now() + 160; blink();     // wall clock: draw() compares against performance.now()
+      A.lastHit = { name: DRUMS[cell.i].name, vel: ev.vel, t: performance.now() };
       pushLog({ type: 'hit', zone: ev.zone, name: DRUMS[cell.i].name, vel: ev.vel, t: tMs });
     } else if (ev.type === 'hold' && cell?.t === 'n') {
       if (A.heldNote[label]) { noteOff(A.heldNote[label]); delete A.heldNote[label]; }
       const midi = degreeToMidi(cell.deg, S.scaleRoot, S.scaleName);
       const n = midiNoteObj(midi, HOLD_VEL); n.uid = 'air_' + label + '_' + midi;
       A.heldNote[label] = n; noteOn(n); blink();
+      A.lastHit = { name: NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1), vel: HOLD_VEL, t: performance.now() };
       pushLog({ type: 'hold', zone: ev.zone, midi, t: tMs });
     } else if (ev.type === 'release') {
       if (A.heldNote[label]) { noteOff(A.heldNote[label]); delete A.heldNote[label]; }
@@ -291,7 +315,7 @@ function draw() {
   const g = c.getContext('2d'), W = c.width, H = c.height, m = A.mapping, now = performance.now();
   g.clearRect(0, 0, W, H);
   if (!A.on) { g.fillStyle = '#0b0b0e'; g.fillRect(0, 0, W, H); }
-  const heldZones = new Set(Object.values(A.hands).map(h => h.held).filter(z => z >= 0));
+  const heldZones = new Set(A.trackers.map(t => t.tr.held).filter(z => z >= 0));
   const font = Math.round(Math.min(W / m.cols, H / m.rows) * 0.16);
   g.lineWidth = Math.max(1, W / 640);
   for (let i = 0; i < m.cells.length; i++) {
@@ -308,7 +332,7 @@ function draw() {
     g.shadowBlur = 0;
   }
   // hands
-  for (const tr of Object.values(A.hands)) {
+  for (const { tr } of A.trackers) {
     if (!tr.lm) continue;
     g.strokeStyle = 'rgba(140,255,255,.85)'; g.lineWidth = Math.max(1.5, W / 420);
     g.beginPath();
@@ -319,12 +343,23 @@ function draw() {
     if (tr.palm) {
       g.fillStyle = tr.open ? '#4ade80' : '#fbbf24';
       g.beginPath(); g.arc(tr.palm.x * W, tr.palm.y * H, Math.max(5, W / 90), 0, Math.PI * 2); g.fill();
+      // strike meter: how fast the hand is moving down vs the Hit threshold (full bar = fires)
+      const thr = tr.strike.threshold, ratio = Math.max(-1, Math.min(1.5, tr.strike.vy / thr));
+      const bx = tr.palm.x * W + Math.max(14, W / 40), by = tr.palm.y * H, bw = Math.max(5, W / 110), bh = H * 0.12;
+      g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(bx - 1, by - bh - 1, bw + 2, bh * 2 + 2);
+      g.fillStyle = ratio >= 1 ? '#fbbf24' : ratio > 0 ? 'rgba(140,255,255,.9)' : 'rgba(112,112,120,.8)';
+      if (ratio >= 0) g.fillRect(bx, by, bw, Math.min(bh, bh * ratio)); else g.fillRect(bx, by + bh * ratio, bw, -bh * ratio);
+      g.fillStyle = '#fff'; g.fillRect(bx - 2, by + bh - 1, bw + 4, 2);           // threshold tick
     }
   }
   // corner read-out
   g.font = `600 ${Math.round(W / 46)}px 'Segoe UI',system-ui,sans-serif`; g.textAlign = 'left'; g.textBaseline = 'top';
   g.fillStyle = 'rgba(210,210,216,.85)'; g.shadowColor = 'rgba(0,0,0,.9)'; g.shadowBlur = 4;
-  if (A.on) g.fillText(`${A.fps} fps · ${A.handsNow} hand${A.handsNow === 1 ? '' : 's'}`, 8, 6);
+  if (A.on) {
+    const hit = A.lastHit && now - A.lastHit.t < 2500 ? ` · ${A.lastHit.name} ${Math.round(A.lastHit.vel * 100)}%` : '';
+    g.fillText(`${A.fps} fps · ${A.handsNow} hand${A.handsNow === 1 ? '' : 's'}${hit}`, 8, 6);
+    if (!audioRunning()) { g.fillStyle = '#fbbf24'; g.fillText('🔇 click the page to unblock sound', 8, 6 + Math.round(W / 36)); }
+  }
   else if (!A.loading) { g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `600 ${Math.round(W / 30)}px 'Segoe UI',system-ui,sans-serif`; g.fillStyle = 'rgba(210,210,216,.7)'; g.fillText('🎥 Camera off — click Camera', W / 2, H / 2); }
   g.shadowBlur = 0;
 }

@@ -146,7 +146,7 @@ export class StrikeDetector {
 }
 
 // Sensitivity 0–1 → strike threshold (frame-heights / second). 0 = needs a big whack, 1 = hair trigger.
-export function sensToThreshold(s) { const k = Math.min(1, Math.max(0, +s || 0)); return +(2.6 - 1.9 * k).toFixed(3); }
+export function sensToThreshold(s) { const k = Math.min(1, Math.max(0, +s || 0)); return +(2.2 - 1.7 * k).toFixed(3); }
 
 // ── Notes ─────────────────────────────────────────────────────────────────────
 // Scale degree → MIDI note. Unlocked (chromatic) plays a major scale so the zones
@@ -180,6 +180,22 @@ export class HandTracker {
     return ev;
   }
   lost() { const ev = []; if (this.held >= 0) { ev.push({ type: 'release', zone: this.held }); this.held = -1; } this.strike.reset(); this.zone = -1; return ev; }
+}
+
+// Match this frame's hands to last frame's trackers by palm position (greedy
+// nearest pair, max jump `maxDist`). MediaPipe's Left/Right label flickers on fast
+// motion, which would reset a strike mid-swing if hands were keyed by label.
+// Returns, per detected hand, the index of its previous tracker or −1 (new hand).
+export function matchHands(prevPalms, palms, maxDist = 0.3) {
+  const pairs = [];
+  prevPalms.forEach((p, i) => { if (!p) return; palms.forEach((q, j) => pairs.push([Math.hypot(p.x - q.x, p.y - q.y), i, j])); });
+  pairs.sort((a, b) => a[0] - b[0]);
+  const usedP = new Set(), usedQ = new Set(), out = new Array(palms.length).fill(-1);
+  for (const [d, i, j] of pairs) {
+    if (d > maxDist || usedP.has(i) || usedQ.has(j)) continue;
+    out[j] = i; usedP.add(i); usedQ.add(j);
+  }
+  return out;
 }
 
 // Mirror landmarks horizontally (selfie view): x → 1 − x.
