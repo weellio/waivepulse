@@ -23,9 +23,14 @@ const MP_BASE   = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER
 const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 const LS_KEY    = 'wp.looper.airband';
 const HOLD_VEL  = 0.9;
+const DETECT_W  = 320;    // tracker input width: hands need no more, and it keeps the GPU path at 60 fps
+const GRACE_MS  = 350;    // keep a hand (and its held note) through a short tracking dropout
+const SLOW_FPS  = 12;     // below this on the GPU we try the CPU delegate, and keep whichever is faster
 
 const A = {
-  on: false, loading: false, stream: null, landmarker: null,
+  on: false, loading: false, stream: null, landmarker: null, lms: {}, delegate: 'GPU', det: null,
+  bench: null,          // { phase: 'gpu'|'cpu'|'done', since, gpuFps } auto delegate pick
+  lastFrameT: 0,
   mapping: presetMapping('drums'), preset: 'drums', sens: 0.65, mirror: true, big: false,
   trackers: [],         // [{ id, tr: HandTracker, label }] matched frame-to-frame by palm position
   seq: 0,               // tracker id counter
@@ -164,15 +169,47 @@ function setBtn(on, label) {
   const b = $('airConnBtn'); if (b) { b.classList.toggle('on', on); b.textContent = label; }
 }
 
+let mpMod = null, mpFiles = null;
+async function makeLandmarker(delegate) {
+  if (A.lms[delegate]) return A.lms[delegate];
+  if (!mpMod) {
+    mpMod = await import(/* webpackIgnore: true */ `${MP_BASE}/vision_bundle.mjs`);
+    mpFiles = await mpMod.FilesetResolver.forVisionTasks(`${MP_BASE}/wasm`);
+  }
+  const lm = await mpMod.HandLandmarker.createFromOptions(mpFiles, {
+    baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numHands: 2,
+    minHandDetectionConfidence: 0.5, minTrackingConfidence: 0.4,
+  });
+  // Warm-up: the GPU path compiles its shaders on the first frame (≈5 s of freeze on
+  // this machine). Do that here, behind the status text, not on the user's first swing.
+  setStat(`Warming up the ${delegate} tracker…`);
+  try { const c = document.createElement('canvas'); c.width = DETECT_W; c.height = Math.round(DETECT_W * 0.75); c.getContext('2d').fillRect(0, 0, c.width, c.height); lm.detectForVideo(c, performance.now()); } catch (_) {}
+  A.lms[delegate] = lm;
+  return lm;
+}
 async function loadLandmarker() {
   if (A.landmarker) return A.landmarker;
   setStat('Loading hand tracker (first time ≈ 10 MB)…');
-  const mp = await import(/* webpackIgnore: true */ `${MP_BASE}/vision_bundle.mjs`);
-  const files = await mp.FilesetResolver.forVisionTasks(`${MP_BASE}/wasm`);
-  const opts = delegate => ({ baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numHands: 2, minHandDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-  try { A.landmarker = await mp.HandLandmarker.createFromOptions(files, opts('GPU')); }
-  catch (e) { console.warn('Air Band: GPU delegate failed, using CPU', e); A.landmarker = await mp.HandLandmarker.createFromOptions(files, opts('CPU')); }
+  try { A.landmarker = await makeLandmarker('GPU'); A.delegate = 'GPU'; }
+  catch (e) { console.warn('Air Band: GPU delegate failed, using CPU', e); A.landmarker = await makeLandmarker('CPU'); A.delegate = 'CPU'; }
   return A.landmarker;
+}
+// The GPU path is fast on a real GPU but crawls when the browser has hardware
+// acceleration off. After a few seconds on the GPU below SLOW_FPS, try the CPU
+// delegate for a few seconds and keep whichever is faster; then say so if it's still slow.
+async function autoDelegate(now) {
+  const b = A.bench; if (!b || b.phase === 'done') return;
+  if (now - b.since < 4000) return;
+  if (b.phase === 'gpu') {
+    if (A.fps >= SLOW_FPS || A.delegate !== 'GPU') { b.phase = 'done'; return; }
+    b.gpuFps = A.fps; b.phase = 'switching';
+    try { const cpu = await makeLandmarker('CPU'); if (!A.on) return; A.landmarker = cpu; A.delegate = 'CPU'; b.phase = 'cpu'; b.since = performance.now(); }
+    catch (e) { console.warn('CPU delegate failed', e); b.phase = 'done'; }
+  } else if (b.phase === 'cpu') {
+    if (A.fps < b.gpuFps) { A.landmarker = A.lms.GPU; A.delegate = 'GPU'; }
+    b.phase = 'done';
+    if (Math.max(A.fps, b.gpuFps) < 10) setStat(`Slow tracking (${Math.max(A.fps, b.gpuFps)} fps) — in Chrome turn on Settings → System → "Use graphics acceleration", or close GPU-heavy apps. It still works, just laggy.`, 'warn');
+  }
 }
 
 async function start() {
@@ -189,7 +226,10 @@ async function start() {
     const c = $('airCanvas'); if (c && video.videoWidth) { c.width = video.videoWidth; c.height = video.videoHeight; }
     await loadLandmarker();
     if (!A.stream) return;                                  // stopped while loading
-    A.on = true; A.loading = false; A.frames = 0; A.fpsT = performance.now(); A.lastVideoT = -1;
+    A.on = true; A.loading = false; A.frames = 0; A.fpsT = performance.now(); A.lastVideoT = -1; A.lastFrameT = 0;
+    A.bench = { phase: A.delegate === 'GPU' ? 'gpu' : 'done', since: performance.now(), gpuFps: 0 };
+    if (!A.det) A.det = document.createElement('canvas');
+    A.det.width = DETECT_W; A.det.height = Math.round(DETECT_W * (video.videoHeight || 480) / (video.videoWidth || 640));
     setBtn(true, '🎥 Camera on');
     setStat('Tracking — strike down for drums, hold an open hand for notes', 'ok');
     setStatus('Air Band on: play the zones with your hands');
@@ -224,7 +264,7 @@ function checkAudio() {
 function stop() {
   cancelAnimationFrame(A.raf); A.raf = 0;
   releaseAll();
-  A.trackers = []; A.handsNow = 0; A.fps = 0; A.lastHit = null; A.audioWarned = false;
+  A.trackers = []; A.handsNow = 0; A.fps = 0; A.lastHit = null; A.audioWarned = false; A.bench = null;
   if (A.stream) { A.stream.getTracks().forEach(t => t.stop()); A.stream = null; }
   const v = $('airVideo'); if (v) v.srcObject = null;
   const wasOn = A.on; A.on = false; A.loading = false;
@@ -248,35 +288,46 @@ function loop() {
     A.lastVideoT = video.currentTime;
     const now = performance.now();
     let res = null;
-    try { res = A.landmarker.detectForVideo(video, now); } catch (e) { console.warn('detect', e); }
+    try {
+      A.det.getContext('2d').drawImage(video, 0, 0, A.det.width, A.det.height);
+      res = A.landmarker.detectForVideo(A.det, now);
+    } catch (e) { console.warn('detect', e); }
     if (res) {
       const hands = (res.landmarks || []).map((lm, i) => ({ label: res.handedness?.[i]?.[0]?.categoryName || ('H' + i), landmarks: lm }));
-      processHands(hands, now);
+      const dtS = A.lastFrameT ? Math.min(0.5, (now - A.lastFrameT) / 1000) : 0.033;
+      A.lastFrameT = now;
+      processHands(hands, now, dtS);
     }
     A.frames++;
-    if (now - A.fpsT >= 1000) { A.fps = Math.round(A.frames * 1000 / (now - A.fpsT)); A.frames = 0; A.fpsT = now; checkAudio(); }
+    if (now - A.fpsT >= 1000) { A.fps = Math.round(A.frames * 1000 / (now - A.fpsT)); A.frames = 0; A.fpsT = now; checkAudio(); autoDelegate(now); }
   }
   draw();
   A.raf = requestAnimationFrame(loop);
 }
 
 // Turn one frame of detected hands into sounds. Exposed for tests via window.__airband.feed.
-function processHands(hands, tMs) {
+function processHands(hands, tMs, dtS = 0.033) {
   refreshLabels();
   const m = A.mapping;
   A.handsNow = hands.length;
   const lms = hands.map(h => (A.mirror ? mirrorLandmarks(h.landmarks) : h.landmarks));
-  const match = matchHands(A.trackers.map(t => t.tr.palm), lms.map(palmCenter), 0.3);
+  // a fast chop moves far between frames — allow a bigger jump the longer the frame gap
+  const maxJump = Math.min(1.2, 0.2 + 4 * dtS);
+  const match = matchHands(A.trackers.map(t => t.tr.palm), lms.map(palmCenter), maxJump);
   const next = [], used = new Set();
   lms.forEach((lm, j) => {
     let t;
     if (match[j] >= 0) { t = A.trackers[match[j]]; used.add(match[j]); }
     else t = { id: ++A.seq, tr: new HandTracker({ threshold: sensToThreshold(A.sens) }) };
-    t.label = hands[j].label || '';
+    t.label = hands[j].label || ''; t.lastSeen = tMs;
     apply(t.id, t.tr.update(m, lm, tMs), tMs);
     next.push(t);
   });
-  A.trackers.forEach((t, i) => { if (!used.has(i)) apply(t.id, t.tr.lost(), tMs); });
+  A.trackers.forEach((t, i) => {
+    if (used.has(i)) return;
+    if (tMs - t.lastSeen <= GRACE_MS) next.push(t);          // blurred / dropped for a frame: keep it
+    else apply(t.id, t.tr.lost(), tMs);
+  });
   A.trackers = next;
 }
 
@@ -334,30 +385,36 @@ function draw() {
   // hands
   for (const { tr } of A.trackers) {
     if (!tr.lm) continue;
-    g.strokeStyle = 'rgba(140,255,255,.85)'; g.lineWidth = Math.max(1.5, W / 420);
+    g.strokeStyle = 'rgba(140,255,255,.5)'; g.lineWidth = Math.max(1, W / 520);
     g.beginPath();
     for (const [a, b] of HAND_BONES) { g.moveTo(tr.lm[a].x * W, tr.lm[a].y * H); g.lineTo(tr.lm[b].x * W, tr.lm[b].y * H); }
     g.stroke();
-    g.fillStyle = '#8cffff';
-    for (const p of tr.lm) { g.beginPath(); g.arc(p.x * W, p.y * H, Math.max(2, W / 260), 0, Math.PI * 2); g.fill(); }
+    g.fillStyle = 'rgba(140,255,255,.7)';
+    for (const p of tr.lm) { g.beginPath(); g.arc(p.x * W, p.y * H, Math.max(1.5, W / 320), 0, Math.PI * 2); g.fill(); }
     if (tr.palm) {
       g.fillStyle = tr.open ? '#4ade80' : '#fbbf24';
       g.beginPath(); g.arc(tr.palm.x * W, tr.palm.y * H, Math.max(5, W / 90), 0, Math.PI * 2); g.fill();
-      // strike meter: how fast the hand is moving down vs the Hit threshold (full bar = fires)
-      const thr = tr.strike.threshold, ratio = Math.max(-1, Math.min(1.5, tr.strike.vy / thr));
-      const bx = tr.palm.x * W + Math.max(14, W / 40), by = tr.palm.y * H, bw = Math.max(5, W / 110), bh = H * 0.12;
-      g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(bx - 1, by - bh - 1, bw + 2, bh * 2 + 2);
-      g.fillStyle = ratio >= 1 ? '#fbbf24' : ratio > 0 ? 'rgba(140,255,255,.9)' : 'rgba(112,112,120,.8)';
-      if (ratio >= 0) g.fillRect(bx, by, bw, Math.min(bh, bh * ratio)); else g.fillRect(bx, by + bh * ratio, bw, -bh * ratio);
-      g.fillStyle = '#fff'; g.fillRect(bx - 2, by + bh - 1, bw + 4, 2);           // threshold tick
     }
   }
+  // strike meters: one bar on the right edge of the zone each hand is in. It fills
+  // downward with the hand's speed; reaching the white tick = a hit fires.
+  A.trackers.forEach(({ tr }, k) => {
+    if (!tr.palm || tr.zone < 0) return;
+    const cell = m.cells[tr.zone]; if (!cell || cell.t !== 'd') return;
+    const r = zoneRect(m, tr.zone), pad = Math.max(4, W / 160), bw = Math.max(6, W / 90);
+    const x0 = (r.x + r.w) * W - pad - bw - k * (bw + 3), y0 = r.y * H + pad, bh = r.h * H - 2 * pad, tick = y0 + bh * 0.7;
+    const ratio = Math.max(0, Math.min(1.4, tr.strike.vy / tr.strike.threshold));
+    g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(x0 - 1, y0 - 1, bw + 2, bh + 2);
+    g.fillStyle = ratio >= 1 ? '#fbbf24' : 'rgba(140,255,255,.9)';
+    g.fillRect(x0, y0, bw, bh * 0.7 * ratio);
+    g.fillStyle = '#fff'; g.fillRect(x0 - 2, tick - 1, bw + 4, 2);
+  });
   // corner read-out
   g.font = `600 ${Math.round(W / 46)}px 'Segoe UI',system-ui,sans-serif`; g.textAlign = 'left'; g.textBaseline = 'top';
   g.fillStyle = 'rgba(210,210,216,.85)'; g.shadowColor = 'rgba(0,0,0,.9)'; g.shadowBlur = 4;
   if (A.on) {
     const hit = A.lastHit && now - A.lastHit.t < 2500 ? ` · ${A.lastHit.name} ${Math.round(A.lastHit.vel * 100)}%` : '';
-    g.fillText(`${A.fps} fps · ${A.handsNow} hand${A.handsNow === 1 ? '' : 's'}${hit}`, 8, 6);
+    g.fillText(`${A.fps} fps ${A.delegate.toLowerCase()} · ${A.handsNow} hand${A.handsNow === 1 ? '' : 's'}${hit}`, 8, 6);
     if (!audioRunning()) { g.fillStyle = '#fbbf24'; g.fillText('🔇 click the page to unblock sound', 8, 6 + Math.round(W / 36)); }
   }
   else if (!A.loading) { g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `600 ${Math.round(W / 30)}px 'Segoe UI',system-ui,sans-serif`; g.fillStyle = 'rgba(210,210,216,.7)'; g.fillText('🎥 Camera off — click Camera', W / 2, H / 2); }
@@ -381,5 +438,5 @@ export function initAirBand() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && A.big) toggleAirBig(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
   // test / automation hook
-  window.__airband = { A, feed: (hands, t) => processHands(hands, t ?? performance.now()), mapping: () => A.mapping, draw };
+  window.__airband = { A, feed: (hands, t, dt) => processHands(hands, t ?? performance.now(), dt ?? 0.033), mapping: () => A.mapping, draw };
 }

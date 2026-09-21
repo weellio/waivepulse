@@ -110,37 +110,37 @@ export function isOpenHand(lm) { return fingersExtended(lm) >= 3; }
 export function isPinch(lm)    { return dist(lm[LM.THUMB_TIP], lm[LM.INDEX_TIP]) < handSize(lm) * 0.35; }
 
 // ── Strike detector (one per hand) ────────────────────────────────────────────
-// Feed the palm y (0 top … 1 bottom) every frame. A strike = the hand moved DOWN
-// faster than `threshold` (frame-heights per second) and then slowed below 40% of
-// its peak speed (the "hit the drum" stop). Returns {vel} on the frame the strike
-// lands, else null. Velocity 0.35–1 scales with how hard the hand came down.
+// Feed the palm y (0 top … 1 bottom) every frame. Speed is measured over the last
+// ~100 ms (or the previous frame when the camera is slower than that), so the
+// detector behaves the same at 5 fps and at 60 fps. A strike fires the moment the
+// downward speed crosses `threshold` (frame-heights per second) — lowest latency —
+// and re-arms once the hand slows below half of it, so one swing = one hit.
+// Velocity 0.4–1 scales with how fast the hand came down.
 export class StrikeDetector {
-  constructor({ threshold = 1.4, cooldownMs = 120, maxVel = 4.5 } = {}) {
-    this.threshold = threshold; this.cooldownMs = cooldownMs; this.maxVel = maxVel;
+  constructor({ threshold = 1.1, cooldownMs = 140, maxVel = 4.0, windowMs = 100, maxGapMs = 350 } = {}) {
+    Object.assign(this, { threshold, cooldownMs, maxVel, windowMs, maxGapMs });
     this.reset();
   }
-  reset() { this.prevY = null; this.prevT = null; this.armed = false; this.peak = 0; this.lastHit = -1e9; this.vy = 0; }
+  reset() { this.hist = []; this.armed = true; this.lastHit = -1e9; this.vy = 0; }
   setThreshold(t) { this.threshold = t; }
   update(y, tMs) {
-    if (this.prevY == null) { this.prevY = y; this.prevT = tMs; return null; }
-    const dt = (tMs - this.prevT) / 1000;
-    if (dt <= 0) return null;
-    if (dt > 0.25) { this.prevY = y; this.prevT = tMs; this.armed = false; return null; }   // hand was lost: don't fake a strike
-    const vy = (y - this.prevY) / dt;                   // + = moving down
-    this.prevY = y; this.prevT = tMs; this.vy = vy;
+    const h = this.hist;
+    if (h.length && tMs - h[h.length - 1].t > this.maxGapMs) { h.length = 0; this.armed = true; }   // hand was gone: fresh start
+    if (h.length && tMs <= h[h.length - 1].t) return null;
+    h.push({ y, t: tMs });
+    while (h.length > 2 && tMs - h[1].t >= this.windowMs) h.shift();   // h[0] = newest sample ≥ windowMs old
+    if (h.length < 2) { this.vy = 0; return null; }
+    const ref = h[0];
+    const vy = (y - ref.y) / ((tMs - ref.t) / 1000);      // + = moving down
+    this.vy = vy;
     let hit = null;
-    if (vy > this.threshold) {
-      this.armed = true; this.peak = Math.max(this.peak, vy);
-    } else if (this.armed && vy < this.peak * 0.4) {
-      this.armed = false;
-      if (tMs - this.lastHit >= this.cooldownMs) {
-        this.lastHit = tMs;
-        const vel = Math.min(1, 0.35 + 0.65 * (this.peak - this.threshold) / Math.max(0.1, this.maxVel - this.threshold));
-        hit = { vel: +vel.toFixed(3), peak: this.peak };
+    if (this.armed) {
+      if (vy > this.threshold && tMs - this.lastHit >= this.cooldownMs) {
+        this.armed = false; this.lastHit = tMs;
+        const vel = Math.min(1, 0.4 + 0.6 * (vy - this.threshold) / Math.max(0.1, this.maxVel - this.threshold));
+        hit = { vel: +vel.toFixed(3), peak: vy };
       }
-      this.peak = 0;
-    }
-    if (!this.armed) this.peak = 0;
+    } else if (vy < this.threshold * 0.5) this.armed = true;
     return hit;
   }
 }

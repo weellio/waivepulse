@@ -142,7 +142,9 @@ async def main():
         await page.screenshot(path=str(OUT / 'airband_page.png'))
         await browser.close()
 
-    bad = [e for e in errors if 'favicon' not in e and '/assets/' not in e]   # /assets (favicon) lives outside frontend/ on the plain static server
+    # /assets (favicon) lives outside frontend/ on the plain static server; MediaPipe logs its
+    # 'INFO: Created TensorFlow Lite XNNPACK delegate' line to stderr, which Chrome reports as an error
+    bad = [e for e in errors if 'favicon' not in e and '/assets/' not in e and not e.startswith('INFO:')]
     print('console errors:', bad)
     print('console warnings:', warnings[:5])
     assert not bad, 'no console errors'

@@ -92,6 +92,10 @@ await test('strike detector: fires once per downward whack, not on slow drift, h
   let t = 2000; const ys = [0.3, 0.4, 0.5, 0.6, 0.7, 0.71, 0.71, 0.71];
   for (const y of ys) { const h = sd.update(y, t); t += 33; if (h) hits.push(h); }
   assert.equal(hits.length, 1, 'one hit'); assert.ok(hits[0].vel > 0.35 && hits[0].vel <= 1);
+  // same whack seen by a 5 fps camera (one 200 ms frame of motion) still fires exactly once
+  const slow = new StrikeDetector({ threshold: 1.4 }); let n5 = 0; t = 0;
+  for (const y of [0.3, 0.3, 0.7, 0.71, 0.71]) { if (slow.update(y, t)) n5++; t += 200; }
+  assert.equal(n5, 1, 'fires at 5 fps');
   // a harder whack is louder
   const sd2 = new StrikeDetector({ threshold: 1.4 }); let hard = null; t = 0;
   for (const y of [0.1, 0.3, 0.5, 0.7, 0.9, 0.9, 0.9]) { const h = sd2.update(y, t); t += 33; if (h) hard = h; }
