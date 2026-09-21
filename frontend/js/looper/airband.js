@@ -16,6 +16,7 @@ import { NOTE_NAMES } from './scale.js';
 import {
   PRESETS, GRID_SIZES, presetMapping, resizeMapping, serializeMapping, parseMapping,
   zoneRect, HandTracker, sensToThreshold, degreeToMidi, mirrorLandmarks, HAND_BONES, palmCenter, matchHands,
+  DEFAULT_AREA, normArea,
 } from './airband-logic.js';
 
 const MP_VER    = '1.0.1';
@@ -125,7 +126,7 @@ function syncControls() {
 // ── Public controls (exposed on window by main.js) ────────────────────────────
 export function setAirPreset(name) {
   if (!PRESETS[name]) return;
-  A.preset = name; A.mapping = presetMapping(name);
+  A.preset = name; A.mapping = presetMapping(name, A.mapping.area);
   releaseAll(); buildZoneEditor(); syncControls(); save(); draw();
   setStatus('Air Band layout: ' + PRESETS[name].label);
 }
@@ -150,6 +151,46 @@ export function toggleAirMirror() {
   A.mirror = !A.mirror; releaseAll(); syncControls(); save();
   setStatus(A.mirror ? 'Air Band: mirror on (selfie view)' : 'Air Band: mirror off');
 }
+// ── Kit area: drag to move, corners to resize, double-click to reset ─────────
+let drag = null;
+function canvasPoint(e) {
+  const c = $('airCanvas'), r = c.getBoundingClientRect();
+  const scale = Math.min(r.width / c.width, r.height / c.height);          // object-fit: contain
+  const ox = (r.width - c.width * scale) / 2, oy = (r.height - c.height * scale) / 2;
+  return { x: (e.clientX - r.left - ox) / (c.width * scale), y: (e.clientY - r.top - oy) / (c.height * scale) };
+}
+function areaHandle(p) {
+  const a = A.mapping.area, tol = 0.045;
+  const near = (x, y) => Math.abs(p.x - x) < tol && Math.abs(p.y - y) < tol;
+  if (near(a.x, a.y)) return 'tl'; if (near(a.x + a.w, a.y)) return 'tr';
+  if (near(a.x, a.y + a.h)) return 'bl'; if (near(a.x + a.w, a.y + a.h)) return 'br';
+  if (p.x >= a.x && p.x <= a.x + a.w && p.y >= a.y && p.y <= a.y + a.h) return 'move';
+  return null;
+}
+const CURSORS = { tl: 'nwse-resize', br: 'nwse-resize', tr: 'nesw-resize', bl: 'nesw-resize', move: 'move' };
+function setArea(a) { A.mapping.area = normArea(a); releaseAll(); draw(); }
+function initAreaEditor() {
+  const c = $('airCanvas'); if (!c) return;
+  c.addEventListener('pointerdown', e => {
+    const p = canvasPoint(e), h = areaHandle(p); if (!h) return;
+    drag = { h, p0: p, a0: { ...A.mapping.area } }; c.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  c.addEventListener('pointermove', e => {
+    const p = canvasPoint(e);
+    if (!drag) { c.style.cursor = CURSORS[areaHandle(p)] || 'default'; return; }
+    const { h, p0, a0 } = drag, dx = p.x - p0.x, dy = p.y - p0.y, a = { ...a0 };
+    if (h === 'move') { a.x += dx; a.y += dy; }
+    else {
+      if (h === 'tl' || h === 'bl') { a.x += dx; a.w -= dx; } else a.w += dx;
+      if (h === 'tl' || h === 'tr') { a.y += dy; a.h -= dy; } else a.h += dy;
+    }
+    setArea(a);
+  });
+  const end = () => { if (!drag) return; drag = null; save(); setStatus('Air Band: kit area moved — hands outside it play nothing'); };
+  c.addEventListener('pointerup', end); c.addEventListener('pointercancel', end);
+  c.addEventListener('dblclick', () => { setArea(DEFAULT_AREA); save(); setStatus('Air Band: kit area reset'); });
+}
+
 export function toggleAirBig() {
   A.big = !A.big;
   $('airStage')?.classList.toggle('big', A.big);
@@ -367,6 +408,10 @@ function draw() {
   g.clearRect(0, 0, W, H);
   if (!A.on) { g.fillStyle = '#0b0b0e'; g.fillRect(0, 0, W, H); }
   const heldZones = new Set(A.trackers.map(t => t.tr.held).filter(z => z >= 0));
+  const ar = m.area || DEFAULT_AREA, ax = ar.x * W, ay = ar.y * H, aw = ar.w * W, ah = ar.h * H;
+  // outside the kit area: dimmed (hands there play nothing)
+  g.fillStyle = 'rgba(0,0,0,.42)';
+  g.fillRect(0, 0, W, ay); g.fillRect(0, ay + ah, W, H - ay - ah); g.fillRect(0, ay, ax, ah); g.fillRect(ax + aw, ay, W - ax - aw, ah);
   const font = Math.round(Math.min(W / m.cols, H / m.rows) * 0.16);
   g.lineWidth = Math.max(1, W / 640);
   for (let i = 0; i < m.cells.length; i++) {
@@ -396,6 +441,16 @@ function draw() {
       g.beginPath(); g.arc(tr.palm.x * W, tr.palm.y * H, Math.max(5, W / 90), 0, Math.PI * 2); g.fill();
     }
   }
+  // kit area frame + corner handles + hint
+  g.setLineDash([6, 4]); g.strokeStyle = 'rgba(140,255,255,.8)'; g.lineWidth = Math.max(1.5, W / 400);
+  g.strokeRect(ax + 0.5, ay + 0.5, aw - 1, ah - 1); g.setLineDash([]);
+  const hs = Math.max(6, W / 70);
+  g.fillStyle = '#8cffff';
+  for (const [hx, hy] of [[ax, ay], [ax + aw, ay], [ax, ay + ah], [ax + aw, ay + ah]]) g.fillRect(hx - hs / 2, hy - hs / 2, hs, hs);
+  g.font = `600 ${Math.round(W / 52)}px 'Segoe UI',system-ui,sans-serif`; g.textAlign = 'right'; g.textBaseline = 'bottom';
+  g.fillStyle = 'rgba(140,255,255,.75)'; g.shadowColor = 'rgba(0,0,0,.9)'; g.shadowBlur = 3;
+  g.fillText('kit area · drag to move · corners resize · double-click resets', ax + aw - hs, ay - 3 < 12 ? ay + ah + Math.round(W / 40) : ay - 3);
+  g.shadowBlur = 0;
   // strike meters: one bar on the right edge of the zone each hand is in. It fills
   // downward with the hand's speed; reaching the white tick = a hit fires.
   A.trackers.forEach(({ tr }, k) => {
@@ -434,7 +489,7 @@ export function initAirBand() {
   if (p) { p.innerHTML = ''; Object.entries(PRESETS).forEach(([k, v]) => p.appendChild(new Option(v.label, k))); p.appendChild(new Option('Custom', 'custom')); }
   const gsel = $('airGrid');
   if (gsel) { gsel.innerHTML = ''; Object.keys(GRID_SIZES).forEach(k => gsel.appendChild(new Option(k.replace('x', '×'), k))); }
-  buildZoneEditor(); syncControls(); draw();
+  buildZoneEditor(); syncControls(); initAreaEditor(); draw();
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && A.big) toggleAirBig(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
   // test / automation hook

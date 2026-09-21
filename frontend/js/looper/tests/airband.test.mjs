@@ -5,6 +5,7 @@ import {
   PRESETS, GRID_SIZES, presetMapping, resizeMapping, serializeMapping, parseMapping,
   zoneAt, zoneRect, palmCenter, fingersExtended, isOpenHand, isPinch,
   StrikeDetector, sensToThreshold, degreeToMidi, HandTracker, mirrorLandmarks, matchHands, strikePoint,
+  DEFAULT_AREA, normArea,
 } from '../airband-logic.js';
 
 let passed = 0;
@@ -48,23 +49,32 @@ await test('presets are complete and valid', () => {
   assert.deepEqual(new Set(d.cells.map(c => c.i)).size, 8, 'drum kit uses all 8 pads once');
 });
 
-await test('zoneAt / zoneRect map the frame correctly (row-major, clamped)', () => {
-  const m = presetMapping('drums');                       // 2×4
-  assert.equal(zoneAt(m, 0.05, 0.1), 0);
-  assert.equal(zoneAt(m, 0.95, 0.1), 3);
+await test('zoneAt / zoneRect map the kit area (row-major, −1 outside)', () => {
+  const m = presetMapping('drums');                       // 2×4 inside the default area (lower 55 %)
+  assert.deepEqual(m.area, DEFAULT_AREA);
+  assert.equal(zoneAt(m, 0.05, 0.5), 0);
+  assert.equal(zoneAt(m, 0.95, 0.5), 3);
   assert.equal(zoneAt(m, 0.05, 0.9), 4);
-  assert.equal(zoneAt(m, 0.6, 0.6), 6);
-  assert.equal(zoneAt(m, -1, -1), 0); assert.equal(zoneAt(m, 2, 2), 7);
-  assert.deepEqual(zoneRect(m, 5), { x: 0.25, y: 0.5, w: 0.25, h: 0.5 });
+  assert.equal(zoneAt(m, 0.6, 0.8), 6);
+  assert.equal(zoneAt(m, 0.5, 0.2), -1, 'above the kit = nothing');
+  assert.equal(zoneAt(m, -1, -1), -1); assert.equal(zoneAt(m, 2, 2), -1);
+  const zr = zoneRect(m, 5); for (const [k, v] of Object.entries({ x: 0.25, y: 0.725, w: 0.25, h: 0.275 })) assert.ok(Math.abs(zr[k] - v) < 1e-9, 'zoneRect ' + k);
+  // a moved / resized kit area
+  const k = presetMapping('drums', { x: 0.25, y: 0.5, w: 0.5, h: 0.4 });
+  assert.equal(zoneAt(k, 0.3, 0.55), 0); assert.equal(zoneAt(k, 0.7, 0.85), 7); assert.equal(zoneAt(k, 0.1, 0.7), -1);
+  assert.deepEqual(normArea({ x: 0.9, y: 0.9, w: 0.5, h: 0.5 }), { x: 0.5, y: 0.5, w: 0.5, h: 0.5 }, 'clamped into the frame');
+  assert.deepEqual(normArea({ x: 0, y: 0, w: 0.05, h: 0.05 }), { x: 0, y: 0, w: 0.2, h: 0.15 }, 'minimum size');
+  assert.deepEqual(normArea('junk'), DEFAULT_AREA);
 });
 
 await test('resize keeps assignments by index; serialize/parse round-trips; garbage rejected', () => {
-  const m = presetMapping('band');
-  const r = resizeMapping(m, '1x4');
+  const m = presetMapping('band', { x: 0.1, y: 0.5, w: 0.8, h: 0.5 });
+  const r = resizeMapping(m, '1x4'); assert.deepEqual(r.area, m.area, 'resize keeps the kit area');
   assert.equal(r.cells.length, 4); assert.deepEqual(r.cells[0], m.cells[0]);
   const big = resizeMapping(m, '3x4'); assert.equal(big.cells.length, 12); assert.equal(big.cells[11], null);
   const back = parseMapping(serializeMapping(m));
-  assert.deepEqual(back, m);
+  assert.deepEqual(back, m, 'area round-trips');
+  assert.deepEqual(parseMapping(JSON.stringify({ grid: '2x4', cells: [] })).area, DEFAULT_AREA, 'old saves without an area get the default');
   assert.equal(parseMapping('nope'), null);
   assert.equal(parseMapping(JSON.stringify({ grid: '9x9', cells: [] })), null);
   const dirty = parseMapping(JSON.stringify({ grid: '1x4', cells: [{ t: 'd', i: 99 }, { t: 'n', deg: -1 }, 'x', { t: 'n', deg: 3 }] }));
@@ -123,22 +133,25 @@ await test('hand tracker: hold / slide / release notes, strike hits drums, lost(
   const m = presetMapping('band');                        // 2×4: drums in cols 0–1, notes in cols 2–3
   const tr = new HandTracker({ threshold: 1.4 });
   // open hand in zone 6 (bottom, col 2 = root) → hold
-  let ev = tr.update(m, hand({ cx: 0.62, cy: 0.7, open: true }), 0);
+  let ev = tr.update(m, hand({ cx: 0.62, cy: 0.8, open: true }), 0);
   assert.deepEqual(ev, [{ type: 'hold', zone: 6 }]);
-  ev = tr.update(m, hand({ cx: 0.62, cy: 0.7, open: true }), 33);
+  ev = tr.update(m, hand({ cx: 0.62, cy: 0.8, open: true }), 33);
   assert.deepEqual(ev, [], 'still holding: no repeat');
   // slide to zone 7 → release 6, hold 7
-  ev = tr.update(m, hand({ cx: 0.9, cy: 0.7, open: true }), 66);
+  ev = tr.update(m, hand({ cx: 0.9, cy: 0.8, open: true }), 66);
   assert.deepEqual(ev, [{ type: 'release', zone: 6 }, { type: 'hold', zone: 7 }]);
   // close the fist → release
-  ev = tr.update(m, hand({ cx: 0.9, cy: 0.7, open: false }), 99);
+  ev = tr.update(m, hand({ cx: 0.9, cy: 0.8, open: false }), 99);
   assert.deepEqual(ev, [{ type: 'release', zone: 7 }]);
   // open hand over a DRUM zone must not hold
-  ev = tr.update(m, hand({ cx: 0.1, cy: 0.7, open: true }), 132);
+  ev = tr.update(m, hand({ cx: 0.1, cy: 0.8, open: true }), 132);
+  assert.deepEqual(ev, []);
+  // open hand ABOVE the kit area → nothing, even over a note column
+  ev = tr.update(m, hand({ cx: 0.62, cy: 0.2, open: true }), 165);
   assert.deepEqual(ev, []);
   // strike down inside zone 4 (bottom-left = Kick): quick descent then stop
   const tr2 = new HandTracker({ threshold: 1.4 }); let t = 0, hits = [];
-  for (const cy of [0.55, 0.62, 0.69, 0.76, 0.83, 0.84, 0.84]) { for (const e of tr2.update(m, hand({ cx: 0.1, cy, open: false }), t)) if (e.type === 'hit') hits.push(e); t += 33; }
+  for (const cy of [0.74, 0.79, 0.84, 0.89, 0.94, 0.95, 0.95]) { for (const e of tr2.update(m, hand({ cx: 0.1, cy, open: false }), t)) if (e.type === 'hit') hits.push(e); t += 33; }
   assert.equal(hits.length, 1); assert.equal(hits[0].zone, 4);
   // a WRIST FLICK (wrist still, fingers swing down) fires at the default sensitivity, at 12 fps
   const trF = new HandTracker({ threshold: sensToThreshold(0.65) }); t = 0; hits = [];
@@ -150,14 +163,14 @@ await test('hand tracker: hold / slide / release notes, strike hits drums, lost(
   assert.ok(Math.abs(pDown.y - pStill.y) < 0.6 * Math.abs(strikePoint(flick(ob, 1.0)).y - strikePoint(ob).y), 'palm moves much less than the fingers');
   // a strike that carries the hand across a zone border lands in the zone it STARTED in
   const trZ = new HandTracker({ threshold: 4 }); t = 0; hits = [];
-  for (const cy of [0.30, 0.30, 0.30, 0.55, 0.60, 0.60]) { for (const e of trZ.update(m, hand({ cx: 0.1, cy, open: false }), t)) if (e.type === 'hit') hits.push(e); t += 83; }
+  for (const cy of [0.50, 0.50, 0.50, 0.78, 0.82, 0.82]) { for (const e of trZ.update(m, hand({ cx: 0.1, cy, open: false }), t)) if (e.type === 'hit') hits.push(e); t += 83; }
   assert.equal(hits.length, 1); assert.equal(hits[0].zone, 0, 'started in the top-left zone → HiHat, not Kick');
   // same strike over a NOTE zone → no hit event
   const tr3 = new HandTracker({ threshold: 1.4 }); t = 0; hits = [];
-  for (const cy of [0.55, 0.62, 0.69, 0.76, 0.83, 0.84, 0.84]) { for (const e of tr3.update(m, hand({ cx: 0.62, cy, open: false }), t)) if (e.type === 'hit') hits.push(e); t += 33; }
+  for (const cy of [0.74, 0.79, 0.84, 0.89, 0.94, 0.95, 0.95]) { for (const e of tr3.update(m, hand({ cx: 0.62, cy, open: false }), t)) if (e.type === 'hit') hits.push(e); t += 33; }
   assert.equal(hits.length, 0);
   // lost() releases a held note
-  const tr4 = new HandTracker(); tr4.update(m, hand({ cx: 0.62, cy: 0.7, open: true }), 0);
+  const tr4 = new HandTracker(); tr4.update(m, hand({ cx: 0.62, cy: 0.8, open: true }), 0);
   assert.deepEqual(tr4.lost(), [{ type: 'release', zone: 6 }]);
   assert.deepEqual(tr4.lost(), []);
 });

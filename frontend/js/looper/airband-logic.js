@@ -4,6 +4,8 @@
 //   { t: 'n', deg } → scale degree `deg` above the root (0 = root, 7 = octave in a
 //                     7-note scale); pitched through the current Scale Lock
 //   null            → silent zone
+// The grid sits inside the KIT AREA, a rectangle of the camera view (normalised x,y,w,h)
+// the user drags into place — like a kit in front of you. Hands outside it play nothing.
 // Drums fire on a STRIKE: a fast downward flick of the fingers/knuckles, measured in
 // hand-lengths per second, so a wrist flick counts and distance from the camera doesn't.
 // Notes HOLD while an open hand sits in the zone and release when it closes/leaves.
@@ -25,14 +27,15 @@ export const HAND_BONES = [
 // ── Grid sizes + presets ──────────────────────────────────────────────────────
 export const GRID_SIZES = { '1x4': [1, 4], '1x8': [1, 8], '2x2': [2, 2], '2x4': [2, 4], '3x4': [3, 4] };
 
+export const DEFAULT_AREA = { x: 0, y: 0.45, w: 1, h: 0.55 };
 const D = i => ({ t: 'd', i });
 const N = deg => ({ t: 'n', deg });
 
 // Row-major (top row first). Pad order: 0 Kick 1 Snare 2 HiHat 3 Open 4 Clap 5 Tom 6 808 7 Perc
 export const PRESETS = {
   drums: { label: 'Drum kit', grid: '2x4',
-    cells: [D(2), D(3), D(4), D(7),        // top: HiHat Open Clap Perc
-            D(0), D(1), D(5), D(6)] },     // bottom: Kick Snare Tom 808
+    cells: [D(2), D(3), D(4), D(7),        // top (cymbals): HiHat Open Clap Perc
+            D(1), D(0), D(6), D(5)] },     // bottom: Snare Kick 808 Tom — like a kit from the drummer's seat
   keys:  { label: 'Keys (8 notes)', grid: '1x8',
     cells: [N(0), N(1), N(2), N(3), N(4), N(5), N(6), N(7)] },
   band:  { label: 'Band (drums left · keys right)', grid: '2x4',
@@ -43,10 +46,22 @@ export const PRESETS = {
             N(0), N(2)] },
 };
 
-export function presetMapping(name) {
+export function presetMapping(name, area = DEFAULT_AREA) {
   const p = PRESETS[name] || PRESETS.drums;
   const [rows, cols] = GRID_SIZES[p.grid];
-  return { grid: p.grid, rows, cols, cells: p.cells.map(c => c ? { ...c } : null) };
+  return { grid: p.grid, rows, cols, cells: p.cells.map(c => c ? { ...c } : null), area: normArea(area) };
+}
+
+// Clamp a kit area into the frame with a sane minimum size.
+export function normArea(a) {
+  const n = v => (typeof v === 'number' && isFinite(v) ? v : NaN);
+  let { x, y, w, h } = a || {};
+  x = n(x); y = n(y); w = n(w); h = n(h);
+  if ([x, y, w, h].some(isNaN)) return { ...DEFAULT_AREA };
+  w = Math.min(1, Math.max(0.2, w)); h = Math.min(1, Math.max(0.15, h));
+  x = Math.min(1 - w, Math.max(0, x)); y = Math.min(1 - h, Math.max(0, y));
+  const r = v => Math.round(v * 1000) / 1000;
+  return { x: r(x), y: r(y), w: r(w), h: r(h) };
 }
 
 // Change the grid size, keeping assignments by index where they still fit.
@@ -54,16 +69,16 @@ export function resizeMapping(m, grid) {
   const size = GRID_SIZES[grid]; if (!size) return m;
   const [rows, cols] = size, n = rows * cols;
   const cells = Array.from({ length: n }, (_, i) => (m.cells[i] ? { ...m.cells[i] } : null));
-  return { grid, rows, cols, cells };
+  return { grid, rows, cols, cells, area: normArea(m.area) };
 }
 
 // Serialise / restore (localStorage). Unknown or corrupt input → null.
-export function serializeMapping(m) { return JSON.stringify({ grid: m.grid, cells: m.cells }); }
+export function serializeMapping(m) { return JSON.stringify({ grid: m.grid, cells: m.cells, area: m.area }); }
 export function parseMapping(str) {
   try {
     const o = JSON.parse(str);
     const size = GRID_SIZES[o?.grid]; if (!size || !Array.isArray(o.cells)) return null;
-    const m = { grid: o.grid, rows: size[0], cols: size[1], cells: [] };
+    const m = { grid: o.grid, rows: size[0], cols: size[1], cells: [], area: normArea(o.area) };
     for (let i = 0; i < size[0] * size[1]; i++) {
       const c = o.cells[i];
       if (c && c.t === 'd' && Number.isInteger(c.i) && c.i >= 0 && c.i < 8) m.cells.push({ t: 'd', i: c.i });
@@ -75,15 +90,18 @@ export function parseMapping(str) {
 }
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
-// Zone index for a normalised point (0–1, y down). Points outside → clamped edge zone.
+// Zone index for a normalised point (0–1, y down), or −1 outside the kit area.
 export function zoneAt(m, x, y) {
-  const col = Math.min(m.cols - 1, Math.max(0, Math.floor(x * m.cols)));
-  const row = Math.min(m.rows - 1, Math.max(0, Math.floor(y * m.rows)));
-  return row * m.cols + col;
+  const a = m.area || DEFAULT_AREA;
+  const u = (x - a.x) / a.w, v = (y - a.y) / a.h;
+  if (u < 0 || u >= 1 || v < 0 || v >= 1) return -1;
+  return Math.floor(v * m.rows) * m.cols + Math.floor(u * m.cols);
 }
+// Zone rectangle in frame coordinates (inside the kit area).
 export function zoneRect(m, idx) {
+  const a = m.area || DEFAULT_AREA;
   const row = Math.floor(idx / m.cols), col = idx % m.cols;
-  return { x: col / m.cols, y: row / m.rows, w: 1 / m.cols, h: 1 / m.rows };
+  return { x: a.x + a.w * col / m.cols, y: a.y + a.h * row / m.rows, w: a.w / m.cols, h: a.h / m.rows };
 }
 
 // Palm centre: mean of wrist + the four finger knuckles (steadier than the wrist alone).
@@ -182,7 +200,7 @@ export class HandTracker {
     const ev = [];
     const p = palmCenter(lm);
     const zone = zoneAt(mapping, p.x, p.y);
-    const cell = mapping.cells[zone];
+    const cell = zone >= 0 ? mapping.cells[zone] : null;
     this.zone = zone; this.open = isOpenHand(lm); this.palm = p;
     // smoothed hand size (2-D wrist→knuckle shrinks when the hand turns edge-on)
     const hs = handSize(lm); this.size = this.size ? this.size * 0.7 + hs * 0.3 : hs;
@@ -193,7 +211,7 @@ export class HandTracker {
       // the zone is where the hand WAS when the swing began (not where the flick carried it)
       let ref = this.palms[0];
       for (const s of this.palms) if (s.t <= hit.refT) ref = s;
-      const hz = zoneAt(mapping, ref.x, ref.y), hc = mapping.cells[hz];
+      const hz = zoneAt(mapping, ref.x, ref.y), hc = hz >= 0 ? mapping.cells[hz] : null;
       if (hc && hc.t === 'd') ev.push({ type: 'hit', zone: hz, vel: hit.vel });
     }
     // notes: hold while open-handed inside a note zone

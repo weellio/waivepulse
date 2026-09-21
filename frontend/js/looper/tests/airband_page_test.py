@@ -91,19 +91,19 @@ async def main():
         assert fps > 0, 'tracker frames must flow'
         await page.locator('#airStage').screenshot(path=str(OUT / 'airband_live.png'))
 
-        # 3) synthetic strike in the Kick zone (drum kit: zone 4 = bottom-left)
+        # 3) synthetic strike in the top-left zone of the default kit area (drum kit: zone 0 = HiHat)
         await page.evaluate("window.__airband.A.log.length = 0")
         strike = """async (handJs) => {
           const hand = eval(handJs); const A = window.__airband;
           let t = performance.now() + 100000;                 // future timestamps: never collide with camera frames
-          for (const cy of [0.55, 0.62, 0.69, 0.76, 0.83, 0.84, 0.84]) { A.feed([{ label: 'Right', landmarks: hand({ cx: 0.9, cy, open: false }) }], t); t += 33; }
+          for (const cy of [0.50, 0.55, 0.60, 0.65, 0.70, 0.71, 0.71]) { A.feed([{ label: 'Right', landmarks: hand({ cx: 0.9, cy, open: false }) }], t); t += 33; }
           A.feed([], t);
           return A.A.log.filter(e => e.type === 'hit');
         }"""
         hits = await page.evaluate(strike, HAND_JS)
         print('strike ->', hits)
-        # mirror is ON by default: x=0.9 in camera space → 0.1 on screen → column 0 → Kick
-        assert len(hits) == 1 and hits[0]['name'] == 'Kick', 'one Kick hit expected'
+        # mirror is ON by default: x=0.9 in camera space → 0.1 on screen → column 0, top row → HiHat
+        assert len(hits) == 1 and hits[0]['name'] == 'HiHat', 'one HiHat hit expected'
         assert 0.35 <= hits[0]['vel'] <= 1
 
         # 4) notes: Band layout, open hand in the root zone holds a synth voice; fist releases
@@ -111,9 +111,9 @@ async def main():
         note = """async (handJs) => {
           const hand = eval(handJs); const A = window.__airband, S = window.__looper.S;
           const t = performance.now() + 200000;
-          A.feed([{ label: 'Left', landmarks: hand({ cx: 0.38, cy: 0.7, open: true }) }], t);   // mirrored → x 0.62 → zone 6 (root)
+          A.feed([{ label: 'Left', landmarks: hand({ cx: 0.38, cy: 0.8, open: true }) }], t);   // mirrored → x 0.62, bottom row → zone 6 (root)
           const held = Object.keys(S.activeOsc).filter(k => k.startsWith('air_'));
-          A.feed([{ label: 'Left', landmarks: hand({ cx: 0.38, cy: 0.7, open: false }) }], t + 33);
+          A.feed([{ label: 'Left', landmarks: hand({ cx: 0.38, cy: 0.8, open: false }) }], t + 33);
           const after = Object.keys(S.activeOsc).filter(k => k.startsWith('air_'));
           return { held, after, log: A.A.log.slice(-3) };
         }"""
@@ -121,6 +121,19 @@ async def main():
         print('note ->', r)
         assert len(r['held']) == 1 and r['held'][0].startswith('air_') and r['held'][0].endswith('_60'), 'open hand in the root zone holds C4 (midi 60)'
         assert r['after'] == [], 'fist releases it'
+
+        # 4b) kit area: drag it on the canvas → moved, saved, and zones follow
+        before = await page.evaluate('JSON.stringify(window.__airband.mapping().area)')
+        box = await page.locator('#airCanvas').bounding_box()
+        cx, cy = box['x'] + box['width'] * 0.5, box['y'] + box['height'] * 0.7      # inside the default area
+        await page.mouse.move(cx, cy); await page.mouse.down(); await page.mouse.move(cx, cy - box['height'] * 0.3, steps=8); await page.mouse.up()
+        after = await page.evaluate('window.__airband.mapping().area')
+        print('kit area', before, '->', after)
+        assert abs(after['y'] - 0.15) < 0.05 and after['h'] == 0.55, 'dragging the kit moves it up'
+        saved_area = await page.evaluate("JSON.parse(JSON.parse(localStorage.getItem('wp.looper.airband')).m).area")
+        assert saved_area == after, 'moved area is saved'
+        await page.dblclick('#airCanvas')
+        assert (await page.evaluate('window.__airband.mapping().area')) == {'x': 0, 'y': 0.45, 'w': 1, 'h': 0.55}, 'double-click resets'
 
         # 5) custom assignment persists + Big view renders
         await page.select_option('#airZones select >> nth=0', 'n:4')
