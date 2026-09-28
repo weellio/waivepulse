@@ -1846,6 +1846,13 @@ def seed_for(job_id, tags, nonce=""):
     return int.from_bytes(hashlib.sha256(key.encode("utf-8")).digest()[:8], "big")
 
 
+# Directions where a photograph or painting is the hero and the type sits on top of it.
+# The flat-graphic ones (swiss, brutalist, riso, pop, bauhaus, techno) bury an image under
+# big areas of solid colour: side by side, those read as clutter, and the picture is not
+# worth a 50-second wait. So "AI art" only ever picks from this list.
+AI_DIRECTIONS = ("bluenote", "metal", "folk", "xerox", "synthwave", "ambient")
+
+
 def resolve_style(job_id, tags, style=None, nonce=""):
     """(direction_id, use_ai).  *style* may be None/'auto'/'ai'/a direction id."""
     s = (style or "").strip().lower()
@@ -1853,7 +1860,10 @@ def resolve_style(job_id, tags, style=None, nonce=""):
     if s in DIRECTIONS:
         return s, False
     if s == "ai":
-        return choose_direction(seed, tags), True
+        d = choose_direction(seed, tags)
+        if d not in AI_DIRECTIONS:          # keep the tag-driven feel, but image-led
+            d = AI_DIRECTIONS[seed % len(AI_DIRECTIONS)]
+        return d, True
     return choose_direction(seed, tags), False
 
 

@@ -1,0 +1,11 @@
+# WAIvePulse cover-art backend -> reuse the checkpoints that are already on disk.
+# Passed to ComfyUI with --extra-model-paths-config so we never copy or move a
+# 7 GB safetensors file, and never touch the owner's own ComfyUI config.
+waivepulse_webui:
+    base_path: F:/StableDiffusion/stable-diffusion-webui
+    checkpoints: models/Stable-diffusion
+    clip: models/CLIP
+    vae: models/VAE
+    loras: models/Lora
+    embeddings: embeddings
+    upscale_models: models/ESRGAN

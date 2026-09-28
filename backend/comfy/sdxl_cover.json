@@ -1,0 +1,72 @@
+{
+  "_comment": [
+    "WAIvePulse cover-art background - plain SDXL text-to-image graph in ComfyUI API format.",
+    "cover_ai.py loads this file and patches it by node id, so you can retune the graph here",
+    "without touching Python. Node ids: 4=checkpoint, 5=latent, 6=positive, 7=negative,",
+    "3=sampler, 8=vae decode, 9=save. Keep those ids if you edit it."
+  ],
+  "4": {
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": { "title": "checkpoint (patched)" },
+    "inputs": {
+      "ckpt_name": "juggernautXL_ragnarokBy.safetensors"
+    }
+  },
+  "5": {
+    "class_type": "EmptyLatentImage",
+    "_meta": { "title": "latent (patched)" },
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "positive (patched)" },
+    "inputs": {
+      "text": "",
+      "clip": ["4", 1]
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "negative (patched)" },
+    "inputs": {
+      "text": "",
+      "clip": ["4", 1]
+    }
+  },
+  "3": {
+    "class_type": "KSampler",
+    "_meta": { "title": "sampler (patched)" },
+    "inputs": {
+      "seed": 0,
+      "steps": 26,
+      "cfg": 6.0,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1.0,
+      "model": ["4", 0],
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "latent_image": ["5", 0]
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "_meta": { "title": "decode" },
+    "inputs": {
+      "samples": ["3", 0],
+      "vae": ["4", 2]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "_meta": { "title": "save (patched prefix)" },
+    "inputs": {
+      "filename_prefix": "waivepulse_cover",
+      "images": ["8", 0]
+    }
+  }
+}

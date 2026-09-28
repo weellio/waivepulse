@@ -1429,6 +1429,27 @@ Normal. The first `POST /generate` after starting the server triggers a model lo
 
 Harmless warning from PyTorch on Windows. triton is Linux-only and is present automatically on Linux. Generation works fine on Windows without it.
 
+### AI cover art (optional, local)
+
+The Cover art picker on the Generate page has an **AI art** option on top of the 12 designed
+sleeves. It runs Stable Diffusion XL on your own GPU through a headless ComfyUI that is started
+for the image and shut down afterwards. No cloud, no API key.
+
+| | |
+|---|---|
+| Model | `juggernautXL_ragnarokBy.safetensors` (SDXL) |
+| Speed | 22-27 s per image on an RTX 3060, plus ~35 s the first time while ComfyUI starts |
+| Needs | ~8.2 GB of free VRAM; below that the option is greyed out with the reason |
+| Shares the card | idle Ollama models are unloaded first; nothing stays resident afterwards |
+
+AI art is only offered for the image-led directions (Blue Note, Metal, Letterpress, Xerox zine,
+Neon horizon, Minimal). The flat graphic sleeves (Swiss, Brutalist, Risograph, Pop, Bauhaus, Label
+mono) cover a photograph with large areas of solid colour, so a picture there is a 50-second wait
+for something you cannot see.
+
+Roughly one image in sixteen puts a small patch of scribble where a sign or a label would be; it
+reads as fake type. Press **↻ Regenerate cover** and it rolls a new one.
+
 ### Separation fails with a long number (e.g. "Demucs exited with code 3221226356")
 
 That number is a Windows crash code, not a Demucs message: the GPU ran out of memory and the
