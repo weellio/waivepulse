@@ -120,3 +120,6 @@ export const S = {
   _fsState: {},
   _fsAudioEl: null,
 };
+
+// cover.js keeps the in-memory record in step after a cover change
+try { window.S = S; } catch (_) {}

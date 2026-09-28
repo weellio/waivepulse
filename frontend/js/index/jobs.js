@@ -2,6 +2,7 @@ import { S, VIZ_LABELS } from './state.js';
 import { escHtml, formatSize } from './util.js';
 import { attachVizListeners, attachMetaListeners, stopViz } from './viz.js';
 import { applyLibraryFilter, ratingHTML } from './library.js';
+import { coverPanelHTML, initCoverPanel } from './cover.js';
 
 // ── Card HTML ─────────────────────────────────────────────────────────────────
 export function jobCardHTML(jobId, title, tags, status, message, file, fileSize, createdAt, bpm, key) {
@@ -82,6 +83,7 @@ export function jobCardHTML(jobId, title, tags, status, message, file, fileSize,
         ${!isLocal ? `<button class="btn-action" id="video-btn-${jobId}" onclick="makeVideo('${jobId}')" title="Render a 1920×1080 MP4 for YouTube: generated cover art, title + artist, waveform strip, 320 kbps AAC audio. Takes ~10–30 s the first time, then it's cached.">🎬 Video</button>
         <a class="btn-action" href="/cover/${jobId}.png" download="${escHtml(String(title || 'cover').replace(/[^\w\s-]/g, '').trim() || 'cover')}_cover.png" title="Download the generated cover art (1200×1200 PNG) — also embedded in newly generated MP3s">🖼 Cover</a>` : ''}
       </div>
+      ${!isLocal ? coverPanelHTML(jobId) : ''}
       <div class="job-meta" id="meta-${jobId}">
         ${!isLocal ? ratingHTML(jobId, rating) : ''}
         ${sizeStr ? `<span>${sizeStr}</span>` : ''}
@@ -203,7 +205,8 @@ export function updateJobCard(jobId, data) {
   card.innerHTML = jobCardHTML(jobId, data.title || "Untitled", data.tags || "", data.status, data.message, data.file, data.file_size, data.created_at, data.bpm, data.key);
 
   if (data.status === "done") {
-    setTimeout(() => { attachVizListeners(jobId); attachMetaListeners(jobId); }, 0);
+    setTimeout(() => { attachVizListeners(jobId); attachMetaListeners(jobId);
+                       initCoverPanel(jobId, data.cover_style); }, 0);
   }
 }
 
@@ -271,7 +274,8 @@ export async function loadHistory() {
         connectSSE(j.job_id);
         pollJob(j.job_id);
       }
-      if (j.status === "done") setTimeout(() => { attachVizListeners(j.job_id); attachMetaListeners(j.job_id); }, 0);
+      if (j.status === "done") setTimeout(() => { attachVizListeners(j.job_id); attachMetaListeners(j.job_id);
+                                                   initCoverPanel(j.job_id, j.cover_style); }, 0);
     });
     applyLibraryFilter();
   } catch(e) {}

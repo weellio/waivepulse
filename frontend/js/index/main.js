@@ -22,6 +22,9 @@ import {
 } from './mp3.js';
 import { openDetails, closeDetails, saveDetails } from './details.js';
 import {
+  buildCoverStylePicker, initCoverPanel, setCoverStyle, regenerateCover, getCoverStyle,
+} from './cover.js';
+import {
   getACtx, getAnalyser, cycleVizStyle, startViz, stopViz,
   attachVizListeners, attachMetaListeners,
   drawRing, drawBars, drawWave, drawGalaxy, drawAurora, drawParticles, drawScope,
@@ -52,6 +55,8 @@ Object.assign(window, {
   loadFilesAsCards, openStudioForLocal, loadLocalMP3,
   // details modal
   openDetails, closeDetails, saveDetails,
+  // cover art
+  buildCoverStylePicker, initCoverPanel, setCoverStyle, regenerateCover, getCoverStyle,
   // util
   showToast,
   // viz
@@ -76,6 +81,7 @@ document.addEventListener('keydown', e => {
 // ── Init ──────────────────────────────────────────────────────────────────────
 setupDragDrop();
 buildTagGrid();
+buildCoverStylePicker();
 renderPresets();
 loadHistory();
 checkModelStatus();

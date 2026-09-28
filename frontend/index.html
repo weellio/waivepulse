@@ -107,6 +107,12 @@ Every day the fire burns"></textarea>
           <div class="field-help" id="seedHelp">Unlocked — a new random seed is picked each time.</div>
         </div>
         <div>
+          <label for="coverStyle">Cover art <span style="color:#555">(sleeve design)</span></label>
+          <select id="coverStyle" class="cover-select" style="width:100%;max-width:none"
+                  title="Which album-sleeve art direction to use for songs you generate. Auto reads your genre and mood tags."></select>
+          <div class="field-help" id="coverStyleHelp"></div>
+        </div>
+        <div>
           <label>Temperature <span style="color:#555">(creativity)</span></label>
           <div class="slider-row">
             <input type="range" id="temperature" min="0.5" max="2.0" step="0.05" value="1.0" oninput="document.getElementById('tempVal').textContent=parseFloat(this.value).toFixed(2)">

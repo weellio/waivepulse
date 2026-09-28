@@ -3,6 +3,7 @@ import { getTagsString } from './tags.js';
 import { addJobCard, connectSSE, pollJob } from './jobs.js';
 import { randomizeSeed } from './ui.js';
 import { showToast } from './util.js';
+import { getCoverStyle } from './cover.js';
 
 // ── Generate ──────────────────────────────────────────────────────────────────
 export async function generate() {
@@ -34,7 +35,8 @@ export async function generate() {
 
   try {
     const payload = { lyrics, tags, title, artist, max_duration_sec: maxDur, temperature: temp,
-                      cfg_scale: cfg, topk, seed, count: takes, instrumental };
+                      cfg_scale: cfg, topk, seed, count: takes, instrumental,
+                      cover_style: getCoverStyle() };
     if (window._variationOf) payload.variation_of = window._variationOf;
     const res = await fetch("/generate", {
       method: "POST",
@@ -52,7 +54,7 @@ export async function generate() {
         job_id: id, status: "queued", title, artist, lyrics: jl, tags: jt,
         max_duration_sec: maxDur, temperature: temp, cfg_scale: cfg, topk,
         seed: data.seeds?.[i], instrumental, take: i + 1, takes: ids.length,
-        favorite: false, created_at: createdAt,
+        favorite: false, created_at: createdAt, cover_style: getCoverStyle(),
       };
     });
     // Insert in reverse so Take 1 ends up on top (addJobCard prepends).

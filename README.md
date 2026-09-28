@@ -58,7 +58,8 @@ The main page. Paste lyrics, pick tags from an organised grid (Genre, Timbre, Mo
 - **✨ Suggest tags:** local Ollama picks tags from the page's own tag list based on your idea or lyrics
 - **Library:** search, ★ favorites filter, and sort above the song list
 - **Ratings:** 1–5 stars per song, a "Top rated" sort, and a minimum-rating filter
-- **🎬 Video:** turns any song into a 1080p H.264 MP4 for YouTube, with generated cover art, title, and a waveform strip. The same cover is embedded in new MP3s
+- **🖼 Cover art:** every song gets a designed record sleeve — twelve art directions (Swiss, Brutalist, Risograph, Blue Note, Metal, Neon horizon, Minimal, Pop, Label mono, Letterpress, Bauhaus, Xerox zine) picked from its genre and mood tags, set in vendored open-licence type, with measured 4.5:1 contrast. Pick a style or hit ↻ Regenerate on any card; the MP3's embedded cover updates with it
+- **🎬 Video:** turns any song into a 1080p H.264 MP4 for YouTube, with the song's cover art, title, and a waveform strip. The same cover is embedded in new MP3s
 - Drop external MP3s onto the history panel to play them, or to send them into Studio for stem separation
 
 [Detail section below](#generate-page-in-depth)
@@ -378,6 +379,72 @@ Two phases run sequentially:
 2. Codec decode phase, audio tokens to waveform, ~41 sec/step, ~10 steps per ~30s of audio
 
 Both phases stream live in the browser via the job card.
+
+### Cover art
+
+Every song gets a designed record sleeve, not a procedural smear. `backend/cover.py`
+holds twelve hand-authored art directions; the song picks one deterministically from
+its job id plus its tags, steered by genre and mood, so a doom track lands on the
+metal sleeve and a bebop track lands on the Blue Note one.
+
+| Direction | What it is |
+|---|---|
+| Swiss grid | Huge flush-left Archivo, hard grid, hairline rules, one accent shape, lots of white space |
+| Brutalist | Stark black/white plus one signal colour, condensed caps scaled edge to edge, heavy rules, one knocked-out bar |
+| Risograph | Cream stock, two spot inks printed out of register, halftone screens, paper fibre, solid ink title |
+| Blue Note | Duotone halftone block, offset colour bar, tight Oswald caps, cream ground |
+| Metal | Deep blacks, a heavy centred emblem, blackletter (or a 900-weight Fraunces when the title is long), press distress |
+| Neon horizon | Two hues only: slit sun or ridgeline, perspective grid, hard offset print on the type, scanlines. No rainbow mush |
+| Minimal | One geometric form, muted two-tone palette, tiny letterspaced Space Grotesk, a lot of air |
+| Pop cut-out | Bold colour field, hard-edged cut-outs, oversized Syne / Archivo Black, a sticker for the artist |
+| Label mono | All JetBrains Mono: a seeded data matrix, technical rules, registration crosses, catalogue number |
+| Letterpress | Warm stock, printer's ornaments, DM Serif / Fraunces / Playfair centred, ink pressed into the sheet |
+| Bauhaus | Primary geometry on a strict grid, condensed 900-weight caps, sometimes set vertically |
+| Xerox zine | 1-bit Floyd-Steinberg dither, toner streaks, skewed page, title knocked out of solid black bars |
+
+**Typography is the design.** The faces are vendored under `assets/fonts` (Archivo,
+Archivo Black, Anton, Bebas Neue, Big Shoulders, Oswald, Space Grotesk, JetBrains
+Mono, Courier Prime, Instrument Serif, Playfair Display, DM Serif Display, Fraunces,
+Syne, UnifrakturMaguntia). Every one is SIL Open Font License 1.1 — see
+[`assets/fonts/LICENSES.md`](assets/fonts/LICENSES.md) for the per-family copyright
+line and the upstream link, with the full licence text in the `OFL-*.txt` beside it.
+Variable axes (weight, width, optical size) are set per direction, tracking is real
+per-character letter-spacing, and blocks are aligned by their ink bbox rather than by
+font metrics.
+
+Two rules are enforced in code, not left to luck:
+
+- **Fit.** Titles wrap on word boundaries, are balanced with a min-max-width DP,
+  shrink to fit a fixed box, cap at three lines and ellipsise beyond. A single word
+  wider than the box is hyphen-broken only as a last resort, never before shrinking.
+  Characters no vendored face can draw (emoji, astral plane) are dropped, and a face
+  that cannot cover the title (blackletter for Cyrillic, say) falls back automatically.
+- **Contrast.** Before each piece of type lands, its glyph mask is rendered and the
+  pixels actually behind it are read; if the WCAG ratio falls under 4.5:1 a solid
+  plate or knockout is drawn — never a blur, never a soft drop shadow.
+  `tests/test_cover.py` asserts the whole audit for every direction at both 1200 px
+  and 300 px.
+
+### Choosing a cover
+
+- **Generate page → Advanced settings → Cover art.** Auto (tag-steered) or any
+  direction by name. The choice is remembered in the browser and applied to
+  everything you generate from then on.
+- **Any finished song card** shows its cover with the same picker plus
+  **↻ Regenerate cover**, which rolls a fresh seed: same rules, a different sleeve.
+  Changing the style or regenerating rewrites the MP3's ID3 APIC frame straight away,
+  so the file on disk always matches what you see.
+- A song's direction is pinned into `history.json` when its cover is first made, so
+  editing tags later never changes a sleeve you have already shipped.
+
+### Optional AI art layer
+
+If `backend/cover_ai.py` is installed and reports itself available, picking
+**AI art layer** runs it and uses the result as the art layer *underneath* the
+typography — the layout and type still carry the sleeve. It is opt-in, never on the
+default path, and if the module is missing, disabled or slow the covers render exactly
+as before. When it is unavailable the menu option is disabled and its tooltip says why.
+
 
 ---
 
@@ -1195,9 +1262,18 @@ Update a history entry: `{title, artist, favorite, rating}` (rating 0–5). Writ
 
 Key change, −12…12 semitones, tempo preserved. The upload form takes multipart `file`. Returns WAV.
 
-### `POST /video/{job_id}` · `GET /video/{job_id}` · `GET /cover/{job_id}.png`
+### `POST /video/{job_id}` · `GET /video/{job_id}`
 
-Starts (or with `?force=1` re-renders) a 1080p MP4; poll GET for `{status, progress, file}`. Cover art PNG takes an optional `?size=`.
+Starts (or with `?force=1` re-renders) a 1080p MP4; poll GET for `{status, progress, file}`.
+
+### `GET /cover/{job_id}.png` · `GET /cover/styles` · `POST /cover/{job_id}`
+
+`GET /cover/{job_id}.png?size=1200&style=` renders the sleeve; `size` is 128–3000, `style` is
+an art-direction id, `auto` or `ai` and previews without saving. `GET /cover/styles` lists the
+directions for the UI plus `{ai_available, ai_reason}`. `POST /cover/{job_id}` with
+`{"style": "riso"}` stores the choice, `{"regenerate": true}` rolls a new seed; either way the
+MP3's ID3 APIC frame is rewritten and `{job_id, style, direction, ai, nonce, cover_embedded}`
+comes back. `POST /generate` also accepts `cover_style`.
 
 ### `POST /upload`
 

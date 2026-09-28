@@ -16,6 +16,9 @@ from typing import Optional
 from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
+sys.path.insert(0, str(Path(__file__).parent))
+
+import cover          # noqa: E402  (album-cover art directions; see backend/cover.py)
 
 try:
     from mutagen.id3 import (ID3, ID3NoHeaderError,
@@ -791,7 +794,11 @@ def _run_generation(job_id, lyrics, tags, title, artist, max_ms, temperature, cf
         else:
             audio_wm = _apply_audioseal(out_path, job_id)   # re-encodes — must be first
             _write_metadata(out_path, title, artist, tags, temperature, cfg_scale, seed)
-            cover_ok = _embed_cover(out_path, job_id, {"title": title, "artist": artist, "tags": tags})
+            cover_ok = _embed_cover(out_path, job_id, {
+                "title": title, "artist": artist, "tags": tags,
+                "cover_style": jobs.get(job_id, {}).get("cover_style", ""),
+                "cover_nonce": jobs.get(job_id, {}).get("cover_nonce", ""),
+            })
             c2pa_ok  = _apply_c2pa(out_path, title, tags, job_id)
             bpm, key = _detect_bpm_key(out_path)
             filename = _output_filename(title, job_id)
@@ -1009,6 +1016,7 @@ class GenerateRequest(BaseModel):
     seed:             Optional[int]   = None   # None → random 32-bit seed per take
     count:            Optional[int]   = 1      # batch takes (1-4), each its own queued job
     instrumental:     Optional[bool]  = False  # strip sung lines + add "instrumental" tag (experimental)
+    cover_style:      Optional[str]   = None   # "" / "auto" = tag-steered pick, a cover.py direction id, or "ai"
 
 
 def _models_ready() -> dict:
@@ -1134,6 +1142,8 @@ def generate(req: GenerateRequest):
             "watermarked_audio":None,
             "watermarked_c2pa": None,
             "variation_of":    req.variation_of,
+            "cover_style":     ("" if (req.cover_style or "").strip().lower() in ("", "auto")
+                                else req.cover_style.strip().lower()),
         }
         cancel_flags[job_id] = threading.Event()
         _job_queue.put(("generate", job_id, {
@@ -2070,57 +2080,15 @@ def _fit_lines(draw, text: str, max_w: int, start: int, min_size: int, max_lines
     return f, [line + "…" if line != text else line]
 
 
-def _cover_seed(job_id: str, tags: str) -> int:
-    import hashlib
-    return int.from_bytes(hashlib.sha256(f"waivepulse-cover|{job_id}|{tags}".encode()).digest()[:8], "big")
+def _cover_seed(job_id: str, tags: str, nonce: str = "") -> int:
+    return cover.seed_for(job_id, tags, nonce)
 
 
-def _cover_art(job_id: str, tags: str, w: int, h: int):
-    """Deterministic abstract art (no text): colour blobs + glowing sound ribbons + grain."""
-    import numpy as np, colorsys
-    from PIL import Image
-    rng = np.random.default_rng(_cover_seed(job_id, tags))
-    t = (tags or "").lower()
-    dark = any(k in t for k in ("dark", "sad", "melanchol", "haunting", "metal", "desperate", "lonel"))
-    bright = any(k in t for k in ("happy", "upbeat", "energetic", "euphoric", "playful", "summer", "party"))
-    h0 = rng.random()
-    scheme = rng.choice([[0, .08, .16, .5], [0, .5, .58, .92], [0, .33, .66, .12], [0, .06, .9, .45]])
-    vmax = .72 if dark else (1.0 if bright else .9)
-    pal = [np.array(colorsys.hsv_to_rgb((h0 + d) % 1, .55 + .4 * rng.random(), vmax * (.7 + .3 * rng.random())))
-           for d in scheme]
-    # work at reduced resolution (smooth content) then upscale
-    sw, sh = max(64, w // 3), max(64, h // 3)
-    yy, xx = np.mgrid[0:sh, 0:sw].astype(np.float32)
-    xx /= sw; yy /= sh
-    aspect = sw / sh
-    base = np.array(colorsys.hsv_to_rgb(h0, .6, .06 if dark else .1))
-    img = np.ones((sh, sw, 3), np.float32) * base
-    for k in range(6):
-        c = pal[k % len(pal)]
-        cx, cy = rng.random(), rng.random()
-        r = .18 + .3 * rng.random()
-        d2 = ((xx - cx) * aspect) ** 2 + (yy - cy) ** 2
-        wgt = (np.exp(-d2 / (2 * r * r)) * (.55 + .4 * rng.random()))[..., None]
-        img = img * (1 - wgt) + c * wgt
-    # glowing "sound ribbons"
-    for k in range(3 + int(rng.integers(0, 3))):
-        c = pal[(k + 1) % len(pal)] * 1.2 + .15
-        cy, amp = .25 + .5 * rng.random(), .05 + .12 * rng.random()
-        f1, f2 = 1 + 3 * rng.random(), 4 + 8 * rng.random()
-        p1, p2 = rng.random() * 6.28, rng.random() * 6.28
-        yc = cy + amp * np.sin(2 * np.pi * f1 * xx + p1) + amp * .35 * np.sin(2 * np.pi * f2 * xx + p2)
-        dist = np.abs(yy - yc)
-        thick = max(.0025 + .004 * rng.random(), 1.6 / sh)   # ≥1.6 px at work res → no dotted aliasing
-        glow = (np.exp(-(dist / thick) ** 2) * .9 + np.exp(-(dist / (thick * 9)) ** 2) * .25)[..., None]
-        img = img + c * glow * (.5 + .5 * rng.random())
-    # vignette
-    vr = ((xx - .5) * aspect / max(aspect, 1)) ** 2 + (yy - .5) ** 2
-    img *= (1 - .75 * np.clip(vr, 0, 1))[..., None]
-    img = 1 - np.exp(-img * 1.6)            # soft tone-map, no hard clipping
-    small = Image.fromarray((np.clip(img, 0, 1) * 255).astype(np.uint8), "RGB")
-    big = np.asarray(small.resize((w, h), Image.BICUBIC)).astype(np.float32)
-    big += rng.normal(0, 4.0, big.shape[:2])[..., None]     # film grain
-    return Image.fromarray(np.clip(big, 0, 255).astype(np.uint8), "RGB")
+def _cover_art(job_id: str, tags: str, w: int, h: int, job: Optional[dict] = None):
+    """The designed sleeve, cropped to w×h.  Used by the video still."""
+    job = dict(job or {})
+    job.setdefault("tags", tags)
+    return cover.render_fitted(job_id, job, w, h)
 
 
 def _logo():
@@ -2157,30 +2125,15 @@ def _job_texts(job: dict):
     return title, artist
 
 
-def _render_cover(job_id: str, job: dict, size: int = 1200):
-    """Square cover: art + title/artist + small wordmark. Returns PIL RGB image."""
-    from PIL import Image, ImageDraw
-    import numpy as np
-    title, artist = _job_texts(job)
-    img = _cover_art(job_id, job.get("tags", ""), size, size).convert("RGBA")
-    # bottom shade for legibility
-    shade = np.zeros((size, size, 4), np.uint8)
-    ramp = np.clip((np.arange(size) - size * .45) / (size * .55), 0, 1) ** 1.4
-    shade[..., 3] = (ramp * 200).astype(np.uint8)[:, None]
-    img = Image.alpha_composite(img, Image.fromarray(shade, "RGBA"))
-    d = ImageDraw.Draw(img)
-    m = int(size * .07)
-    f_art = _font(int(size * .045), False)
-    f_t, lines = _fit_lines(d, title, size - 2 * m, int(size * .11), int(size * .05), 3)
-    lh = int(f_t.size * 1.12)
-    y = size - m - (int(f_art.size * 1.5) if artist else 0) - lh * len(lines)
-    for ln in lines:
-        d.text((m, y), ln, font=f_t, fill=(255, 255, 255, 255))
-        y += lh
-    if artist:
-        d.text((m, y + int(size * .01)), artist, font=f_art, fill=(225, 235, 240, 235))
-    _draw_wordmark(img, m, m, int(size * .028))
-    return img.convert("RGB")
+def _render_cover(job_id: str, job: dict, size: int = 1200, style: Optional[str] = None):
+    """Square cover art (design-led sleeve from backend/cover.py).
+
+    The art direction, palette and typography come from cover.py; *style* (or
+    the song's stored ``cover_style``) may pin a direction, and ``cover_nonce``
+    reshuffles the seed when the owner regenerates a cover.
+    Returns a PIL RGB image.
+    """
+    return cover.render(job_id, job, size, style=style)
 
 
 def _waveform_peaks(audio_path: str, n: int):
@@ -2201,11 +2154,11 @@ def _render_video_frame(job_id: str, job: dict, audio_path: Optional[str]):
     W, H = 1920, 1080
     title, artist = _job_texts(job)
     tags = job.get("tags", "") or ""
-    bg = _cover_art(job_id, tags, W // 4, H // 4).resize((W, H), Image.BICUBIC)
+    bg = _cover_art(job_id, tags, W // 4, H // 4, job).resize((W, H), Image.BICUBIC)
     bg = bg.filter(ImageFilter.GaussianBlur(18)).convert("RGBA")
     bg = Image.alpha_composite(bg, Image.new("RGBA", (W, H), (6, 8, 14, 150)))
     S = 720
-    art = _cover_art(job_id, tags, S, S).convert("RGBA")
+    art = _cover_art(job_id, tags, S, S, job).convert("RGBA")
     ax, ay = 110, (H - S) // 2 - 50
     shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     ImageDraw.Draw(shadow).rounded_rectangle((ax + 14, ay + 22, ax + S + 14, ay + S + 22), 26, fill=(0, 0, 0, 170))
@@ -2259,12 +2212,27 @@ def _job_audio_path(job: dict) -> Optional[Path]:
     return p if p.exists() else None
 
 
-def _embed_cover(mp3_path: str, job_id: str, job: dict) -> bool:
-    """Embed the generated cover as ID3 APIC (front cover, JPEG)."""
+def _embed_cover(mp3_path: str, job_id: str, job: dict, pin: bool = True) -> bool:
+    """Embed the generated cover as ID3 APIC (front cover, JPEG).
+
+    The first time a song gets a cover its art direction is pinned into the
+    history record, so later tag edits can never change a sleeve the owner has
+    already seen.  A stored record is passed in too (the dict handed here is a
+    copy on the generation path), so both stay in step.
+    """
     if not (_MUTAGEN and _PIL):
         return False
     try:
         from mutagen.id3 import APIC
+        stored = jobs.get(job_id)
+        if pin and not (job.get("cover_style") or (stored or {}).get("cover_style")):
+            direction, _ = cover.resolve_style(job_id, job.get("tags", ""),
+                                               None, job.get("cover_nonce", ""))
+            job["cover_style"] = direction
+            if stored is not None:
+                stored["cover_style"] = direction
+        elif stored is not None and not job.get("cover_style"):
+            job["cover_style"] = stored.get("cover_style")
         buf = io.BytesIO()
         _render_cover(job_id, job, 1000).save(buf, "JPEG", quality=90)
         try:
@@ -2287,15 +2255,64 @@ def _get_job_or_404(job_id: str) -> dict:
     return jobs[job_id]
 
 
+@app.get("/cover/styles")
+def cover_styles():
+    """The art directions the Generate page offers, plus AI-art availability."""
+    ai_ok, ai_reason = cover.ai_status()
+    return {"styles": cover.directions(), "ai_available": ai_ok, "ai_reason": ai_reason}
+
+
 @app.get("/cover/{job_id}.png")
-def cover_png(job_id: str, size: int = Query(1200, ge=128, le=3000)):
+def cover_png(job_id: str, size: int = Query(1200, ge=128, le=3000),
+              style: Optional[str] = Query(None)):
+    """Cover art PNG.  ``style`` previews one art direction ("swiss", "metal",
+    …), "auto" for the tag-steered pick or "ai" for the optional AI art layer;
+    without it the song's stored choice is used."""
     if not _PIL:
         raise HTTPException(status_code=501, detail="Pillow is not installed")
     job = _get_job_or_404(job_id)
     buf = io.BytesIO()
-    _render_cover(job_id, job, size).save(buf, "PNG", optimize=False)
+    _render_cover(job_id, job, size, style=style).save(buf, "PNG", optimize=False)
     return Response(content=buf.getvalue(), media_type="image/png",
                              headers={"Cache-Control": "no-cache"})
+
+
+class CoverUpdate(BaseModel):
+    style:      Optional[str] = None    # direction id, "auto" or "ai"
+    regenerate: bool = False            # reshuffle the seed (new cover, same song)
+
+
+@app.post("/cover/{job_id}")
+def set_cover(job_id: str, body: CoverUpdate):
+    """Store a song's cover choice (and optionally reshuffle its seed), then
+    re-embed the new cover into the MP3's ID3 APIC frame."""
+    if not _PIL:
+        raise HTTPException(status_code=501, detail="Pillow is not installed")
+    with _history_lock:
+        job = _get_job_or_404(job_id)
+        if body.style is not None:
+            s = body.style.strip().lower()
+            if s and s not in cover.DIRECTIONS and s not in ("auto", "ai"):
+                raise HTTPException(status_code=400, detail=f"Unknown cover style: {s}")
+            job["cover_style"] = "" if s in ("", "auto") else s
+        if body.regenerate:
+            import secrets
+            job["cover_nonce"] = secrets.token_hex(4)
+        _save_history()
+    direction, used_ai = cover.resolve_style(job_id, job.get("tags", ""),
+                                             job.get("cover_style"),
+                                             job.get("cover_nonce", ""))
+    embedded = False
+    mp3 = _job_audio_path(job)
+    if mp3:
+        # never pin here: the owner just told us what they want, including "auto"
+        embedded = _embed_cover(str(mp3), job_id, job, pin=False)
+        with _history_lock:
+            job["cover_embedded"] = embedded
+            _save_history()
+    return {"job_id": job_id, "style": job.get("cover_style", ""),
+            "direction": direction, "ai": used_ai,
+            "nonce": job.get("cover_nonce", ""), "cover_embedded": embedded}
 
 
 def _audio_duration(path: Path) -> float:

@@ -282,6 +282,29 @@
   }
   .btn-action:hover { border-color: #2ab8b8; color: #b8ffff; }
 
+  /* Cover art panel on a finished song card */
+  .cover-panel {
+    display: flex; gap: 14px; align-items: flex-start;
+    margin-top: 12px; padding: 12px;
+    background: #10101a; border: 1px solid #23232f; border-radius: 10px;
+  }
+  .cover-thumb {
+    width: 108px; height: 108px; flex: 0 0 108px; border-radius: 6px;
+    object-fit: cover; cursor: zoom-in; background: #16161f;
+    border: 1px solid #23232f; display: block;
+  }
+  .cover-panel-side { display: flex; flex-direction: column; gap: 7px; min-width: 0; flex: 1; }
+  .cover-label { font-size: 0.7rem; color: #666; letter-spacing: 0.08em; text-transform: uppercase; margin: 0; }
+  .cover-select {
+    background: #1a1a24; border: 1px solid #2a2a38; border-radius: 8px;
+    color: #b8ffff; font-size: 0.78rem; padding: 5px 8px;
+    font-family: inherit; max-width: 260px;
+  }
+  .cover-select:focus { outline: none; border-color: #2ab8b8; }
+  .cover-panel-side .btn-action { align-self: flex-start; }
+  .cover-note { font-size: 0.7rem; color: #5a5a68; min-height: 1em; }
+  @media (max-width: 520px) { .cover-panel { flex-direction: column; } }
+
   .job-meta { font-size: 0.71rem; color: #444; margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em; }
   .chip-bpm { background: #0d3030; color: #8cffff; border: 1px solid #2ab8b8; }
