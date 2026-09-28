@@ -21,3 +21,7 @@ artwork/
 **/godzilla_mv/
 brag-output*/
 brag-assets/
+
+# generated at runtime from the configured checkpoint folder
+backend/comfy/extra_model_paths.yaml
+data/cover_ai.json
