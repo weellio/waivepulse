@@ -330,7 +330,7 @@ function stop() {
   const v = $('airVideo'); if (v) v.srcObject = null;
   const wasOn = A.on; A.on = false; A.loading = false;
   setBtn(false, '🎥 Camera');
-  setStat('Click Camera to play drums & keys in the air · needs the browser's graphics acceleration ON (see ? help)');
+  setStat("Click Camera to play drums & keys in the air · needs the browser's graphics acceleration ON (see ? help)");
   if (wasOn) setStatus('Air Band off');
   draw();
 }
