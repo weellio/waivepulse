@@ -309,6 +309,59 @@
   .cover-note { font-size: 0.7rem; color: #5a5a68; min-height: 1em; }
   @media (max-width: 520px) { .cover-panel { flex-direction: column; } }
 
+  /* ── "Set up AI covers": the panel a downloader turns AI art on with ── */
+  a.cover-ai-link {
+    color: #2ab8b8; text-decoration: none; font-size: 0.72rem;
+    border-bottom: 1px dotted #2ab8b8; cursor: pointer;
+  }
+  a.cover-ai-link:hover { color: #b8ffff; border-bottom-color: #b8ffff; }
+  .cover-ai-panel {
+    margin-top: 10px; padding: 12px;
+    background: #10101a; border: 1px solid #23232f; border-radius: 10px;
+    font-size: 0.74rem; color: #9a9aa8; line-height: 1.5;
+  }
+  .cover-ai-panel h4 {
+    font-size: 0.7rem; letter-spacing: .08em; text-transform: uppercase;
+    color: #666; font-weight: 600; margin: 0 0 8px;
+  }
+  .cover-ai-status {
+    display: block; padding: 7px 9px; border-radius: 7px; margin-bottom: 10px;
+    background: rgba(140,255,255,.05); border-left: 3px solid #2ab8b8; color: #b8ffff;
+  }
+  .cover-ai-status.bad { background: rgba(255,140,140,.05); border-left-color: #b85a5a; color: #e2a8a8; }
+  .cover-ai-status.warn { background: rgba(255,210,140,.05); border-left-color: #b8923a; color: #e2cfa8; }
+  .cover-ai-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 9px; }
+  .cover-ai-row > label { font-size: 0.68rem; color: #666; letter-spacing: .05em; text-transform: uppercase; }
+  .cover-ai-panel input[type=text], .cover-ai-panel input[type=number], .cover-ai-panel select {
+    background: #16161f; border: 1px solid #2a2a38; border-radius: 7px;
+    color: #cfcfe0; font-size: 0.74rem; padding: 5px 7px; font-family: inherit; width: 100%;
+  }
+  .cover-ai-panel input:focus, .cover-ai-panel select:focus { outline: none; border-color: #2ab8b8; }
+  .cover-ai-panel input:disabled, .cover-ai-panel select:disabled { opacity: .45; cursor: not-allowed; }
+  .cover-ai-switch {
+    display: flex; align-items: center; gap: 8px; margin: 10px 0; color: #cfcfe0;
+    text-transform: none; letter-spacing: 0; font-size: 0.76rem;
+  }
+  .cover-ai-switch input { width: auto; accent-color: #2ab8b8; }
+  .cover-ai-two { display: flex; gap: 8px; }
+  .cover-ai-two > .cover-ai-row { flex: 1; }
+  .cover-ai-actions { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 4px; }
+  .cover-ai-found { margin: 0 0 9px; color: #7a7a88; }
+  .cover-ai-found code {
+    color: #8cffff; background: rgba(140,255,255,.06);
+    padding: 1px 4px; border-radius: 4px; font-size: 0.7rem; word-break: break-all;
+  }
+  .cover-ai-todo { margin: 0 0 10px; padding-left: 16px; color: #e2cfa8; }
+  .cover-ai-todo li { margin-bottom: 3px; }
+  .cover-ai-panel a { color: #2ab8b8; }
+  .cover-ai-result { display: flex; gap: 10px; align-items: flex-start; margin-top: 9px; }
+  .cover-ai-result img {
+    width: 84px; height: 84px; border-radius: 6px; border: 1px solid #23232f; display: block;
+  }
+  .cover-ai-panel .btn-action.busy { opacity: .6; cursor: progress; }
+  .cover-ai-panel .btn-action:disabled { opacity: .4; cursor: not-allowed; border-color: #23232f; }
+  .cover-ai-panel .btn-action:disabled:hover { color: #888; border-color: #23232f; }
+
   .job-meta { font-size: 0.71rem; color: #444; margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em; }
   .chip-bpm { background: #0d3030; color: #8cffff; border: 1px solid #2ab8b8; }

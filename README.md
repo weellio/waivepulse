@@ -180,7 +180,7 @@ For a solo producer with a 12 GB+ NVIDIA GPU, the trade is a one-time install pl
 | GPU | NVIDIA with ~12 GB VRAM (CUDA required) |
 | Python | 3.10+ |
 | Disk | ~25 GB (HeartMuLa + HeartCodec weights) plus working space |
-| Optional | `librosa` (BPM and key chips), `audioseal` + `c2pa` + `cryptography` (watermarking), `faster-whisper` (Karaoke lyric sync), `demucs` (Studio stem separation), `ffmpeg` (MP3 stem output), Ollama (lyric writing) |
+| Optional | `librosa` (BPM and key chips), `audioseal` + `c2pa` + `cryptography` (watermarking), `faster-whisper` (Karaoke lyric sync), `demucs` (Studio stem separation), `ffmpeg` (MP3 stem output), Ollama (lyric writing), [ComfyUI](https://github.com/comfyanonymous/ComfyUI) + any SDXL checkpoint (~7 GB) for [AI cover art](#ai-cover-art-optional-local) — the 12 designed sleeves need none of it |
 
 `setup.sh`/`setup.bat` installs the required Python packages and downloads the model weights. You do not need to install any of these by hand.
 
@@ -439,11 +439,16 @@ Two rules are enforced in code, not left to luck:
 
 ### Optional AI art layer
 
-If `backend/cover_ai.py` is installed and reports itself available, picking
-**AI art layer** runs it and uses the result as the art layer *underneath* the
-typography — the layout and type still carry the sleeve. It is opt-in, never on the
-default path, and if the module is missing, disabled or slow the covers render exactly
-as before. When it is unavailable the menu option is disabled and its tooltip says why.
+Picking **AI art layer** paints a picture with Stable Diffusion XL on your own GPU
+and uses it *underneath* the typography — the layout and type still carry the sleeve.
+It is opt-in, never on the default path, and if ComfyUI is missing, switched off or
+slow the covers render exactly as before. When it is unavailable the menu option is
+disabled and its tooltip says why.
+
+To turn it on, click **Set up AI covers** under the Cover art picker: the panel finds
+ComfyUI and your checkpoints by itself, lets you pick one, and has a **Test** button
+that paints a real image and reports the seconds. No config file to edit.
+Full detail, including what to install: [AI cover art](#ai-cover-art-optional-local).
 
 
 ---
@@ -1431,16 +1436,45 @@ Harmless warning from PyTorch on Windows. triton is Linux-only and is present au
 
 ### AI cover art (optional, local)
 
-The Cover art picker on the Generate page has an **AI art** option on top of the 12 designed
-sleeves. It runs Stable Diffusion XL on your own GPU through a headless ComfyUI that is started
-for the image and shut down afterwards. No cloud, no API key.
+**You do not need this.** The 12 designed sleeves are pure Pillow: they need no model, no GPU
+and no extra download, and they are what every song gets by default. The AI layer paints a
+*picture* underneath that typography. It is off the default path, and nothing breaks without it.
+
+#### What you need to install
 
 | | |
 |---|---|
-| Model | `juggernautXL_ragnarokBy.safetensors` (SDXL) |
-| Speed | 22-27 s per image on an RTX 3060, plus ~35 s the first time while ComfyUI starts |
-| Needs | ~8.2 GB of free VRAM; below that the option is greyed out with the reason |
+| [ComfyUI](https://github.com/comfyanonymous/ComfyUI) | the Windows portable build or a plain `git clone`. Both work. Nothing is added to it and your own ComfyUI config is never touched. The portable build brings its own Python; a clone is run with its own `venv` if it has one, otherwise with WAIvePulse's Python (which already has torch) |
+| An SDXL checkpoint | any SDXL-class `.safetensors`, about 7 GB, in ComfyUI's `models/checkpoints`. [SDXL base 1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) works; so do Juggernaut XL, RealVis XL, DreamShaper XL and the rest. A 2 GB SD 1.5 model is *not* enough - the prompts are written for SDXL |
+| An NVIDIA GPU | ~8.2 GB of **free** VRAM while the cover renders. Under that the option greys out and says so |
+
+If you already have Automatic1111, Forge or another UI with checkpoints in
+`models/Stable-diffusion`, WAIvePulse reuses those files where they are - it never copies or
+moves a 7 GB file.
+
+#### Turning it on (no config files)
+
+1. Generate page → **Advanced settings** → **Cover art** → **Set up AI covers**.
+2. The panel shows what it found by itself: the ComfyUI folder, every checkpoint with its size,
+   your GPU and its free VRAM. Nothing found? Install ComfyUI, then press **Rescan**.
+3. Pick a checkpoint from the dropdown, tick **Use AI art under the typography**, press **Save**.
+4. Press **Test**. It paints one real 512 px image and reports the seconds and the VRAM it used.
+5. Choose **AI art layer** in the Cover art picker.
+
+The panel writes `data/cover_ai.json` (gitignored). Paths are found automatically - drive roots,
+your home folder, Program Files, `/opt`, `/usr/local` and the folder above this repo are checked,
+bounded and cached, and the winner is remembered so later runs cost a few `stat` calls. ComfyUI is
+pointed at your checkpoint folders through `backend/comfy/extra_model_paths.yaml`, which is
+generated at runtime from `extra_model_paths.example.yaml` and never committed.
+
+#### What to expect
+
+| | |
+|---|---|
+| Speed | 22-27 s per image at ~8.2 GB free on an RTX 3060, plus ~35 s the first time while ComfyUI starts |
+| Below ~6.2 GB free | ComfyUI falls back to per-layer offload and the same image takes over 300 s, so WAIvePulse declines instead and tells you the card is busy |
 | Shares the card | idle Ollama models are unloaded first; nothing stays resident afterwards |
+| No GPU | the option stays greyed out, the panel says why, the designed sleeves carry on |
 
 AI art is only offered for the image-led directions (Blue Note, Metal, Letterpress, Xerox zine,
 Neon horizon, Minimal). The flat graphic sleeves (Swiss, Brutalist, Risograph, Pop, Bauhaus, Label
@@ -1449,6 +1483,24 @@ for something you cannot see.
 
 Roughly one image in sixteen puts a small patch of scribble where a sign or a label would be; it
 reads as fake type. Press **↻ Regenerate cover** and it rolls a new one.
+
+#### Advanced: environment variables
+
+Everything above is also settable by environment variable, which wins over the panel's saved
+settings. You never need these; they exist for headless boxes and scripted installs.
+
+| Variable | Does |
+|---|---|
+| `WAIVEPULSE_COVER_AI` | `0` switches the whole layer off |
+| `WAIVEPULSE_COMFY_ROOT` | the ComfyUI folder (skips detection) |
+| `WAIVEPULSE_COVER_AI_MODEL` | checkpoint filename |
+| `WAIVEPULSE_COVER_AI_MODEL_DIR` | an extra folder of checkpoints |
+| `WAIVEPULSE_COVER_AI_PORT` | port for the throwaway ComfyUI (default 8188) |
+| `WAIVEPULSE_COVER_AI_MIN_VRAM` | free MB required before loading (default 8200, floor 6000) |
+| `WAIVEPULSE_COVER_AI_STEPS` / `_CFG` | override sampler steps / cfg |
+| `WAIVEPULSE_COVER_AI_DEBUG` | `1` keeps the ComfyUI log and prints timings |
+
+Order of precedence: environment variable → `data/cover_ai.json` → auto-detection → off.
 
 ### Separation fails with a long number (e.g. "Demucs exited with code 3221226356")
 

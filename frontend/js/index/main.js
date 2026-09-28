@@ -23,6 +23,7 @@ import {
 import { openDetails, closeDetails, saveDetails } from './details.js';
 import {
   buildCoverStylePicker, initCoverPanel, setCoverStyle, regenerateCover, getCoverStyle,
+  toggleCoverAiSetup, refreshCoverAiSetup, rescanCoverAi, saveCoverAiSetup, testCoverAi,
 } from './cover.js';
 import {
   getACtx, getAnalyser, cycleVizStyle, startViz, stopViz,
@@ -57,6 +58,7 @@ Object.assign(window, {
   openDetails, closeDetails, saveDetails,
   // cover art
   buildCoverStylePicker, initCoverPanel, setCoverStyle, regenerateCover, getCoverStyle,
+  toggleCoverAiSetup, refreshCoverAiSetup, rescanCoverAi, saveCoverAiSetup, testCoverAi,
   // util
   showToast,
   // viz

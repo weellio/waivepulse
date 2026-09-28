@@ -2262,6 +2262,69 @@ def cover_styles():
     return {"styles": cover.directions(), "ai_available": ai_ok, "ai_reason": ai_reason}
 
 
+def _cover_ai_mod():
+    """The optional AI-art module, or None. Never raises."""
+    try:
+        return cover._import_cover_ai()
+    except Exception:
+        return None
+
+
+_AI_MISSING = {"ok": False, "available": False, "enabled": False,
+               "reason": "the cover_ai module is not installed",
+               "config": {}, "effective": {}, "sources": {}, "checkpoints": [],
+               "checkpoint_dirs": [], "needs": ["backend/cover_ai.py is missing."],
+               "comfy": {"found": False, "others": [],
+                         "repo_url": "https://github.com/comfyanonymous/ComfyUI"},
+               "gpu": {"present": False, "free_mb": None, "total_mb": None, "name": ""}}
+
+
+class CoverAISetup(BaseModel):
+    """What the "Set up AI covers" panel writes into data/cover_ai.json."""
+    enabled:        Optional[bool] = None
+    comfy_root:     Optional[str] = None
+    checkpoint:     Optional[str] = None
+    checkpoint_dir: Optional[str] = None
+    port:           Optional[int] = None
+    min_free_mb:    Optional[int] = None
+
+
+@app.get("/cover/ai/setup")
+def cover_ai_setup(rescan: bool = Query(False, description="sweep the disks again")):
+    """What was detected, what is configured, and what is still missing."""
+    mod = _cover_ai_mod()
+    if mod is None:
+        return dict(_AI_MISSING)
+    return mod.setup_info(rescan=bool(rescan))
+
+
+@app.post("/cover/ai/setup")
+def cover_ai_save(body: CoverAISetup):
+    """Save the panel's settings, then report the new state."""
+    mod = _cover_ai_mod()
+    if mod is None:
+        return dict(_AI_MISSING)
+    raw = body.model_dump() if hasattr(body, "model_dump") else body.dict()   # pydantic 2 / 1
+    patch = {k: v for k, v in raw.items() if v is not None}
+    ok, saved = mod.save_config(patch)
+    info = mod.setup_info()
+    info["saved"] = bool(ok)
+    info["saved_keys"] = sorted(patch.keys())
+    if not ok:
+        info["needs"] = ["Could not write %s - check the folder is writable."
+                         % getattr(mod, "CONFIG_PATH", "data/cover_ai.json")] + list(info.get("needs") or [])
+    return info
+
+
+@app.post("/cover/ai/test")
+def cover_ai_test(size: int = Query(512, ge=256, le=1024)):
+    """Paint one real image and report seconds + VRAM. Takes up to a few minutes."""
+    mod = _cover_ai_mod()
+    if mod is None:
+        return {"ok": False, "note": "the cover_ai module is not installed"}
+    return mod.test_render(size=size)
+
+
 @app.get("/cover/{job_id}.png")
 def cover_png(job_id: str, size: int = Query(1200, ge=128, le=3000),
               style: Optional[str] = Query(None)):

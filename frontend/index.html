@@ -111,6 +111,9 @@ Every day the fire burns"></textarea>
           <select id="coverStyle" class="cover-select" style="width:100%;max-width:none"
                   title="Which album-sleeve art direction to use for songs you generate. Auto reads your genre and mood tags."></select>
           <div class="field-help" id="coverStyleHelp"></div>
+          <div class="field-help"><a href="#" class="cover-ai-link" id="coverAiLink"
+               onclick="toggleCoverAiSetup(event)" hidden>Set up AI covers</a></div>
+          <div class="cover-ai-panel" id="coverAiPanel" hidden></div>
         </div>
         <div>
           <label>Temperature <span style="color:#555">(creativity)</span></label>

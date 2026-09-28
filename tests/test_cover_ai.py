@@ -13,8 +13,11 @@ Set WAIVEPULSE_COVER_AI_SLOW=0 to skip the GPU tests even when it is free.
 """
 
 import io
+import json
 import os
+import shutil
 import sys
+import tempfile
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backend"))
@@ -56,12 +59,398 @@ def gpu_ready():
     return ok, why
 
 
+_AI_ENV = ("WAIVEPULSE_COVER_AI", "WAIVEPULSE_COMFY_ROOT", "WAIVEPULSE_COVER_AI_MODEL",
+           "WAIVEPULSE_COVER_AI_MODEL_DIR", "WAIVEPULSE_COVER_AI_PORT",
+           "WAIVEPULSE_COVER_AI_MIN_VRAM")
+
+
+class fresh_machine:
+    """Pretend this box has never seen ComfyUI: no env, no config, empty disks.
+
+    Points the config file at a throwaway folder, empties the search roots and
+    drops every cache, so detection has nothing whatsoever to find.
+    """
+
+    def __init__(self, roots=None, config=None):
+        self.roots, self.config = roots, config
+
+    def __enter__(self):
+        self.tmp = tempfile.mkdtemp(prefix="wp_cover_ai_test_")
+        self.saved_env = {k: os.environ.pop(k, None) for k in _AI_ENV}
+        self.saved = {"CONFIG_PATH": cover_ai.CONFIG_PATH,
+                      "_DATA_DIR": cover_ai._DATA_DIR,
+                      "_search_roots": cover_ai._search_roots,
+                      "_PATHS_YAML": cover_ai._PATHS_YAML}
+        cover_ai._DATA_DIR = os.path.join(self.tmp, "data")
+        cover_ai.CONFIG_PATH = self.config or os.path.join(cover_ai._DATA_DIR, "cover_ai.json")
+        cover_ai._PATHS_YAML = os.path.join(self.tmp, "extra_model_paths.yaml")
+        empty = os.path.join(self.tmp, "empty")
+        os.makedirs(empty, exist_ok=True)
+        cover_ai._search_roots = lambda: (self.roots if self.roots is not None else [(empty, 2)])
+        cover_ai.invalidate()
+        cover_ai.load_config(refresh=True)
+        return self
+
+    def __exit__(self, *a):
+        for k, v in self.saved.items():
+            setattr(cover_ai, k, v)
+        for k, v in self.saved_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        cover_ai.invalidate()
+        cover_ai.load_config(refresh=True)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        return False
+
+
+def fake_comfy(base, kind="portable"):
+    """Build a directory tree that looks exactly like a ComfyUI install."""
+    if kind == "portable":
+        root = os.path.join(base, "ComfyUI_windows_portable")
+        inner = os.path.join(root, "ComfyUI")
+        py = os.path.join(root, "python_embeded", "python.exe" if os.name == "nt" else "bin/python3")
+    else:
+        root = inner = os.path.join(base, "ComfyUI")
+        py = None
+    os.makedirs(os.path.join(inner, "comfy"), exist_ok=True)
+    os.makedirs(os.path.join(inner, "models", "checkpoints"), exist_ok=True)
+    open(os.path.join(inner, "main.py"), "w").close()
+    if py:
+        os.makedirs(os.path.dirname(py), exist_ok=True)
+        open(py, "w").close()
+    return root
+
+
+def fake_checkpoints(folder, names):
+    os.makedirs(folder, exist_ok=True)
+    for n in names:
+        with open(os.path.join(folder, n), "wb") as f:
+            f.write(b"\0" * 1024)
+    return folder
+
+
+# --------------------------------------------------------------------------- #
+# nothing installed: detection is quiet, honest and never raises
+# --------------------------------------------------------------------------- #
+
+def test_detection_finds_nothing_cleanly_on_a_fresh_machine():
+    with fresh_machine():
+        det = cover_ai.detect(rescan=True)
+        assert det["install"] is None
+        assert det["installs"] == [] and det["checkpoints"] == []
+        assert cover_ai._install() is None
+        assert cover_ai._checkpoint_path() is None
+        assert cover_ai.write_paths_yaml() is None
+
+
+def test_nothing_raises_when_comfyui_is_absent():
+    with fresh_machine():
+        ok, why = cover_ai.available()
+        assert ok is False and isinstance(why, str)
+        cover_ai.warmup()
+        cover_ai.shutdown()
+        assert cover_ai.background(1, 512, STYLE, timeout=10) is None
+        info = cover_ai.setup_info()
+        assert info["ok"] is True and info["available"] is False
+        assert info["comfy"]["found"] is False
+        assert info["needs"], "the panel must say what to install"
+        res = cover_ai.test_render(size=512, timeout=10)
+        assert res["ok"] is False and res["note"]
+
+
+def test_the_missing_comfyui_reason_is_plain_words():
+    with fresh_machine():
+        ok, why = cover_ai.available()
+        assert ok is False
+        low = why.lower()
+        assert "comfyui not found" in low
+        assert "rescan" in low and "github.com" in low
+        for jargon in ("traceback", "none", "errno", "%s", "exception"):
+            assert jargon not in low, why
+        # a path somebody typed is quoted back at them instead
+        os.environ["WAIVEPULSE_COMFY_ROOT"] = os.path.join(self_tmp(), "nope")
+        try:
+            cover_ai.invalidate()
+            ok2, why2 = cover_ai.available()
+        finally:
+            del os.environ["WAIVEPULSE_COMFY_ROOT"]
+        assert ok2 is False and "nope" in why2 and "set up ai covers" in why2.lower()
+
+
+def self_tmp():
+    return tempfile.gettempdir()
+
+
+def test_every_unavailable_reason_reads_as_a_sentence():
+    with fresh_machine():
+        reasons = [cover_ai.available()[1]]
+        os.environ["WAIVEPULSE_COVER_AI"] = "0"
+        try:
+            reasons.append(cover_ai.available()[1])
+        finally:
+            del os.environ["WAIVEPULSE_COVER_AI"]
+        with patched(cover_ai, "_install", lambda *a, **k: {"root": "r", "cwd": "r",
+                                                           "main": "m", "python": "p",
+                                                           "python_source": "x", "kind": "y"}), \
+             patched(cover_ai, "_checkpoint_path", lambda: "c.safetensors"), \
+             patched(cover_ai, "vram_free_mb", lambda: None):
+            reasons.append(cover_ai.available()[1])
+        for r in reasons:
+            assert r, "an empty reason tells nobody anything"
+            assert len(r.split()) >= 4, "not a sentence: %r" % r
+            for jargon in ("{", "\\n", "Traceback", "errno", "0x"):
+                assert jargon not in r, r
+
+
+# --------------------------------------------------------------------------- #
+# detection finds a real install without anybody typing a path
+# --------------------------------------------------------------------------- #
+
+def test_detection_finds_a_portable_install_under_a_search_root():
+    with fresh_machine() as fm:
+        box = os.path.join(fm.tmp, "disk")
+        root = fake_comfy(box)
+        fake_checkpoints(os.path.join(box, "stable-diffusion-webui", "models", "Stable-diffusion"),
+                         ["someXL_v3.safetensors"])
+        cover_ai._search_roots = lambda: [(box, 2)]
+        cover_ai.invalidate()
+        with patched(cover_ai, "MIN_CKPT_MB", 0):
+            det = cover_ai.detect(rescan=True)
+        assert det["install"] is not None
+        assert os.path.normcase(det["install"]["root"]) == os.path.normcase(root)
+        assert det["install"]["kind"] in ("portable", "nested")
+        names = [c["name"] for c in det["checkpoints"]]
+        assert "someXL_v3.safetensors" in names, names
+
+
+def test_detection_understands_a_plain_git_checkout():
+    with fresh_machine() as fm:
+        box = os.path.join(fm.tmp, "opt")
+        root = fake_comfy(box, kind="checkout")
+        rec = cover_ai._install_at(root)
+        assert rec is not None and rec["kind"] in ("checkout", "portable", "nested")
+        assert rec["python"], "a checkout still needs an interpreter to run with"
+        # pointing at the inner folder of a portable install works too
+        port = fake_comfy(os.path.join(fm.tmp, "box2"))
+        inner = cover_ai._install_at(os.path.join(port, "ComfyUI"))
+        assert inner and os.path.normcase(inner["root"]) == os.path.normcase(port)
+
+
+def test_a_detected_install_is_remembered_so_the_next_run_does_not_crawl():
+    with fresh_machine() as fm:
+        box = os.path.join(fm.tmp, "disk")
+        fake_comfy(box)
+        fake_checkpoints(os.path.join(box, "ComfyUI_windows_portable", "ComfyUI",
+                                      "models", "checkpoints"), ["bigXL.safetensors"])
+        cover_ai._search_roots = lambda: [(box, 2)]
+        cover_ai.invalidate()
+        with patched(cover_ai, "MIN_CKPT_MB", 0):
+            cover_ai.detect(rescan=True)
+            saved = json.load(open(cover_ai.CONFIG_PATH, encoding="utf-8"))
+            assert "ComfyUI_windows_portable" in saved["auto"]["comfy_root"]
+            # now nothing is searchable, but the remembered path still resolves
+            cover_ai._search_roots = lambda: []
+            cover_ai.invalidate()
+            assert cover_ai.detect()["install"] is not None
+
+
+# --------------------------------------------------------------------------- #
+# config file + precedence: env var > data/cover_ai.json > auto-detect > off
+# --------------------------------------------------------------------------- #
+
+def test_config_file_round_trips():
+    with fresh_machine():
+        assert cover_ai.load_config() == {}
+        ok, cfg = cover_ai.save_config({"enabled": False, "comfy_root": "  C:/Comfy  ",
+                                        "checkpoint": "x.safetensors", "port": "9999",
+                                        "min_free_mb": 7000, "ignored": "nope"})
+        assert ok and os.path.isfile(cover_ai.CONFIG_PATH)
+        assert cfg["enabled"] is False and cfg["checkpoint"] == "x.safetensors"
+        assert "Comfy" in cfg["comfy_root"] and cfg["port"] == 9999
+        assert "ignored" not in cfg
+        assert cover_ai._enabled() is False
+        assert cover_ai._port() == 9999 and cover_ai._min_free_mb() == 7000
+        # an empty string clears a key rather than saving ""
+        _, cfg2 = cover_ai.save_config({"checkpoint": ""})
+        assert "checkpoint" not in cfg2
+
+
+def test_the_env_var_beats_the_config_file_which_beats_auto_detect():
+    with fresh_machine() as fm:
+        box = os.path.join(fm.tmp, "disk")
+        auto_root = fake_comfy(box)
+        cfg_root = fake_comfy(os.path.join(fm.tmp, "chosen"))
+        cover_ai._search_roots = lambda: [(box, 2)]
+        cover_ai.invalidate()
+
+        # 1. nothing set: auto-detection wins
+        assert os.path.normcase(cover_ai._comfy_root()) == os.path.normcase(auto_root)
+        assert cover_ai._model_name() == cover_ai.DEFAULT_MODEL      # none on disk
+
+        # 2. the config file beats it
+        cover_ai.save_config({"comfy_root": cfg_root, "checkpoint": "fromfile.safetensors"})
+        assert os.path.normcase(cover_ai._comfy_root()) == os.path.normcase(cfg_root)
+        assert cover_ai._model_name() == "fromfile.safetensors"
+
+        # 3. the env var beats the file
+        os.environ["WAIVEPULSE_COMFY_ROOT"] = auto_root
+        os.environ["WAIVEPULSE_COVER_AI_MODEL"] = "fromenv.safetensors"
+        try:
+            cover_ai.invalidate()
+            assert os.path.normcase(cover_ai._comfy_root()) == os.path.normcase(auto_root)
+            assert cover_ai._model_name() == "fromenv.safetensors"
+        finally:
+            del os.environ["WAIVEPULSE_COMFY_ROOT"]
+            del os.environ["WAIVEPULSE_COVER_AI_MODEL"]
+
+        # 4. off is off, whoever said so
+        cover_ai.save_config({"enabled": False})
+        assert cover_ai.available()[0] is False
+        assert "switched off" in cover_ai.available()[1].lower()
+
+
+def test_the_config_file_never_has_to_exist():
+    with fresh_machine():
+        assert cover_ai.load_config() == {}
+        assert cover_ai._enabled() is True          # default on, nothing to edit
+        assert cover_ai._port() == 8188
+        assert cover_ai._min_free_mb() >= cover_ai.HARD_FLOOR_MB
+
+
+# --------------------------------------------------------------------------- #
+# checkpoint ranking
+# --------------------------------------------------------------------------- #
+
+def test_ranking_prefers_an_sdxl_checkpoint_over_an_sd15_one():
+    sdxl = cover_ai._score_checkpoint("juggernautXL_ragnarokBy.safetensors", 6776)
+    base = cover_ai._score_checkpoint("sd_xl_base_1.0.safetensors", 6616)
+    sd15 = cover_ai._score_checkpoint("v1-5-pruned-emaonly.safetensors", 4067)
+    sd35 = cover_ai._score_checkpoint("sd3.5_large.safetensors", 15697)
+    refiner = cover_ai._score_checkpoint("sd_xl_refiner_1.0.safetensors", 6075)
+    assert sdxl > sd15 and base > sd15
+    assert sdxl > sd35 and base > refiner
+    assert cover_ai._score_checkpoint("dreamshaperXL_v21.safetensors", 6600) > sd15
+
+
+def test_ranking_picks_the_best_file_out_of_a_folder():
+    with fresh_machine() as fm:
+        folder = fake_checkpoints(os.path.join(fm.tmp, "ckpts"), [
+            "v1-5-pruned-emaonly.safetensors",
+            "realvisxlV5.safetensors",
+            "notes.txt",
+        ])
+        with patched(cover_ai, "MIN_CKPT_MB", 0):
+            got = cover_ai._list_checkpoints([folder])
+        names = [c["name"] for c in got]
+        assert names[0] == "realvisxlV5.safetensors", names
+        assert "notes.txt" not in names
+        assert len(got) == 2
+
+
+def test_an_extra_configured_folder_is_searched():
+    with fresh_machine() as fm:
+        folder = fake_checkpoints(os.path.join(fm.tmp, "elsewhere"), ["mySDXL.safetensors"])
+        cover_ai.save_config({"checkpoint_dir": folder})
+        with patched(cover_ai, "MIN_CKPT_MB", 0):
+            det = cover_ai.detect(rescan=True)
+            assert [c["name"] for c in det["checkpoints"]] == ["mySDXL.safetensors"]
+            assert cover_ai._model_name() == "mySDXL.safetensors"
+            assert cover_ai._checkpoint_path() == os.path.join(folder, "mySDXL.safetensors")
+
+
+# --------------------------------------------------------------------------- #
+# extra_model_paths.yaml is generated, never committed
+# --------------------------------------------------------------------------- #
+
+def test_the_yaml_is_rendered_from_the_example_template():
+    example = cover_ai._PATHS_EXAMPLE
+    assert os.path.isfile(example), "the template must ship in git"
+    with open(example, encoding="utf-8") as f:
+        text = f.read()
+    for token in ("__NAME__", "__BASE_PATH__", "__CHECKPOINTS__"):
+        assert token in text, token
+    assert ":\\" not in text and ":/" not in text, "the template must hold no absolute path"
+
+    stanza = cover_ai._yaml_template()
+    assert stanza.startswith("__NAME__") and "base_path" in stanza
+
+    with fresh_machine() as fm:
+        folder = fake_checkpoints(os.path.join(fm.tmp, "sd", "models", "Stable-diffusion"),
+                                  ["someXL.safetensors"])
+        cover_ai.save_config({"checkpoint_dir": folder})
+        with patched(cover_ai, "MIN_CKPT_MB", 0):
+            cover_ai.detect(rescan=True)
+            out = cover_ai.write_paths_yaml()
+        assert out and os.path.isfile(out)
+        with open(out, encoding="utf-8") as f:
+            body = f.read()
+        assert "GENERATED" in body
+        assert "waivepulse_1:" in body
+        assert "checkpoints: Stable-diffusion" in body
+        assert os.path.dirname(folder).replace("\\", "/") in body
+
+
+def test_the_generated_yaml_is_gitignored():
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(repo, ".gitignore"), encoding="utf-8") as f:
+        ignored = f.read()
+    assert "backend/comfy/extra_model_paths.yaml" in ignored
+    assert "data/cover_ai.json" in ignored
+
+
+# --------------------------------------------------------------------------- #
+# the setup panel's payload
+# --------------------------------------------------------------------------- #
+
+def test_setup_info_tells_a_stranger_what_to_do():
+    with fresh_machine():
+        info = cover_ai.setup_info()
+        assert info["ok"] is True
+        assert set(("available", "reason", "enabled", "config", "effective", "sources",
+                    "comfy", "checkpoints", "gpu", "needs")) <= set(info)
+        assert info["comfy"]["repo_url"].startswith("https://github.com/")
+        joined = " ".join(info["needs"]).lower()
+        assert "install comfyui" in joined
+        assert "safetensors" in joined
+        for key in cover_ai.CONFIG_KEYS:
+            assert key in info["config"]
+
+
+def test_setup_info_survives_a_broken_detection():
+    with fresh_machine():
+        with patched(cover_ai, "detect", lambda *a, **k: (_ for _ in ()).throw(OSError("disk gone"))):
+            info = cover_ai.setup_info()
+        assert info["ok"] is False and "disk gone" in info["reason"]
+        assert info["available"] is False
+
+
 # --------------------------------------------------------------------------- #
 # available() is honest
 # --------------------------------------------------------------------------- #
 
+class installed:
+    """available() with the software side satisfied, wherever this runs."""
+
+    FAKE = {"root": "X:/Comfy", "cwd": "X:/Comfy/ComfyUI", "main": "X:/Comfy/ComfyUI/main.py",
+            "python": "X:/Comfy/python_embeded/python.exe",
+            "python_source": "bundled python", "kind": "portable"}
+
+    def __enter__(self):
+        self.a = patched(cover_ai, "_install", lambda *a, **k: dict(self.FAKE)).__enter__()
+        self.b = patched(cover_ai, "_checkpoint_path", lambda: "X:/ckpt.safetensors").__enter__()
+        self.c = patched(cover_ai, "_model_name", lambda: "fake.safetensors").__enter__()
+        return self
+
+    def __exit__(self, *a):
+        for cm in (self.c, self.b, self.a):
+            cm.__exit__()
+        return False
+
+
 def test_available_says_no_when_the_gpu_is_busy():
-    with patched(cover_ai, "vram_free_mb", lambda: 1500), \
+    with installed(), patched(cover_ai, "vram_free_mb", lambda: 1500), \
          patched(cover_ai, "_ollama_loaded", lambda: []):
         ok, why = cover_ai.available()
     assert ok is False
@@ -69,7 +458,7 @@ def test_available_says_no_when_the_gpu_is_busy():
 
 
 def test_available_counts_vram_ollama_is_holding_as_reclaimable():
-    with patched(cover_ai, "vram_free_mb", lambda: 1500), \
+    with installed(), patched(cover_ai, "vram_free_mb", lambda: 1500), \
          patched(cover_ai, "_ollama_loaded", lambda: ["qwen2.5:7b-instruct"]):
         ok, why = cover_ai.available()
     assert ok is True
@@ -77,7 +466,7 @@ def test_available_counts_vram_ollama_is_holding_as_reclaimable():
 
 
 def test_available_says_no_without_a_gpu():
-    with patched(cover_ai, "vram_free_mb", lambda: None):
+    with installed(), patched(cover_ai, "vram_free_mb", lambda: None):
         ok, why = cover_ai.available()
     assert ok is False
     assert "gpu" in why.lower(), why

@@ -1,11 +1,19 @@
-# WAIvePulse cover-art backend -> reuse the checkpoints that are already on disk.
-# Passed to ComfyUI with --extra-model-paths-config so we never copy or move a
-# 7 GB safetensors file, and never touch the owner's own ComfyUI config.
-waivepulse_webui:
-    base_path: F:/StableDiffusion/stable-diffusion-webui
-    checkpoints: models/Stable-diffusion
-    clip: models/CLIP
-    vae: models/VAE
-    loras: models/Lora
-    embeddings: embeddings
-    upscale_models: models/ESRGAN
+# Template, not a config file.
+#
+# backend/cover_ai.py renders this into extra_model_paths.yaml at runtime - one
+# stanza per checkpoint folder it found on THIS machine - and passes that file
+# to the throwaway ComfyUI with --extra-model-paths-config. That is how a 7 GB
+# .safetensors already on your disk gets used without copying or moving it, and
+# without touching your own ComfyUI config.
+#
+# The generated file is gitignored, so no machine's absolute paths are ever
+# committed. Nothing here needs editing by hand: the folders come from the
+# "Set up AI covers" panel on the Generate page (or from auto-detection).
+#
+# Placeholders, replaced once per folder:
+#   __NAME__          a unique stanza name
+#   __BASE_PATH__     the folder that holds the model subfolder
+#   __CHECKPOINTS__   the subfolder, relative to base_path, with the .safetensors
+__NAME__:
+    base_path: __BASE_PATH__
+    checkpoints: __CHECKPOINTS__

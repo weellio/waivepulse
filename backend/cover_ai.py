@@ -21,22 +21,35 @@ Everything is best-effort: this module never raises, never blocks past
 
 How it runs
 -----------
-An on-demand headless ComfyUI (the owner's existing portable install) is
-started on 127.0.0.1:8188, a small SDXL text-to-image graph is submitted over
-the HTTP API, the PNG is read back, and the server is shut down again. Nothing
-is downloaded, nothing is installed, and the owner's own ComfyUI config is left
-alone (we pass our own --extra-model-paths-config and our own output/temp/user
-directories).
+An on-demand headless ComfyUI (whatever install is on this machine) is started
+on 127.0.0.1:8188, a small SDXL text-to-image graph is submitted over the HTTP
+API, the PNG is read back, and the server is shut down again. Nothing is
+downloaded, nothing is installed, and your own ComfyUI config is left alone (we
+pass our own --extra-model-paths-config, generated at runtime, and our own
+output/temp/user directories).
+
+Nobody has to type a path
+-------------------------
+``detect()`` finds ComfyUI and the SDXL checkpoints by itself (drive roots,
+home, Program Files, /opt, the folder above this repo), ranks the checkpoints
+and remembers what it found in ``data/cover_ai.json`` so the next run is
+instant. The Generate page's "Set up AI covers" panel shows all of that and
+writes the same file - ``setup_info()``, ``save_config()`` and ``test_render()``
+are what it talks to.
 
 The GPU is shared with HeartMuLa generation, Demucs separation, Ollama and
 video renders, so before loading anything we require a free-VRAM floor, and we
 politely ask Ollama to drop idle models first. If it is still tight we give up
 and return None - a cover is never worth crashing a separation over.
 
-Environment switches (all optional)
------------------------------------
+Environment switches (all optional - the UI panel is the normal way)
+-------------------------------------------------------------------
+Order of precedence for every setting: environment variable, then
+``data/cover_ai.json`` (written by the panel), then auto-detection, then off.
+
 WAIVEPULSE_COVER_AI          0/off/false disables the whole layer.
-WAIVEPULSE_COVER_AI_MODEL    checkpoint filename (default juggernautXL_ragnarokBy).
+WAIVEPULSE_COVER_AI_MODEL    checkpoint filename (default: best one detected).
+WAIVEPULSE_COVER_AI_MODEL_DIR an extra folder to look for checkpoints in.
 WAIVEPULSE_COVER_AI_PORT     port for the throwaway ComfyUI (default 8188).
 WAIVEPULSE_COVER_AI_MIN_VRAM free MB required before loading (default 6000).
 WAIVEPULSE_COVER_AI_KEEP_ALIVE seconds to keep the *server* (never a model)
@@ -70,19 +83,30 @@ try:                                    # Pillow is a hard requirement of the ap
 except Exception:                       # pragma: no cover - app cannot run without it
     Image = None
 
-__all__ = ["available", "background", "warmup", "background_batch", "describe", "shutdown"]
+__all__ = ["available", "background", "warmup", "background_batch", "describe", "shutdown",
+           "detect", "setup_info", "load_config", "save_config", "test_render",
+           "write_paths_yaml", "CONFIG_PATH", "COMFY_REPO_URL"]
 
 # --------------------------------------------------------------------------- #
 # paths / config
 # --------------------------------------------------------------------------- #
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
+_REPO = os.path.dirname(_HERE)
 _COMFY_DIR = os.path.join(_HERE, "comfy")
 _WORKFLOW = os.path.join(_COMFY_DIR, "sdxl_cover.json")
 _PATHS_YAML = os.path.join(_COMFY_DIR, "extra_model_paths.yaml")
+_PATHS_EXAMPLE = os.path.join(_COMFY_DIR, "extra_model_paths.example.yaml")
+
+# Where the panel's settings live. Gitignored: it holds this machine's paths.
+_DATA_DIR = os.path.join(_REPO, "data")
+CONFIG_PATH = os.path.join(_DATA_DIR, "cover_ai.json")
+COMFY_REPO_URL = "https://github.com/comfyanonymous/ComfyUI"
 
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
+# The checkpoint these prompts were tuned against. Not required: any SDXL-class
+# .safetensors works, and detection picks the best one it can see.
 DEFAULT_MODEL = "juggernautXL_ragnarokBy.safetensors"
 NATIVE = 1024                 # SDXL is trained square at 1024; we render there
 
@@ -109,26 +133,138 @@ def _env_flag(name: str, default: bool) -> bool:
     return v not in ("0", "off", "false", "no", "none")
 
 
+# --------------------------------------------------------------------------- #
+# the config file the setup panel writes: data/cover_ai.json
+# --------------------------------------------------------------------------- #
+
+CONFIG_KEYS = ("enabled", "comfy_root", "checkpoint", "checkpoint_dir", "port", "min_free_mb")
+
+_CFG = {"mtime": None, "data": {}}
+_CFG_LOCK = threading.Lock()
+
+
+def load_config(refresh: bool = False) -> dict:
+    """The saved panel settings, or {} when the file is absent. Never raises."""
+    with _CFG_LOCK:
+        try:
+            mtime = os.path.getmtime(CONFIG_PATH)
+        except Exception:
+            _CFG["mtime"], _CFG["data"] = None, {}
+            return {}
+        if refresh or _CFG["mtime"] != mtime or not isinstance(_CFG["data"], dict):
+            try:
+                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                _CFG["data"] = data if isinstance(data, dict) else {}
+            except Exception:
+                _CFG["data"] = {}
+            _CFG["mtime"] = mtime
+        return dict(_CFG["data"])
+
+
+def _write_config(data: dict) -> bool:
+    try:
+        os.makedirs(_DATA_DIR, exist_ok=True)
+        tmp = CONFIG_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, sort_keys=True)
+        os.replace(tmp, CONFIG_PATH)
+        with _CFG_LOCK:
+            _CFG["data"] = dict(data)
+            _CFG["mtime"] = os.path.getmtime(CONFIG_PATH)
+        return True
+    except Exception as e:
+        _log("could not write %s (%s)" % (CONFIG_PATH, e))
+        return False
+
+
+def save_config(patch: dict):
+    """Merge *patch* into data/cover_ai.json. Returns (ok, the new config)."""
+    out = dict(load_config(refresh=True))
+    patch = dict(patch or {})
+    for key in CONFIG_KEYS:
+        if key not in patch:
+            continue
+        val = patch[key]
+        if key == "enabled":
+            if val is None:
+                out.pop(key, None)
+            else:
+                out[key] = bool(val)
+        elif key in ("port", "min_free_mb"):
+            try:
+                out[key] = int(val)
+            except Exception:
+                out.pop(key, None)
+        else:
+            s = str(val or "").strip().strip('"')
+            if s:
+                out[key] = os.path.normpath(s) if key != "checkpoint" else s
+            else:
+                out.pop(key, None)
+    ok = _write_config(out)
+    invalidate()
+    return ok, load_config(refresh=True)
+
+
+def _cfg(key, default=None):
+    v = load_config().get(key)
+    return default if v in (None, "") else v
+
+
+def _remember(root: str, checkpoint: str) -> None:
+    """Cache a successful auto-detection so the next run does not crawl disks."""
+    cur = load_config()
+    auto = cur.get("auto") if isinstance(cur.get("auto"), dict) else {}
+    if auto.get("comfy_root") == root and auto.get("checkpoint") == checkpoint:
+        return
+    out = dict(cur)
+    out["auto"] = {"comfy_root": root, "checkpoint": checkpoint, "at": int(time.time())}
+    _write_config(out)
+
+
+def _enabled() -> bool:
+    v = _env("WAIVEPULSE_COVER_AI").lower()
+    if v:
+        return v not in ("0", "off", "false", "no", "none")
+    cfg = load_config().get("enabled")
+    if isinstance(cfg, bool):
+        return cfg
+    return True                           # on by default when a GPU can do it
+
+
+def _configured_root() -> str:
+    """The root somebody actually asked for: env var, else the config file."""
+    return _env("WAIVEPULSE_COMFY_ROOT") or str(_cfg("comfy_root") or "")
+
+
 def _comfy_root() -> str:
-    return _env("WAIVEPULSE_COMFY_ROOT", r"F:\StableDiffusion\ComfyUI_windows_portable")
+    r = _configured_root()
+    if r:
+        return r
+    return (_install() or {}).get("root", "")
 
 
 def _model_name() -> str:
-    return _env("WAIVEPULSE_COVER_AI_MODEL", DEFAULT_MODEL)
+    n = _env("WAIVEPULSE_COVER_AI_MODEL") or str(_cfg("checkpoint") or "")
+    if n:
+        return n
+    best = (detect().get("checkpoints") or [None])[0]
+    return (best or {}).get("name") or DEFAULT_MODEL
 
 
 def _port() -> int:
     try:
-        return int(_env("WAIVEPULSE_COVER_AI_PORT", "8188"))
-    except ValueError:
+        return int(_env("WAIVEPULSE_COVER_AI_PORT") or _cfg("port") or 8188)
+    except (TypeError, ValueError):
         return 8188
 
 
 def _min_free_mb() -> int:
     """How much free VRAM we want before loading (never below the hard floor)."""
     try:
-        want = int(_env("WAIVEPULSE_COVER_AI_MIN_VRAM", str(MIN_FREE_MB)))
-    except ValueError:
+        want = int(_env("WAIVEPULSE_COVER_AI_MIN_VRAM") or _cfg("min_free_mb") or MIN_FREE_MB)
+    except (TypeError, ValueError):
         want = MIN_FREE_MB
     return max(HARD_FLOOR_MB, want)
 
@@ -159,6 +295,488 @@ def _workdir() -> str:
         except Exception:
             pass
     return d
+
+
+# --------------------------------------------------------------------------- #
+# finding ComfyUI and the checkpoints, without anybody typing a path
+# --------------------------------------------------------------------------- #
+#
+# Three shapes of install are understood:
+#   portable  <root>/python_embeded/python.exe + <root>/ComfyUI/main.py
+#   nested    <root>/ComfyUI/main.py           + a venv or this app's python
+#   checkout  <root>/main.py + <root>/comfy/   (a plain git clone, usual on Linux)
+#
+# The search is bounded (time, directory count, depth), skips system folders,
+# is cached, and the winner is written into data/cover_ai.json so the next run
+# is a handful of stat() calls instead of a disk crawl.
+
+_DETECT_TTL = 300.0
+_DET = {"at": 0.0, "data": None, "deep": False}
+_DET_LOCK = threading.Lock()
+
+# Folders that never hold a ComfyUI and are expensive or rude to walk.
+_SKIP_DIR = {
+    "windows", "winsxs", "system32", "syswow64", "system volume information",
+    "appdata", "onedrive", "recovery", "perflogs", "msocache", "programdata",
+    "node_modules", "__pycache__", "site-packages", "venv", ".venv", ".git",
+    "temp", "tmp", "cache", "caches", "logs", "proc", "sys", "dev", "run",
+    "boot", "lost+found", "snap", "lib", "lib64", "bin", "sbin", "etc", "usr",
+}
+
+# Directory-name hints that a Stable Diffusion UI (and so a checkpoint folder)
+# lives here. Used only to decide whether to stat a couple of subfolders.
+_CKPT_HINTS = ("stable-diffusion", "stablediffusion", "stable_diffusion", "webui",
+               "forge", "automatic", "a1111", "invoke", "fooocus", "sdnext",
+               "stability", "comfy", "models")
+
+# Sub-paths under such a folder that hold .safetensors checkpoints.
+_CKPT_SUBDIRS = (("models", "Stable-diffusion"), ("models", "stable-diffusion"),
+                 ("models", "checkpoints"), ("models", "Checkpoints"),
+                 ("checkpoints",), ("Stable-diffusion",))
+
+
+def invalidate() -> None:
+    """Forget every cached lookup (called after the panel saves settings)."""
+    with _DET_LOCK:
+        _DET["at"], _DET["data"], _DET["deep"] = 0.0, None, False
+    _YAML["written"] = None
+
+
+def _python_for(root: str, main: str):
+    """(interpreter, where it came from) for running *main*. Never None."""
+    here = os.path.dirname(main)
+    cands = []
+    if os.name == "nt":
+        cands += [(os.path.join(root, "python_embeded", "python.exe"), "bundled python"),
+                  (os.path.join(here, "python_embeded", "python.exe"), "bundled python"),
+                  (os.path.join(os.path.dirname(root), "python_embeded", "python.exe"),
+                   "bundled python"),
+                  (os.path.join(root, "venv", "Scripts", "python.exe"), "its own venv"),
+                  (os.path.join(here, "venv", "Scripts", "python.exe"), "its own venv"),
+                  (os.path.join(here, ".venv", "Scripts", "python.exe"), "its own venv")]
+    else:
+        cands += [(os.path.join(root, "python_embeded", "bin", "python3"), "bundled python"),
+                  (os.path.join(root, "venv", "bin", "python"), "its own venv"),
+                  (os.path.join(here, "venv", "bin", "python"), "its own venv"),
+                  (os.path.join(here, ".venv", "bin", "python"), "its own venv")]
+    for path, why in cands:
+        if os.path.isfile(path):
+            return path, why
+    return sys.executable, "this app's python (needs torch in it)"
+
+
+def _install_at(root):
+    """An install record for *root*, or None. Accepts the inner ComfyUI folder too."""
+    try:
+        if not root:
+            return None
+        root = os.path.abspath(os.path.expanduser(str(root).strip().strip('"')))
+        if not os.path.isdir(root):
+            return None
+        here = None
+        for cand in (root, os.path.join(root, "ComfyUI")):
+            if (os.path.isfile(os.path.join(cand, "main.py"))
+                    and os.path.isdir(os.path.join(cand, "comfy"))):
+                here = cand                       # main.py of something else? no: comfy/ is there
+                break
+        if here is None:
+            return None
+        main = os.path.join(here, "main.py")
+        # The folder people call "the ComfyUI folder" is the portable wrapper when
+        # there is one, so somebody pointing at .../portable/ComfyUI still works.
+        base, parent = here, os.path.dirname(here)
+        if os.path.basename(here).lower() == "comfyui" and parent and (
+                os.path.isdir(os.path.join(parent, "python_embeded"))
+                or os.path.normcase(parent) == os.path.normcase(root)):
+            base = parent
+        py, why = _python_for(base, main)
+        kind = "portable" if "bundled" in why else ("checkout" if here == base else "nested")
+        return {"root": base, "main": main, "cwd": here, "python": py,
+                "python_source": why, "kind": kind}
+    except Exception:
+        return None
+
+
+def _fixed_drives():
+    """Windows drive letters that are real local disks (never CD, net or USB)."""
+    out = []
+    if os.name != "nt":
+        return out
+    try:
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        mask = k32.GetLogicalDrives()
+        for i in range(26):
+            if not (mask >> i) & 1:
+                continue
+            drive = "%s:\\" % chr(65 + i)
+            if k32.GetDriveTypeW(ctypes.c_wchar_p(drive)) == 3:      # DRIVE_FIXED
+                out.append(drive)
+    except Exception:
+        for letter in "CDEFG":
+            p = letter + ":\\"
+            try:
+                if os.path.isdir(p):
+                    out.append(p)
+            except Exception:
+                pass
+    return out
+
+
+def _search_roots():
+    """[(folder, max_depth)] to look in, cheapest and most likely first."""
+    out = []
+
+    def add(path, depth):
+        if not path:
+            return
+        try:
+            p = os.path.abspath(os.path.expanduser(str(path)))
+            if not os.path.isdir(p):
+                return
+        except Exception:
+            return
+        nc = os.path.normcase(p)
+        for q, _ in out:
+            if os.path.normcase(q) == nc:
+                return
+        out.append((p, depth))
+
+    add(os.path.dirname(_REPO), 2)                 # the folder this repo sits in
+    add(os.path.dirname(os.path.dirname(_REPO)), 2)
+    if os.name == "nt":
+        add(os.environ.get("USERPROFILE"), 3)
+        add(os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs"), 2)
+        for var in ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"):
+            add(os.environ.get(var), 2)
+        for drive in _fixed_drives():
+            add(drive, 2)
+    else:
+        add(os.path.expanduser("~"), 3)
+        for p in ("/opt", "/usr/local", "/srv", "/home", "/mnt", "/media", "/data"):
+            add(p, 2)
+    return out
+
+
+def _ckpt_dirs_under(folder):
+    """Checkpoint folders that exist under *folder* (a couple of stats, no walk)."""
+    found = []
+    for parts in _CKPT_SUBDIRS:
+        p = os.path.join(folder, *parts)
+        if os.path.isdir(p):
+            found.append(p)
+    return found
+
+
+def _scan(budget=3.0, stop_early=True, max_dirs=9000):
+    """Bounded breadth-first sweep. Returns (installs, checkpoint folders)."""
+    end = time.time() + max(0.5, float(budget))
+    installs, ckpts, seen, visited = [], [], set(), 0
+
+    def note_install(path):
+        rec = _install_at(path)
+        if not rec:
+            return
+        nc = os.path.normcase(rec["root"])
+        if all(os.path.normcase(r["root"]) != nc for r in installs):
+            installs.append(rec)
+
+    def note_ckpts(path):
+        for d in _ckpt_dirs_under(path):
+            nc = os.path.normcase(d)
+            if all(os.path.normcase(x) != nc for x in ckpts):
+                ckpts.append(d)
+
+    for root, depth in _search_roots():
+        if time.time() > end or visited > max_dirs:
+            break
+        if "comfy" in os.path.basename(root).lower():
+            note_install(root)
+        queue = [(root, 0)]
+        while queue:
+            if time.time() > end or visited > max_dirs:
+                break
+            cur, d = queue.pop(0)
+            key = os.path.normcase(cur)
+            if key in seen:
+                continue
+            seen.add(key)
+            visited += 1
+            try:
+                with os.scandir(cur) as it:
+                    kids = [e for e in it if e.is_dir(follow_symlinks=False)]
+            except Exception:
+                continue
+            for e in kids:
+                low = e.name.lower()
+                if low[:1] in (".", "$") or low in _SKIP_DIR:
+                    continue
+                if "comfy" in low:
+                    note_install(e.path)
+                if any(h in low for h in _CKPT_HINTS):
+                    note_ckpts(e.path)
+                if d + 1 < depth:
+                    queue.append((e.path, d + 1))
+        if stop_early and installs and ckpts:
+            break
+    _log("scan: %d dirs, %d install(s), %d checkpoint folder(s)"
+         % (visited, len(installs), len(ckpts)))
+    return installs, ckpts
+
+
+# Filename hints. SDXL is what the graph and the prompts expect; an SD1.5 or a
+# refiner/inpaint model would load but the pictures would be wrong.
+_GOOD_HINTS = (("sdxl", 4), ("sd_xl", 4), ("sd-xl", 4), ("xl", 3), ("juggernaut", 3),
+               ("dreamshaper", 2), ("realvis", 3), ("zavychroma", 2), ("animagine", 2),
+               ("copax", 2), ("illustrious", 2), ("pony", 2), ("albedobase", 2),
+               ("crystalclear", 1), ("nightvision", 1), ("playground", 1))
+_BAD_HINTS = (("refiner", -6), ("inpaint", -6), ("v1-5", -6), ("sd15", -6), ("sd-1.5", -6),
+              ("1_5-pruned", -6), ("sd21", -5), ("v2-1", -5), ("sd3", -5), ("flux", -5),
+              ("cascade", -5), ("controlnet", -6), ("lcm", -2), ("turbo", -1),
+              ("lightning", -1), ("vae", -4), ("upscal", -6))
+
+
+def _score_checkpoint(name: str, size_mb: int) -> int:
+    """Higher = more likely to be a plain SDXL base model we can use."""
+    low = name.lower()
+    score = 0
+    for hint, pts in _GOOD_HINTS:
+        if hint in low:
+            score += pts
+    for hint, pts in _BAD_HINTS:
+        if hint in low:
+            score += pts
+    if 5200 <= size_mb <= 8200:            # SDXL fp16: ~6.5-7 GB
+        score += 5
+    elif 8200 < size_mb <= 14000:          # SDXL fp32 or a merged model
+        score += 1
+    elif 3000 <= size_mb < 5200:           # SD1.5 / SD2 territory
+        score -= 4
+    else:
+        score -= 6                         # tiny, or a 16 GB SD3/Flux
+    if low == DEFAULT_MODEL.lower():
+        score += 3                         # the one these prompts were tuned on
+    return score
+
+
+MIN_CKPT_MB = 500          # smaller than this is a LoRA or a VAE, not a checkpoint
+
+
+def _list_checkpoints(dirs):
+    """[{name, path, dir, size_mb, score, sdxl}] best first, de-duplicated."""
+    out, seen = [], set()
+    for d in dirs:
+        if not d:
+            continue
+        try:
+            with os.scandir(d) as it:
+                files = [e for e in it
+                         if e.is_file(follow_symlinks=False)
+                         and e.name.lower().endswith(".safetensors")]
+        except Exception:
+            continue
+        for e in files:
+            key = e.name.lower()
+            if key in seen:
+                continue
+            try:
+                size_mb = int(e.stat().st_size / (1024 * 1024))
+            except Exception:
+                size_mb = 0
+            if size_mb < MIN_CKPT_MB:               # a LoRA or a VAE, not a checkpoint
+                continue
+            seen.add(key)
+            score = _score_checkpoint(e.name, size_mb)
+            out.append({"name": e.name, "path": e.path, "dir": d,
+                        "size_mb": size_mb, "score": score, "sdxl": score >= 5})
+    out.sort(key=lambda c: (-c["score"], -c["size_mb"], c["name"].lower()))
+    return out
+
+
+def _extra_ckpt_dirs():
+    """The folder somebody configured, if any (a UI root or the folder itself)."""
+    raw = _env("WAIVEPULSE_COVER_AI_MODEL_DIR") or str(_cfg("checkpoint_dir") or "")
+    if not raw:
+        return []
+    p = os.path.abspath(os.path.expanduser(raw.strip().strip('"')))
+    if not os.path.isdir(p):
+        return []
+    return [p] + [d for d in _ckpt_dirs_under(p) if os.path.normcase(d) != os.path.normcase(p)]
+
+
+def _neighbour_ckpt_dirs(root: str):
+    """A1111 / Forge / anything else parked beside the ComfyUI we found."""
+    out = []
+    try:
+        parent = os.path.dirname(root)
+        if not parent or not os.path.isdir(parent):
+            return out
+        out += _ckpt_dirs_under(parent)
+        with os.scandir(parent) as it:
+            for e in it:
+                if not e.is_dir(follow_symlinks=False):
+                    continue
+                low = e.name.lower()
+                if low in _SKIP_DIR or low[:1] in (".", "$"):
+                    continue
+                if any(h in low for h in _CKPT_HINTS):
+                    out += _ckpt_dirs_under(e.path)
+    except Exception:
+        pass
+    return out
+
+
+def _detect_now(deep: bool) -> dict:
+    installs, scanned, bad_override = [], [], False
+    cfg_root = _configured_root()
+    if cfg_root:
+        rec = _install_at(cfg_root)
+        if rec:
+            installs = [rec]
+        else:
+            # somebody named a folder and it is wrong: say so instead of
+            # quietly using a remembered one they have overridden.
+            bad_override = True
+    if not installs and not bad_override and not deep:
+        auto = load_config().get("auto")
+        if isinstance(auto, dict):
+            rec = _install_at(auto.get("comfy_root"))
+            if rec:
+                installs = [rec]
+    if not installs or deep:
+        found, scanned = _scan(budget=8.0 if deep else 3.0, stop_early=not deep)
+        have = {os.path.normcase(r["root"]) for r in installs}
+        installs += [r for r in found if os.path.normcase(r["root"]) not in have]
+
+    inst = None if bad_override else (installs[0] if installs else None)
+    dirs = []
+    if inst:
+        dirs.append(os.path.join(inst["cwd"], "models", "checkpoints"))
+    dirs += _extra_ckpt_dirs()
+    if inst:
+        dirs += _neighbour_ckpt_dirs(inst["root"])
+    dirs += scanned
+    uniq = []
+    for d in dirs:
+        if d and all(os.path.normcase(d) != os.path.normcase(x) for x in uniq):
+            uniq.append(d)
+    ckpts = _list_checkpoints(uniq)
+
+    data = {"install": inst, "installs": installs, "checkpoint_dirs": uniq,
+            "checkpoints": ckpts, "scanned": bool(not installs or deep or not cfg_root),
+            "at": time.time()}
+    if inst and ckpts and not cfg_root:
+        _remember(inst["root"], ckpts[0]["name"])
+    return data
+
+
+def detect(rescan: bool = False, deep: bool = False) -> dict:
+    """What this machine has. Cached for five minutes; ``rescan`` sweeps again.
+
+    Never raises: on any trouble it returns an empty, honest answer.
+    """
+    with _DET_LOCK:
+        cached = _DET["data"]
+        fresh = (cached is not None
+                 and time.time() - _DET["at"] < _DETECT_TTL
+                 and (_DET["deep"] or not deep))
+        if fresh and not rescan:
+            return cached
+        try:
+            data = _detect_now(deep=bool(deep or rescan))
+        except Exception as e:                       # never raise at a caller
+            _log("detect failed: %s" % e)
+            data = {"install": None, "installs": [], "checkpoint_dirs": [],
+                    "checkpoints": [], "scanned": False, "error": str(e),
+                    "at": time.time()}
+        _DET["data"], _DET["at"] = data, time.time()
+        _DET["deep"] = bool(deep or rescan)
+        return data
+
+
+def _install(rescan: bool = False):
+    """The ComfyUI we would actually run, or None."""
+    root = _configured_root()
+    if root:
+        return _install_at(root)
+    return detect(rescan=rescan).get("install")
+
+
+# --------------------------------------------------------------------------- #
+# extra_model_paths.yaml - generated, never committed
+# --------------------------------------------------------------------------- #
+
+_YAML = {"written": None}
+
+
+def _yaml_template() -> str:
+    """The stanza from extra_model_paths.example.yaml, or a built-in fallback."""
+    try:
+        with open(_PATHS_EXAMPLE, "r", encoding="utf-8") as f:
+            lines = f.read().splitlines()
+        for i, line in enumerate(lines):
+            if line.startswith("__NAME__"):            # column 0: the stanza, not a comment
+                stanza = "\n".join(lines[i:]).strip("\n")
+                if "__BASE_PATH__" in stanza and "__CHECKPOINTS__" in stanza:
+                    return stanza + "\n"
+                break
+    except Exception:
+        pass
+    return "__NAME__:\n    base_path: __BASE_PATH__\n    checkpoints: __CHECKPOINTS__\n"
+
+
+def write_paths_yaml():
+    """Point ComfyUI at the checkpoint folders we found, without moving a file.
+
+    Rendered from ``extra_model_paths.example.yaml`` into the gitignored
+    ``extra_model_paths.yaml`` so no absolute path from any machine is ever
+    committed. Returns the file path, or None when ComfyUI's own
+    models/checkpoints already holds the checkpoint we want.
+    """
+    try:
+        inst = _install()
+        own = os.path.normcase(os.path.join(inst["cwd"], "models", "checkpoints")) if inst else ""
+        want = []
+        for d in detect().get("checkpoint_dirs") or []:
+            if not d or os.path.normcase(d) == own or not os.path.isdir(d):
+                continue
+            try:
+                with os.scandir(d) as it:
+                    if not any(e.is_file() and e.name.lower().endswith(".safetensors")
+                               for e in it):
+                        continue
+            except Exception:
+                continue
+            want.append(d)
+        if not want:
+            return None
+
+        stanza = _yaml_template()
+        body = ["# GENERATED FILE - written at runtime by backend/cover_ai.py from",
+                "# extra_model_paths.example.yaml. Not committed; edit the folders in",
+                "# the app's 'Set up AI covers' panel instead.", ""]
+        for i, d in enumerate(want, 1):
+            base = os.path.dirname(os.path.abspath(d)).replace("\\", "/")
+            sub = os.path.basename(os.path.abspath(d))
+            body.append(stanza.replace("__NAME__", "waivepulse_%d" % i)
+                              .replace("__BASE_PATH__", base)
+                              .replace("__CHECKPOINTS__", sub).rstrip() + "\n")
+        text = "\n".join(body)
+
+        for target in (_PATHS_YAML, os.path.join(_workdir(), "extra_model_paths.yaml")):
+            try:
+                if _YAML["written"] == (target, text) and os.path.isfile(target):
+                    return target
+                with open(target, "w", encoding="utf-8") as f:
+                    f.write(text)
+                _YAML["written"] = (target, text)
+                return target
+            except Exception:
+                continue
+        return None
+    except Exception as e:
+        _log("could not write extra_model_paths.yaml (%s)" % e)
+        return None
 
 
 # --------------------------------------------------------------------------- #
@@ -1035,6 +1653,27 @@ def vram_free_mb():
         return None
 
 
+def gpu_info():
+    """{present, name, free_mb, total_mb} - never raises, never assumes a GPU."""
+    exe = shutil.which("nvidia-smi") or r"C:\Windows\System32\nvidia-smi.exe"
+    r = _run([exe, "--query-gpu=name,memory.total,memory.free",
+              "--format=csv,noheader,nounits"], timeout=15)
+    if not r or r.returncode != 0 or not r.stdout.strip():
+        return {"present": False, "name": "", "free_mb": None, "total_mb": None}
+    best = None
+    for line in r.stdout.strip().splitlines():
+        bits = [b.strip() for b in line.split(",")]
+        if len(bits) < 3:
+            continue
+        try:
+            total, free = int(bits[1]), int(bits[2])
+        except ValueError:
+            continue
+        if best is None or free > best["free_mb"]:
+            best = {"present": True, "name": bits[0], "free_mb": free, "total_mb": total}
+    return best or {"present": False, "name": "", "free_mb": None, "total_mb": None}
+
+
 def _http(url, data=None, timeout=10, method=None):
     req = urllib.request.Request(url, data=data, method=method,
                                  headers={"Content-Type": "application/json"})
@@ -1134,11 +1773,10 @@ class _Comfy:
             _log("reusing a ComfyUI already listening on %d" % self.port)
             return True, "reused a ComfyUI already on port %d" % self.port
 
-        root = _comfy_root()
-        py = os.path.join(root, "python_embeded", "python.exe")
-        main = os.path.join(root, "ComfyUI", "main.py")
-        if not (os.path.isfile(py) and os.path.isfile(main)):
-            return False, "ComfyUI portable not found at %s" % root
+        inst = _install()
+        if not inst:
+            return False, _missing_comfy_reason()
+        py, main = inst["python"], inst["main"]
 
         work = _workdir()
         self.log_path = os.path.join(work, "comfyui.log")
@@ -1147,36 +1785,56 @@ class _Comfy:
         except Exception:
             logf = subprocess.DEVNULL
 
-        cmd = [py, "-s", main,
-               "--port", str(self.port), "--listen", "127.0.0.1",
-               "--disable-auto-launch", "--dont-print-server",
-               "--disable-all-custom-nodes", "--disable-api-nodes",
-               "--deterministic",
-               "--output-directory", os.path.join(work, "out"),
-               "--temp-directory", os.path.join(work, "tmp"),
-               "--user-directory", os.path.join(work, "user")]
-        if os.path.isfile(_PATHS_YAML):
-            cmd += ["--extra-model-paths-config", _PATHS_YAML]
-
-        try:
-            self.proc = subprocess.Popen(
-                cmd, cwd=os.path.join(root, "ComfyUI"),
-                stdin=subprocess.DEVNULL, stdout=logf, stderr=subprocess.STDOUT,
-                creationflags=CREATE_NO_WINDOW)
-        except Exception as e:
-            return False, "could not start ComfyUI (%s)" % e
+        base = [py, "-s", main,
+                "--port", str(self.port), "--listen", "127.0.0.1",
+                "--disable-auto-launch", "--dont-print-server",
+                "--output-directory", os.path.join(work, "out"),
+                "--temp-directory", os.path.join(work, "tmp"),
+                "--user-directory", os.path.join(work, "user")]
+        yaml_path = write_paths_yaml()
+        if yaml_path:
+            base += ["--extra-model-paths-config", yaml_path]
+        # Nice-to-haves that older ComfyUI builds reject outright. If the process
+        # dies saying so, we start again without them rather than telling the
+        # user their install is broken.
+        optional = ["--disable-all-custom-nodes", "--disable-api-nodes", "--deterministic"]
 
         t0 = time.time()
-        while time.time() < deadline:
-            if self.proc.poll() is not None:
-                return False, "ComfyUI exited on startup (rc=%s, see %s)" % (
-                    self.proc.returncode, self.log_path)
-            if self.ping():
-                _log("ComfyUI up in %.1fs (pid %s)" % (time.time() - t0, self.proc.pid))
-                return True, "started in %.0fs" % (time.time() - t0)
-            time.sleep(0.75)
-        self.stop()
-        return False, "ComfyUI did not come up before the timeout"
+        for attempt, extra in enumerate((optional, [])):
+            if attempt and time.time() >= deadline:
+                break
+            try:
+                self.proc = subprocess.Popen(
+                    base + extra, cwd=inst["cwd"],
+                    stdin=subprocess.DEVNULL, stdout=logf, stderr=subprocess.STDOUT,
+                    creationflags=CREATE_NO_WINDOW)
+            except Exception as e:
+                return False, "could not start ComfyUI (%s)" % e
+
+            while time.time() < deadline:
+                if self.proc.poll() is not None:
+                    if attempt == 0 and self._rejected_a_flag():
+                        _log("this ComfyUI does not know %s - retrying without" % optional)
+                        break
+                    return False, "ComfyUI exited on startup (rc=%s, see %s)" % (
+                        self.proc.returncode, self.log_path)
+                if self.ping():
+                    _log("ComfyUI up in %.1fs (pid %s)" % (time.time() - t0, self.proc.pid))
+                    return True, "started in %.0fs" % (time.time() - t0)
+                time.sleep(0.75)
+            else:
+                self.stop()
+                return False, "ComfyUI did not come up before the timeout"
+        return False, "ComfyUI would not start (see %s)" % self.log_path
+
+    def _rejected_a_flag(self):
+        """Did it die complaining about a command-line flag we passed?"""
+        try:
+            with open(self.log_path, "r", encoding="utf-8", errors="replace") as f:
+                tail = f.read()[-4000:].lower()
+            return "unrecognized argument" in tail or "invalid choice" in tail
+        except Exception:
+            return False
 
     def free_models(self, wait=12.0):
         """Unload the checkpoint but leave the process; nothing stays resident.
@@ -1340,13 +1998,30 @@ def shutdown():
 # public API
 # --------------------------------------------------------------------------- #
 
+def _missing_comfy_reason() -> str:
+    """Plain words for "we cannot find ComfyUI", naming a path when there is one."""
+    root = _configured_root()
+    if root:
+        return ("ComfyUI is not at %s - fix the folder in Set up AI covers "
+                "(on the Generate page) or press Rescan" % root)
+    return ("ComfyUI not found - install it from %s, then press Rescan in "
+            "Set up AI covers on the Generate page" % COMFY_REPO_URL)
+
+
 def _checkpoint_path():
     """Where the chosen checkpoint lives on disk, or None if we cannot tell."""
-    name = _model_name()
-    roots = [r"F:\StableDiffusion\stable-diffusion-webui\models\Stable-diffusion",
-             os.path.join(_comfy_root(), "ComfyUI", "models", "checkpoints")]
-    for r in roots:
-        p = os.path.join(r, name)
+    name = (_model_name() or "").strip()
+    if not name:
+        return None
+    if os.path.isabs(name) and os.path.isfile(name):
+        return name
+    det = detect()
+    low = name.lower()
+    for c in det.get("checkpoints") or []:
+        if c["name"].lower() == low:
+            return c["path"]
+    for d in det.get("checkpoint_dirs") or []:
+        p = os.path.join(d, name)
         if os.path.isfile(p):
             return p
     return None
@@ -1359,25 +2034,26 @@ def available():
     is not the culprit, this says so instead of pretending.
     """
     try:
-        if not _env_flag("WAIVEPULSE_COVER_AI", True):
-            return False, "switched off (WAIVEPULSE_COVER_AI=0)"
+        if not _enabled():
+            return False, "switched off - turn it on in Set up AI covers"
         if Image is None:
             return False, "Pillow is not installed"
-        root = _comfy_root()
-        py = os.path.join(root, "python_embeded", "python.exe")
-        if not os.path.isfile(py):
-            return False, "ComfyUI portable not found at %s" % root
-        if not os.path.isfile(os.path.join(root, "ComfyUI", "main.py")):
-            return False, "ComfyUI is missing main.py under %s" % root
+        if _install() is None:
+            return False, _missing_comfy_reason()
         if not os.path.isfile(_WORKFLOW):
             return False, "the cover workflow is missing (%s)" % _WORKFLOW
         if _checkpoint_path() is None:
-            return False, "checkpoint %s is not on disk" % _model_name()
+            if not (detect().get("checkpoints") or []):
+                return False, ("no SDXL checkpoint found - put a .safetensors (about 7 GB) "
+                               "in ComfyUI's models/checkpoints folder, then press Rescan")
+            return False, ("checkpoint %s is not on disk - pick one from the list in "
+                           "Set up AI covers" % _model_name())
 
         need = _min_free_mb()
         free = vram_free_mb()
         if free is None:
-            return False, "no usable GPU (nvidia-smi did not answer)"
+            return False, ("no NVIDIA GPU found - AI covers need one (nvidia-smi did not "
+                           "answer). The 12 designed sleeves still work.")
         if free >= need:
             return True, "ready - %d MB of VRAM free, %s" % (free, _model_name())
         held = _ollama_loaded()
@@ -1402,6 +2078,145 @@ def warmup():
         _workdir()
     except Exception:
         pass
+
+
+# --------------------------------------------------------------------------- #
+# what the setup panel talks to
+# --------------------------------------------------------------------------- #
+
+def _source_of(env_name: str, cfg_key: str) -> str:
+    if _env(env_name):
+        return "environment variable %s" % env_name
+    if load_config().get(cfg_key) not in (None, ""):
+        return "saved setting"
+    return "detected"
+
+
+def setup_info(rescan: bool = False) -> dict:
+    """Everything the "Set up AI covers" panel shows. Never raises."""
+    try:
+        det = detect(rescan=rescan, deep=rescan)
+        inst = _install()
+        gpu = gpu_info()
+        cfg = load_config()
+        chosen = _model_name()
+        ok, reason = available()
+
+        ckpts = []
+        for c in det.get("checkpoints") or []:
+            ckpts.append({"name": c["name"], "dir": c["dir"], "size_mb": c["size_mb"],
+                          "size_gb": round(c["size_mb"] / 1024.0, 1),
+                          "sdxl": c["sdxl"], "selected": c["name"].lower() == chosen.lower()})
+
+        todo = []
+        if not inst:
+            others = [r["root"] for r in (det.get("installs") or [])]
+            if others:
+                todo.append("There is a ComfyUI at %s - put that in the ComfyUI folder box "
+                            "below and press Save." % others[0])
+            else:
+                todo.append("Install ComfyUI (%s), then press Rescan." % COMFY_REPO_URL)
+        if not ckpts:
+            todo.append("Put an SDXL checkpoint (a .safetensors of about 7 GB) in "
+                        "ComfyUI's models/checkpoints folder, then press Rescan.")
+        if not gpu.get("present"):
+            todo.append("AI covers need an NVIDIA GPU with CUDA. Without one the 12 "
+                        "designed sleeves are all you get - and they need nothing.")
+        elif (gpu.get("free_mb") or 0) < _min_free_mb():
+            todo.append("Free up VRAM: %s MB free, %d MB needed. Close other GPU work "
+                        "and try again." % (gpu.get("free_mb"), _min_free_mb()))
+        if not _enabled():
+            todo.append("Switch AI covers on below.")
+
+        return {
+            "ok": True,
+            "available": bool(ok), "reason": reason,
+            "enabled": _enabled(),
+            "config": {k: cfg.get(k) for k in CONFIG_KEYS},
+            "config_path": CONFIG_PATH,
+            "config_exists": os.path.isfile(CONFIG_PATH),
+            "effective": {
+                "comfy_root": (inst or {}).get("root", "") or _configured_root(),
+                "checkpoint": chosen,
+                "checkpoint_dir": (_extra_ckpt_dirs() or [""])[0],
+                "port": _port(),
+                "min_free_mb": _min_free_mb(),
+            },
+            "sources": {
+                "comfy_root": _source_of("WAIVEPULSE_COMFY_ROOT", "comfy_root"),
+                "checkpoint": _source_of("WAIVEPULSE_COVER_AI_MODEL", "checkpoint"),
+                "enabled": ("environment variable WAIVEPULSE_COVER_AI" if _env("WAIVEPULSE_COVER_AI")
+                            else ("saved setting" if isinstance(cfg.get("enabled"), bool)
+                                  else "default (on)")),
+            },
+            "comfy": {
+                "found": inst is not None,
+                "root": (inst or {}).get("root", ""),
+                "kind": (inst or {}).get("kind", ""),
+                "python": (inst or {}).get("python", ""),
+                "python_source": (inst or {}).get("python_source", ""),
+                "others": [r["root"] for r in (det.get("installs") or [])][:8],
+                "repo_url": COMFY_REPO_URL,
+            },
+            "checkpoints": ckpts,
+            "checkpoint_dirs": det.get("checkpoint_dirs") or [],
+            "gpu": gpu,
+            "needs": todo,
+            "paths_yaml": write_paths_yaml() or "",
+            "workflow_ok": os.path.isfile(_WORKFLOW),
+            "env_locked": [n for n in ("WAIVEPULSE_COVER_AI", "WAIVEPULSE_COMFY_ROOT",
+                                       "WAIVEPULSE_COVER_AI_MODEL", "WAIVEPULSE_COVER_AI_PORT",
+                                       "WAIVEPULSE_COVER_AI_MIN_VRAM",
+                                       "WAIVEPULSE_COVER_AI_MODEL_DIR") if _env(n)],
+        }
+    except Exception as e:
+        return {"ok": False, "available": False, "reason": "setup check failed (%s)" % e,
+                "enabled": False, "config": {}, "effective": {}, "sources": {},
+                "comfy": {"found": False, "repo_url": COMFY_REPO_URL, "others": []},
+                "checkpoints": [], "checkpoint_dirs": [], "needs": [str(e)],
+                "gpu": {"present": False, "free_mb": None, "total_mb": None, "name": ""}}
+
+
+_TEST_STYLE = {"genre": "ambient", "mood": "calm", "direction": "photo_texture",
+               "tags": ["ambient", "texture"], "title": "Test",
+               "palette": ["#1a2648", "#cea82e", "#ece0c6"]}
+
+
+def test_render(size: int = 512, timeout: int = 300) -> dict:
+    """Paint one small real image and report what it cost. Never raises.
+
+    This is the panel's Test button: it proves the whole chain (ComfyUI starts,
+    the checkpoint loads, an image comes back, the VRAM is handed back).
+    """
+    out = {"ok": False, "seconds": 0.0, "note": "", "size": int(size or 512),
+           "vram_before_mb": None, "vram_after_mb": None, "checkpoint": "", "png": ""}
+    try:
+        out["checkpoint"] = _model_name()
+        ok, why = available()
+        if not ok:
+            out["note"] = why
+            return out
+        out["vram_before_mb"] = vram_free_mb()
+        t0 = time.time()
+        img = background(20260928, int(size or 512), _TEST_STYLE, timeout=timeout)
+        out["seconds"] = round(time.time() - t0, 1)
+        time.sleep(1.5)
+        out["vram_after_mb"] = vram_free_mb()
+        if img is None:
+            _, why2 = available()
+            out["note"] = "no image came back after %.0fs - %s" % (out["seconds"], why2)
+            return out
+        buf = io.BytesIO()
+        img.copy().resize((256, 256), Image.LANCZOS).save(buf, "PNG")
+        import base64
+        out["png"] = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+        out["ok"] = True
+        out["note"] = "%dpx image in %.0f s with %s" % (
+            out["size"], out["seconds"], out["checkpoint"])
+        return out
+    except Exception as e:
+        out["note"] = "test failed (%s)" % e
+        return out
 
 
 def _load_graph():

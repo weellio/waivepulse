@@ -125,5 +125,12 @@ echo   Setup complete!
 echo.
 echo   To launch WAIvePulse: run start.bat
 echo   Then open: http://localhost:7861
+echo.
+echo   Optional extras (nothing below is required):
+echo     Ollama            - writes lyrics on the Lyrics page
+echo     ComfyUI + an SDXL checkpoint (~7 GB) - AI cover art.
+echo                         Turn it on in the app: Generate - Advanced settings
+echo                         - Cover art - "Set up AI covers". The 12 designed
+echo                         sleeves need nothing at all. See the README.
 echo ================================================
 pause
