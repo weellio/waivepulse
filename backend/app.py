@@ -823,6 +823,59 @@ def _run_generation(job_id, lyrics, tags, title, artist, max_ms, temperature, cf
         _save_history()
 
 
+def _vram_free_mb():
+    """Free VRAM in MB, or None when there is no NVIDIA card / nvidia-smi."""
+    try:
+        r = subprocess.run(["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+                           capture_output=True, text=True, timeout=15,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if r.returncode == 0 and r.stdout.strip():
+            return int(r.stdout.strip().splitlines()[0])
+    except Exception:
+        pass
+    return None
+
+
+def _ollama_release_vram(log=None):
+    """Ask Ollama to let go of idle models.
+
+    Ollama can be told to keep a model in VRAM for ever (OLLAMA_KEEP_ALIVE=-1). That is fine
+    until something else on the same card needs the memory, which is what separation does.
+    Unloading is free: the next lyric request just reloads the model.
+    """
+    freed = []
+    try:
+        import urllib.request
+        with urllib.request.urlopen("http://127.0.0.1:11434/api/ps", timeout=5) as r:
+            loaded = json.loads(r.read().decode("utf-8")).get("models", [])
+        for m in loaded:
+            name = m.get("name") or m.get("model")
+            if not name:
+                continue
+            body = json.dumps({"model": name, "keep_alive": 0, "prompt": ""}).encode()
+            req = urllib.request.Request("http://127.0.0.1:11434/api/generate", data=body,
+                                         headers={"Content-Type": "application/json"})
+            try:
+                urllib.request.urlopen(req, timeout=20).read()
+                freed.append(name)
+            except Exception:
+                pass
+    except Exception:
+        return []
+    if freed and log is not None:
+        log.append("Asked Ollama to unload " + ", ".join(freed) + " to free GPU memory")
+    return freed
+
+
+# Windows kills a process that corrupts its heap or faults; the code is an exception value,
+# not an error message, so the output says nothing useful about running out of VRAM.
+_WIN_CRASH_CODES = {3221225477, 3221225725, 3221226356, 3221225781, 3221225620}
+
+
+def _looks_like_a_crash(rc):
+    return rc in _WIN_CRASH_CODES or rc < 0 or rc > 2 ** 30
+
+
 # ── Separation worker ─────────────────────────────────────────────────────────
 def _run_separation(sep_id, source_file, job_id):
     log = []
@@ -845,6 +898,16 @@ def _run_separation(sep_id, source_file, job_id):
         if _FFMPEG:
             cmd.insert(3, "--mp3")
 
+        free = _vram_free_mb()
+        if free is not None:
+            log.append(f"GPU: {free} MB free")
+            if free < 2500:
+                log.append("Not much GPU memory left for separation - trying to free some first")
+                if _ollama_release_vram(log):
+                    time.sleep(3)
+                    free = _vram_free_mb()
+                    log.append(f"GPU: {free} MB free after unloading")
+
         log.append(f"Starting separation: {source_path.name}")
         log.append(f"Output dir: {out_dir}")
         log.append(f"Using {'MP3' if _FFMPEG else 'WAV'} output")
@@ -864,11 +927,29 @@ def _run_separation(sep_id, source_file, job_id):
         rc = _run(cmd)
         # GPU run failed on a memory/CUDA error? The generator (HeartMuLa) is probably
         # still holding VRAM — fall back to CPU automatically (slower, but it works).
-        if rc != 0 and re.search(r"cuda|out of memory|gpu|cudnn", "\n".join(log[-12:]), re.I):
-            log.append("⚠ GPU separation failed (VRAM likely in use by the song generator) — retrying on CPU; this is slower…")
-            rc = _run(cmd + ["-d", "cpu"])
+        if rc != 0 and (_looks_like_a_crash(rc)
+                        or re.search(r"cuda|out of memory|gpu|cudnn", "\n".join(log[-12:]), re.I)):
+            if _looks_like_a_crash(rc):
+                log.append(f"⚠ Demucs was killed by Windows (code {rc}). On this card that means it ran "
+                           "out of GPU memory - the message never reaches the log.")
+                _ollama_release_vram(log)
+                time.sleep(3)
+                free = _vram_free_mb()
+                if free is not None and free >= 3000:
+                    log.append(f"⚠ {free} MB free now - trying the GPU once more…")
+                    rc = _run(cmd)
+            if rc != 0:
+                log.append("⚠ GPU separation failed (VRAM likely in use by the song generator) — retrying on CPU; this is slower…")
+                rc = _run(cmd + ["-d", "cpu"])
         if rc != 0:
             tail = "\n".join(log[-15:]) or "(no output captured)"
+            if _looks_like_a_crash(rc):
+                free = _vram_free_mb()
+                where = f" Only {free} MB of GPU memory is free." if free is not None else ""
+                raise RuntimeError(
+                    "Separation crashed, and the CPU attempt failed too." + where +
+                    " Close whatever else is using the GPU (Ollama keeps models loaded, and so does "
+                    "the song generator) and try again.\n\n--- demucs output ---\n" + tail)
             raise RuntimeError(f"Demucs exited with code {rc}.\n\n--- demucs output ---\n{tail}")
 
         ext = "mp3" if _FFMPEG else "wav"

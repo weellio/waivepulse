@@ -1353,6 +1353,24 @@ Normal. The first `POST /generate` after starting the server triggers a model lo
 
 Harmless warning from PyTorch on Windows. triton is Linux-only and is present automatically on Linux. Generation works fine on Windows without it.
 
+### Separation fails with a long number (e.g. "Demucs exited with code 3221226356")
+
+That number is a Windows crash code, not a Demucs message: the GPU ran out of memory and the
+process was killed before it could say so. The usual cause is something else holding VRAM.
+
+Ollama is the common culprit. It can be told to keep models loaded for ever, and three models
+will eat 8 GB of a 12 GB card:
+
+```
+ollama ps                       # what is loaded, and when it expires
+setx OLLAMA_KEEP_ALIVE 10m      # let models unload when idle (restart Ollama afterwards)
+```
+
+Studio now handles this itself: before separating it reports free VRAM, asks Ollama to unload
+idle models when memory is tight, retries on the GPU, and finally falls back to the CPU (slower,
+but it finishes). The HeartMuLa generator also holds VRAM while a song is generating, so
+separating during a generation is the other way to hit it.
+
 ### BPM/key chips or chord overlay are empty
 
 librosa needs a numba that supports numpy 2.x. If `python -c "import librosa"` fails with `_ARRAY_API not found`, run `pip install "numba>=0.61"` in the HeartMuLa venv. An old numba in the system Python can shadow it when the venv uses system site-packages.

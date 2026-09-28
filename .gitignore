@@ -19,3 +19,5 @@ backup_v1_*/
 # Godzilla music-video scratch / test assets — working material, not part of the app
 artwork/
 **/godzilla_mv/
+brag-output*/
+brag-assets/
