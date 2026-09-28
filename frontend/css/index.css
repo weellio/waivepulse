@@ -213,8 +213,12 @@
   .job-time { font-size: 0.68rem; color: #555; white-space: nowrap; flex-shrink: 0; }
   .job-duration { font-size: 0.68rem; color: #4a7a5a; white-space: nowrap; flex-shrink: 0; }
   .expand-icon { font-size: 0.58rem; color: #444; flex-shrink: 0; transition: transform 0.2s; line-height: 1; }
-  .job-body { max-height: 0; overflow: hidden; transition: max-height 0.35s ease; }
-  .job-body.open { max-height: 1200px; }
+  /* Accordion with no magic number: animating grid-template-rows 0fr -> 1fr lets the card be
+     exactly as tall as its content. The old `max-height: 1200px` silently cut the bottom off
+     a card once the cover panel was added, and there was nothing to scroll. */
+  .job-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.35s ease; }
+  .job-body.open { grid-template-rows: 1fr; }
+  .job-body > .job-body-inner { overflow: hidden; min-height: 0; }
   .job-body-inner { padding-top: 10px; }
 
   .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
