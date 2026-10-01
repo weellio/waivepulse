@@ -494,8 +494,8 @@ export function drawRollExprBg() {
     const t = i / N * STEPS, x = t / STEPS * g.w, y = (1 - sampleCurve(pts, t)) * (h - 4) + 2;
     i === 0 ? path.moveTo(x, y) : path.lineTo(x, y);
   }
-  c.strokeStyle = 'rgba(248,113,113,.40)';
-  c.lineWidth = 1.6; c.lineJoin = 'round';
+  c.strokeStyle = 'rgba(248,113,113,.30)';   // faint: readable against the grid, never louder than the notes
+  c.lineWidth = 1.5; c.lineJoin = 'round';
   c.stroke(path);
 }
 
