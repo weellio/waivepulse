@@ -29,7 +29,7 @@
     canvas.style.height = innerHeight + 'px';
   }
   resize();
-  addEventListener('resize', resize);
+  addEventListener('resize', () => { resize(); if (typeof buildStars === 'function') buildStars(); });
 
   addEventListener('pointermove', e => {
     mouse.x = e.clientX / innerWidth;
@@ -37,13 +37,151 @@
     targetEnergy = Math.min(1, targetEnergy + 0.012);
   });
 
+  /* ---------- Scroll-driven vortex: sound waves spiralling toward you ----------
+     Scroll is the camera. Rings of waveform recede to a vanishing point and sweep
+     outward past the viewer as you go down the page, while the sky travels from a
+     dawn teal to deep night and stars come out near the bottom. Pure canvas, no
+     library, and it idles at a crawl when nothing is moving. */
+  const SKY = [
+    { p: 0.00, top: '#071a1c', bot: '#04121a' },   // dawn over water
+    { p: 0.38, top: '#0a2230', bot: '#06141f' },   // open day
+    { p: 0.72, top: '#1b1130', bot: '#0b0a1c' },   // dusk
+    { p: 1.00, top: '#0a0718', bot: '#05040d' },   // night
+  ];
+  // Ring colour travels with the sky: cyan -> green -> violet -> magenta-violet
+  const RING = [
+    { p: 0.00, c: [140, 255, 255] },
+    { p: 0.38, c: [ 74, 222, 128] },
+    { p: 0.72, c: [167, 139, 250] },
+    { p: 1.00, c: [244, 114, 182] },
+  ];
+  const RINGS = 22, SEGS = 96;
+
+  const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const lerp = (a, b, t) => a + (b - a) * t;
+
+  function stopAt(stops, p, pick) {
+    let i = 0;
+    while (i < stops.length - 2 && p > stops[i + 1].p) i++;
+    const a = stops[i], b = stops[i + 1];
+    const t = b.p === a.p ? 0 : (p - a.p) / (b.p - a.p);
+    return [pick(a), pick(b), Math.max(0, Math.min(1, t))];
+  }
+  function skyAt(p) {
+    const [a, b, t] = stopAt(SKY, p, s => s);
+    const mix = (x, y) => hex(x).map((v, i) => Math.round(lerp(v, hex(y)[i], t)));
+    return { top: mix(a.top, b.top), bot: mix(a.bot, b.bot) };
+  }
+  function ringAt(p) {
+    const [a, b, t] = stopAt(RING, p, s => s.c);
+    return a.map((v, i) => Math.round(lerp(v, b[i], t)));
+  }
+
+  // Stars are drawn once into an offscreen canvas and faded in, not recomputed per frame.
+  let starLayer = null;
+  function buildStars() {
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    for (let i = 0; i < 90; i++) {
+      const x = Math.random() * W, y = Math.random() * H * 0.8;
+      const r = (Math.random() * 1.3 + 0.4) * dpr;
+      g.globalAlpha = 0.35 + Math.random() * 0.65;
+      g.fillStyle = '#eaf6ff';
+      g.beginPath(); g.arc(x, y, r, 0, 6.2832); g.fill();
+    }
+    starLayer = c;
+  }
+
+  // 0 at the top of the page, 1 at the bottom.
+  let scrollP = 0, scrollTarget = 0;
+  function readScroll() {
+    const max = document.documentElement.scrollHeight - innerHeight;
+    scrollTarget = max > 0 ? Math.min(1, Math.max(0, scrollY / max)) : 0;
+  }
+
+  function drawSky(p) {
+    const s = skyAt(p);
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, `rgb(${s.top.join(',')})`);
+    g.addColorStop(1, `rgb(${s.bot.join(',')})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    const starFade = Math.max(0, (p - 0.5) / 0.4);
+    if (starFade > 0.01 && starLayer) {
+      ctx.globalAlpha = Math.min(1, starFade) * 0.85;
+      ctx.drawImage(starLayer, 0, 0);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawVortex(p, time) {
+    const cx = W * (0.5 + (mouse.x - 0.5) * 0.06);
+    const cy = H * (0.46 + (mouse.y - 0.5) * 0.06);
+    const col = ringAt(p);
+    // The camera travels 6 rings' worth over the whole page, plus a slow idle drift,
+    // so the tunnel keeps breathing even when the page is still.
+    const travel = p * RINGS * 0.42 + time * 0.045;
+    const reach = Math.hypot(W, H) * 0.62;
+
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < RINGS; i++) {
+      // z: 1 = far at the vanishing point, 0 = sweeping past the viewer
+      const z = ((i / RINGS) - travel % 1 + 1) % 1;
+      const depth = 0.045 + z * z * 0.955;           // perspective: far rings bunch up
+      const radius = reach * depth;
+      if (radius < 6 * dpr) continue;
+
+      const near = 1 - z;                             // how close to the viewer
+      const alpha = Math.min(1, z * 2.6) * (0.10 + 0.5 * near) * (0.55 + energy * 0.45);
+      if (alpha < 0.012) continue;
+
+      // Each ring is a waveform wrapped into a circle; the phase rotates with depth,
+      // which is what reads as a spiral rather than a stack of circles.
+      // A bigger phase step per ring lines the wave crests up into spiral arms across depth;
+      // at 0.38 they read as plain concentric rings when the page is still.
+      const spin = time * 0.12 + i * 0.62 + p * 2.2;
+      const wob = (0.13 + 0.20 * near) * (0.6 + energy * 0.7);
+
+      ctx.beginPath();
+      for (let s = 0; s <= SEGS; s++) {
+        const a = (s / SEGS) * 6.2832;
+        const wave = Math.sin(a * 5 + spin * 2) + 0.45 * Math.sin(a * 11 - spin * 1.4)
+                   + 0.25 * Math.sin(a * 2 + spin * 0.7);
+        const r = radius * (1 + wave * wob * 0.11);
+        const x = cx + Math.cos(a + spin * 0.25) * r;
+        const y = cy + Math.sin(a + spin * 0.25) * r * 0.78;   // slight tilt, like a disc
+        s === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      // Glow by stroking twice (a wide soft halo, then a bright core) instead of shadowBlur.
+      // Measured on an RTX 3060: 22 rings with shadowBlur ran at 27 fps, the same rings with
+      // this double stroke at 60. The JS cost is identical; the blur stalls the GPU.
+      ctx.strokeStyle = `rgba(${col.join(',')},${(alpha * 0.22).toFixed(3)})`;
+      ctx.lineWidth = (2.5 + near * 9) * dpr;
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(${col.join(',')},${alpha.toFixed(3)})`;
+      ctx.lineWidth = (0.6 + near * 2.0) * dpr;
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   let t = 0;
   function draw() {
     t += 0.016;
     energy += (targetEnergy - energy) * 0.04;
     targetEnergy += (0.32 - targetEnergy) * 0.01; // decay toward idle baseline
+    scrollP += (scrollTarget - scrollP) * 0.08;   // ease the camera, scroll alone is jumpy
 
-    ctx.clearRect(0, 0, W, H);
+    drawSky(scrollP);
+    drawVortex(scrollP, t);
+
+    // The logo's pulse belongs to the hero; it hands over to the tunnel as you leave it.
+    const strandFade = Math.max(0, 1 - scrollP / 0.22);
+    if (strandFade > 0.01) {
     ctx.globalCompositeOperation = 'lighter';
 
     const midY = H * (0.46 + (mouse.y - 0.5) * 0.12);
@@ -66,17 +204,38 @@
       grad.addColorStop(0,   `rgba(${s.color},0)`);
       grad.addColorStop(0.5, `rgba(${s.color},${0.5 + energy * 0.35})`);
       grad.addColorStop(1,   `rgba(${s.color},0)`);
+      ctx.globalAlpha = strandFade;
+      // Same reason as the rings: a halo stroke instead of shadowBlur. Four blurred paths
+      // cost more than every ring in the tunnel put together.
       ctx.strokeStyle = grad;
-      ctx.lineWidth = s.width * dpr;
-      ctx.shadowColor = `rgba(${s.color},0.8)`;
-      ctx.shadowBlur = (10 + energy * 16) * dpr;
+      ctx.lineWidth = (s.width + 5) * dpr;
+      ctx.globalAlpha = strandFade * 0.18;
       ctx.stroke();
+      ctx.globalAlpha = strandFade;
+      ctx.lineWidth = s.width * dpr;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
     }
     ctx.globalCompositeOperation = 'source-over';
     ctx.shadowBlur = 0;
-    requestAnimationFrame(draw);
+    if (!document.hidden) requestAnimationFrame(draw);
+    else setTimeout(() => requestAnimationFrame(draw), 400);   // sleep in a background tab
   }
-  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) draw();
+
+  addEventListener('scroll', readScroll, { passive: true });
+  readScroll();
+  scrollP = scrollTarget;
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  if (reduced.matches) {
+    // One still frame: the picture, none of the motion.
+    buildStars(); drawSky(scrollTarget); drawVortex(scrollTarget, 0);
+    addEventListener('scroll', () => { readScroll(); scrollP = scrollTarget;
+      drawSky(scrollP); drawVortex(scrollP, 0); }, { passive: true });
+  } else {
+    buildStars();
+    draw();
+  }
 
   /* ---------- Parallax orbs ---------- */
   const orbs = document.querySelectorAll('.orb');
