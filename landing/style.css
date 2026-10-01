@@ -230,3 +230,20 @@ footer{display:flex;justify-content:space-between;align-items:center;flex-wrap:w
   .grad{animation:none}
   #bg{display:none}
 }
+
+
+/* Business use */
+.biz { max-width: 1040px; margin: 0 auto; padding: 90px 24px 10px; }
+.biz-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 34px; }
+.biz-card { background: rgba(9,11,15,.88); backdrop-filter: blur(7px);
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 16px; padding: 26px 26px 24px; }
+.biz-card h3 { font-size: 1.05rem; margin-bottom: 14px; letter-spacing: .01em; }
+.biz-card ul { list-style: none; display: flex; flex-direction: column; gap: 9px; }
+.biz-card li { padding-left: 24px; position: relative; line-height: 1.55; opacity: .9; }
+.biz-card.ok li::before { content: "\2713"; position: absolute; left: 0; color: #3ad29f; font-weight: 700; }
+.biz-card.ask li::before { content: "\2709"; position: absolute; left: 0; color: #f5b740; }
+.biz-card.ok { border-color: rgba(58,210,159,.28); }
+.biz-card.ask { border-color: rgba(245,183,64,.28); }
+.biz-note { margin: 16px 0 18px; font-size: .93rem; opacity: .78; line-height: 1.6; }
+@media (max-width: 820px) { .biz-grid { grid-template-columns: 1fr; } .biz { padding-top: 60px; } }

@@ -246,6 +246,37 @@ function cell($v) {
 </section>
 
 <!-- Final CTA -->
+<!-- Business use -->
+<section class="biz reveal" id="business">
+  <h2 class="section-title">Using it at <span class="grad">work</span></h2>
+  <p class="section-sub">Almost everything is free. One thing isn&rsquo;t, and it is easy to tell apart.</p>
+  <div class="biz-grid">
+    <div class="biz-card ok">
+      <h3>Free, forever, no permission needed</h3>
+      <ul>
+        <li>Use it yourself, at home or at work</li>
+        <li><strong>Sell the songs you make with it.</strong> The models are Apache 2.0 and MIT; nothing claims your output</li>
+        <li>Use your songs in client work, ads, games, videos</li>
+        <li>Modify it, fork it, run it on every machine in your studio</li>
+        <li>Teach with it, stream it, write about it</li>
+      </ul>
+    </div>
+    <div class="biz-card ask">
+      <h3>Email first</h3>
+      <ul>
+        <li>Selling WAIvePulse, or a product whose value is substantially this software</li>
+        <li>Running it as a paid service for other people</li>
+        <li>Charging for hosting, support or installation of it</li>
+        <li>Shipping it inside something you sell</li>
+      </ul>
+      <p class="biz-note">A commercial licence covers it. Indicative: <strong>$149/yr</strong> for a
+        one-person studio, <strong>$499/yr</strong> for a team or an embedded product. Say what you
+        are building and I will tell you honestly whether you even need one.</p>
+      <a class="btn primary" href="mailto:grandrooster@gmail.com?subject=WAIvePulse%20commercial%20licence">Ask about a licence</a>
+    </div>
+  </div>
+</section>
+
 <section class="final">
   <div class="final-card reveal">
     <h2>Make music the cloud can’t touch.</h2>
