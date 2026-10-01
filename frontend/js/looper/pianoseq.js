@@ -3,12 +3,23 @@
 // and can render the pattern straight into a loop slot with perfect timing.
 import { S } from './state.js';
 import { ensureCtx } from './core.js';
+import * as Synth from './synth.js';
 import { spawnVoice } from './synth.js';
+import { exprOn, lanePts, exprAt, exprRampPlan, exprVoice, logRamp,
+         drawExprLane } from './expression.js';
 import { drawWave, playSlot } from './loops.js';
 import { fmtSec, setStatus } from './util.js';
 import { swingOffset, humanizeTime, humanizeVel } from './groove.js';
 import { SCALES, NOTE_NAMES as SC_NAMES, inScale, snapMidi, isLocked } from './scale.js';
 import { renderPlan } from './banks.js';
+
+// The expression lane lives in expression.js; the roll is its front door so the
+// project writer, the MIDI writer and the favourites only need pianoseq.
+export {
+  exprState, setExprState, clearExpr, toggleExpr, setExprPart, toggleExprLink,
+  applyExprShape, initExpr as initExpression, exprCC1,
+} from './expression.js';
+export { drawExprLane as redrawExprLane, lanePts as exprLanePts } from './expression.js';
 
 const STEPS = 16;
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -266,8 +277,11 @@ export function setSynthMode(mode) {
   document.getElementById('pseqPlayBtn').style.display  = seqOnly;
   document.getElementById('pseqPushBtn').style.display  = seqOnly;
   document.getElementById('pseqResetBtn').style.display = seqOnly;
+  const lane = document.getElementById('exprLane');
+  if (lane) lane.style.display = mode === 'roll' ? '' : 'none';
   if (mode === 'roll' && S.pseqCells.length === 0) buildPianoRoll();
   renderSheet();
+  if (mode === 'roll') requestAnimationFrame(drawExprLane);   // after layout settles
 }
 
 export function buildPianoRoll() {
@@ -302,6 +316,7 @@ export function buildPianoRoll() {
     }
   });
   paintScaleRows();
+  drawExprLane();            // lane + the faint curve behind the notes
 }
 
 // ── Scale lock + transpose ────────────────────────────────────────────────────
@@ -424,11 +439,22 @@ export function runPseq() {
     // spawn one sustained voice per run that STARTS on this step (held = its length)
     // swing: the note starts late on odd steps and ends where its last step ends
     const on = S.pseqNextTime + swingOffset(step, stepDur, S.swing);
+    const curve = exprOn() ? lanePts('roll') : null;
     for (const r of runs) {
       if (r.start !== step) continue;
       const end  = S.pseqNextTime + r.len * stepDur + swingOffset(r.start + r.len, stepDur, S.swing);
       const when = Math.max(S.ctx.currentTime, on + humanizeTime(S.humanize));
-      spawnVoice(r.hz, { when, gate: Math.max(0.02, (end - on) * 0.92), vel: humanizeVel(0.85, S.humanize) });
+      const gate = Math.max(0.02, (end - on) * 0.92);
+      const vel  = humanizeVel(0.85, S.humanize);
+      if (!curve) { spawnVoice(r.hz, { when, gate, vel }); continue; }
+      // Expression: one voice, then a ramp every half-step across the whole held
+      // note — a 4-step note hears the curve move 8 times, not once at onset.
+      const v = exprVoice(Synth, r.hz, { when, gate, vel, expr: exprAt(curve, r.start),
+                                         seat: r.row, actx: S.ctx, dest: S.inputBus });
+      for (const pt of exprRampPlan({ pts: curve, startStep: r.start, lenSteps: r.len, onTime: when, stepDur })) {
+        v.ramp(pt.value, pt.when);
+        logRamp('roll', pt);
+      }
     }
     S.pseqNextTime += stepDur;
     S.pseqStep = (S.pseqStep + 1) % STEPS;
@@ -442,6 +468,7 @@ export function pseqVisLoop() {
   S.pseqCells.forEach(row => row.forEach((c, ci) => c.classList.toggle('cur', ci === vis)));
   const cur = document.getElementById('sheetCursor');
   if (cur) { const x = SM.leftPad + vis * SM.colW + SM.colW / 2; cur.setAttribute('x1', x); cur.setAttribute('x2', x); cur.style.opacity = 0.9; }
+  drawExprLane();                     // lane playhead + live expression read-out
   requestAnimationFrame(pseqVisLoop);
 }
 
@@ -467,12 +494,22 @@ export async function pushPseqToLoop() {
 
   // one sustained voice per run (held note), so the render matches what you hear/see
   // (same swing + humanize as live playback); with Chain on, bar by bar
+  const curve = exprOn() ? lanePts('roll') : null;
   bars.forEach((b, bi) => {
     for (const r of pseqRuns(b.roll)) {
       const on  = bi * bar + r.start * stepDur + swingOffset(r.start, stepDur, S.swing);
       const end = bi * bar + (r.start + r.len) * stepDur + swingOffset(r.start + r.len, stepDur, S.swing);
-      spawnVoice(r.hz, { when: Math.max(0, on + humanizeTime(S.humanize)), gate: Math.max(0.02, (end - on) * 0.95),
-                         vel: humanizeVel(0.85, S.humanize), actx: off, dest: off.destination });
+      const when = Math.max(0, on + humanizeTime(S.humanize));
+      const gate = Math.max(0.02, (end - on) * 0.95);
+      const vel  = humanizeVel(0.85, S.humanize);
+      if (!curve) {
+        spawnVoice(r.hz, { when, gate, vel, actx: off, dest: off.destination });
+        continue;
+      }
+      const v = exprVoice(Synth, r.hz, { when, gate, vel, expr: exprAt(curve, r.start),
+                                         seat: r.row, actx: off, dest: off.destination, live: false });
+      for (const pt of exprRampPlan({ pts: curve, startStep: r.start, lenSteps: r.len, onTime: when, stepDur }))
+        v.ramp(pt.value, pt.when);
     }
   });
   const rendered = await off.startRendering();

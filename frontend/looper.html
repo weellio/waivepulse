@@ -185,6 +185,39 @@
         <div id="keysView"><div class="kbd-wrap" id="kbdWrap"></div></div>
         <div id="rollView" style="display:none">
           <div id="pianoRoll"></div>
+<!-- expression:start -->
+          <!-- Expression lane: the dynamics curve under the roll. Drives level,
+               brightness and harmonic content together, so louder = brighter. -->
+          <div id="exprLane" style="display:none">
+            <div class="expr-hdr">
+              <span class="expr-title">EXPRESSION</span>
+              <button class="ibtn on" id="exprOnBtn" onclick="toggleExpr()"
+                      title="Expression on/off. On, the curve below drives loudness, brightness and harmonics across every held note">On</button>
+              <span class="expr-tabs">
+                <button class="expr-tab on" data-part="roll"   onclick="setExprPart('roll')"   title="Dynamics curve for the piano roll">Roll</button>
+                <button class="expr-tab"    data-part="drums"  onclick="setExprPart('drums')"  title="Dynamics curve for the drum sequencer">Drums</button>
+                <button class="expr-tab"    data-part="mic"    onclick="setExprPart('mic')"    title="Dynamics curve for the mic / synth keyboard part">Mic</button>
+                <button class="expr-tab"    data-part="global" onclick="setExprPart('global')" title="One curve any part can follow">Global</button>
+              </span>
+              <label class="expr-link" id="exprLinkWrap"
+                     title="Tick this and the part follows the Global curve instead of keeping its own">
+                <input type="checkbox" id="exprLinkChk" onchange="toggleExprLink()"> Use Global
+              </label>
+              <span class="expr-val" id="exprVal">—</span>
+            </div>
+            <canvas id="exprCanvas" height="74"
+                    title="Drag to draw · Shift-drag for a straight line · Double-click to reset that beat"></canvas>
+            <div class="expr-shapes">
+              <span class="expr-lbl">SHAPE</span>
+              <button class="beat-btn preset" onclick="applyExprShape('swell')" title="Quiet to loud across the bar">Swell &#8599;</button>
+              <button class="beat-btn preset" onclick="applyExprShape('fall')"  title="Loud to quiet across the bar">Fall &#8600;</button>
+              <button class="beat-btn preset" onclick="applyExprShape('arch')"  title="Up to the middle of the bar, then back down">Arch &#8995;</button>
+              <button class="beat-btn preset" onclick="applyExprShape('pulse')" title="An accent on every beat">Pulse &#8911;</button>
+              <button class="beat-btn preset" onclick="applyExprShape('flat')"  title="One steady dynamic (mf)">Flat &#8212;</button>
+              <span class="expr-hint">drag to draw &middot; <b>Shift</b>-drag = line &middot; <b>double-click</b> = reset that beat</span>
+            </div>
+          </div>
+<!-- expression:end -->
           <div id="rollPresets" class="beat-bar"></div>
         </div>
 
@@ -298,6 +331,54 @@
           </div>
         </div>
 
+        <!-- ensemble:start -->
+        <div class="ctrl-section ens-section">
+          <span class="sect-label">Ensemble <span class="sub">— one note played by a whole section</span></span>
+          <div class="ctrl-row">
+            <select id="ensPreset" class="at-sel ens-sel" onchange="setEnsemblePreset(this.value)"
+                    title="Named ensemble shapes. Solo (classic) is the original one-oscillator engine.">
+              <option value="solo">Solo (classic)</option>
+              <option value="duo">Duo</option>
+              <option value="trio">Trio</option>
+              <option value="section">Section</option>
+              <option value="brass">Brass section</option>
+              <option value="strings">Strings</option>
+              <option value="choir">Choir</option>
+              <option value="custom">Custom</option>
+            </select>
+            <button class="ibtn" id="ensLegatoBtn" onclick="toggleLegato()"
+                    title="A new note glides from the held one instead of retriggering. Velocity sets the glide time (hard = 50ms, soft = up to 1.7s).">⤳ Legato</button>
+            <span id="ensLoad" class="ens-load" title="Sub-voices per note × how many notes fit under the 192-oscillator cap. Past it, the quietest-oldest notes are stolen.">4 × 48 notes max</span>
+          </div>
+          <div class="ens-grid">
+            <div class="ens-col" title="How many detuned sub-voices play each note. 1 = the original engine.">
+              <span class="ens-lbl">Size</span>
+              <input type="range" id="ensSizeSlider" min="1" max="7" step="1" value="4"
+                     class="vslider" oninput="setEnsemble()">
+              <span id="ensSizeVal" class="ens-val">4 voices</span>
+            </div>
+            <div class="ens-col" title="How far apart the sub-voices are tuned, in cents. Each one also drifts slowly on its own, so they never phase into a single voice.">
+              <span class="ens-lbl">Spread</span>
+              <input type="range" id="ensSpreadSlider" min="0" max="40" step="1" value="14"
+                     class="vslider" oninput="setEnsemble()">
+              <span id="ensSpreadVal" class="ens-val">14¢</span>
+            </div>
+            <div class="ens-col" title="Onset scatter: players do not start a note on the same millisecond. 0–30 ms.">
+              <span class="ens-lbl">Stagger</span>
+              <input type="range" id="ensStagSlider" min="0" max="30" step="1" value="18"
+                     class="vslider" oninput="setEnsemble()">
+              <span id="ensStagVal" class="ens-val">18ms</span>
+            </div>
+            <div class="ens-col" title="How much the 0–1 expression value shapes the TIMBRE: louder becomes brighter and wider, not just louder. 0% = expression off.">
+              <span class="ens-lbl">Expression</span>
+              <input type="range" id="ensDepthSlider" min="0" max="100" step="1" value="70"
+                     class="vslider" oninput="setEnsemble()">
+              <span id="ensDepthVal" class="ens-val">70%</span>
+            </div>
+          </div>
+        </div>
+        <!-- ensemble:end -->
+
         <div class="ctrl-section">
           <span class="sect-label">Sample</span>
           <div class="sample-ctrl">
@@ -377,6 +458,38 @@
         </select>
         <div id="midiStat" class="midi-stat">Click Connect to use a MIDI keyboard / pads</div>
       </div>
+      <!-- space:start -->
+      <div id="spacePanel">
+        <div class="fx-hdr">Space <span class="sp-sub">&mdash; real rooms, real depth</span></div>
+        <div class="sp-row">
+          <span class="fx-lbl">Room</span>
+          <select id="spaceRoom" class="at-sel sp-sel" onchange="setSpaceRoom(this.value)"
+                  title="A recorded impulse response of an actual space. Length and file size are shown for each."></select>
+        </div>
+        <div class="sp-meta" id="spaceMeta">&mdash;</div>
+        <div class="fx-row">
+          <span class="fx-lbl" title="How much of the room you hear (was Master FX &rarr; Reverb)">Wet</span>
+          <input type="range" id="revSlider" min="0" max="1" step="0.01" value="0.2"
+                 class="vslider" oninput="setGlobalFX()"
+                 title="Global wet amount for all three mic busses">
+          <span id="revVal" class="fx-val">20%</span>
+        </div>
+        <div class="fx-row">
+          <span class="fx-lbl" title="How far apart near and far really are. 0% = everything flat at the front, 100% = a 12 m deep stage.">Depth</span>
+          <input type="range" id="spaceDepth" min="0" max="1" step="0.01" value="0.5"
+                 class="vslider" oninput="setSpaceDepth(this.value)"
+                 title="Scales every seat's distance: pre-delay, air absorption, level drop and wet/dry all follow it">
+          <span id="spaceDepthVal" class="fx-val">50%</span>
+        </div>
+        <div class="sp-row sp-live">
+          <span class="fx-lbl" title="Where the keys / drums / mic you are playing live sit in the room">You</span>
+          <span class="sp-seat-btns" id="spaceLiveSeats"></span>
+        </div>
+        <div class="sp-seats-hdr">Seats &mdash; front to back</div>
+        <div id="spaceSlotSeats" class="sp-seats-grid"></div>
+        <div id="spaceStat" class="midi-stat">3 mic busses (close &middot; tree &middot; far)</div>
+      </div>
+      <!-- space:end -->
       <div id="airBand">
         <div class="fx-hdr">Air Band <span style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--b3)">— webcam hands</span> <span id="airDot" class="midi-dot"></span></div>
         <div class="air-stage" id="airStage">
@@ -403,12 +516,6 @@
       </div>
       <div id="masterFX">
         <div class="fx-hdr">Master FX</div>
-        <div class="fx-row">
-          <span class="fx-lbl">Reverb</span>
-          <input type="range" id="revSlider" min="0" max="1" step="0.01" value="0"
-                 class="vslider" oninput="setGlobalFX()">
-          <span id="revVal" class="fx-val">0%</span>
-        </div>
         <div class="fx-row">
           <span class="fx-lbl">Delay</span>
           <input type="range" id="dlySlider" min="0" max="1" step="0.01" value="0"
@@ -505,7 +612,7 @@
         <span class="sa-fld">fade out <input type="number" id="mo-fadeout" min="0" max="30" step="0.5" value="2"> s</span>
         <label class="sa-chk"><input type="checkbox" id="mo-norm" checked> normalize to <input type="number" id="mo-target" min="-12" max="0" step="0.5" value="-1" style="width:50px"> dBFS</label>
         <label class="sa-chk"><input type="checkbox" id="mo-limit" checked> soft limiter</label>
-        <label class="sa-chk"><input type="checkbox" id="mo-fx"> bake master FX (reverb/delay)</label>
+        <label class="sa-chk" title="Render the Space (room + per-loop seats) and the master Delay into the song"><input type="checkbox" id="mo-fx"> bake Space + Delay</label>
         <span class="sa-fld">tail <input type="number" id="mo-tail" min="0" max="10" step="0.5" value="2"> s</span>
         <label class="sa-chk"><input type="checkbox" id="mo-24"> 24-bit</label>
         <span class="sa-fld">format
@@ -559,7 +666,7 @@
         <div class="help-section-title">💾 Project — save, open, import</div>
         <table class="help-table"><tbody>
           <tr><td>Name box (top bar)</td><td>Project name — used for the <b>.wploop</b>, export and MIDI file names</td></tr>
-          <tr><td><b>💾 Save</b> · <kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>Downloads <b>&lt;name&gt;.wploop</b> — one file with every loop (lossless), per-loop volume / EQ / sync / trim, BPM, count-in, swing, humanize, scale + transpose, drum pattern (velocity, chance, ratchets), piano roll, synth + ADSR + filter + arp, keyboard sample, master FX, banks A–D + chain, and the Song Builder arrangement</td></tr>
+          <tr><td><b>💾 Save</b> · <kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>Downloads <b>&lt;name&gt;.wploop</b> — one file with every loop (lossless), per-loop volume / EQ / sync / trim, BPM, count-in, swing, humanize, scale + transpose, drum pattern (velocity, chance, ratchets), piano roll, synth + ADSR + filter + arp, keyboard sample, master FX, Space (room, wet, depth, per-loop seats), banks A–D + chain, and the Song Builder arrangement</td></tr>
           <tr><td><b>📂 Open</b> · drag &amp; drop</td><td>Restore a .wploop exactly as saved. Drag a .wploop onto the page to open it. Older or newer files open too — anything missing keeps its default</td></tr>
           <tr><td><b>🎼 Import MIDI</b> · drag &amp; drop</td><td>Load a .mid / .midi: channel 10 fills the drum grid (GM map, fast repeats become ratchets), all other channels fill the piano roll — snapped to 16ths and folded by octaves into the roll's two octaves. Offers the file's tempo. A longer file can go into banks A–D (one bar each) with a chain</td></tr>
           <tr><td>Unsaved work</td><td><b>✕ Clear All</b>, <b>📂 Open</b> and closing the tab ask first when there are loops or patterns you haven't saved</td></tr>
@@ -632,6 +739,23 @@
         </tbody></table>
       </div>
 
+      <!-- ensemble:start help -->
+      <div class="help-section">
+        <div class="help-section-title">🎻 Ensemble &amp; Expression</div>
+        <p class="help-p">Every note used to be one oscillator: perfectly in tune, perfectly in time, one timbre — which is exactly why it sounded flat. Now one note is played by a <b>section</b>: up to seven sub-voices, each with its own tuning, stereo seat, start time, attack and slow pitch drift, and one continuously automatable <b>expression</b> value that opens the timbre as it rises. Applies to the keyboard, the piano roll, <b>→ Loop</b> renders and every export — what you hear is what the WAV contains. (Guitar mode keeps its own pluck engine.)</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>Preset</b> dropdown</td><td>Named shapes: <b>Solo (classic)</b> is the original single-oscillator engine, bit for bit. Then Duo · Trio · Section · Brass section · Strings · Choir. Moving any slider switches the box to <i>Custom</i></td></tr>
+          <tr><td><b>Size</b> 1–7</td><td>Sub-voices per note. Each gets its own detune (never two the same), its own seat across the stereo field, 0–30 ms of onset scatter, a slightly different attack and filter cutoff, and an independent slow pitch drift so they never phase into one voice</td></tr>
+          <tr><td><b>Spread</b> 0–40¢</td><td>How far apart the sub-voices are tuned, in cents. Wider = thicker and more "section", narrower = tighter and more "one player". Expression widens it further as the note gets louder</td></tr>
+          <tr><td><b>Stagger</b> 0–30 ms</td><td>Onset scatter. Real players do not start a note on the same millisecond; the first sub-voice is always on time, so the note never feels late</td></tr>
+          <tr><td><b>Expression</b> 0–100%</td><td>How much the note's 0–1 expression value shapes the <b>timbre</b>, not just the level: as it rises the voice gets louder <i>and</i> brighter (filter cutoff opens) <i>and</i> wider (detune spread grows) <i>and</i> richer (a saturated harmonic path blends in). At 0% expression is off entirely. Each note also swells slightly into its own onset, so a key press has a shape instead of a step</td></tr>
+          <tr><td><b>⤳ Legato</b></td><td>A new note while one is still held <b>glides</b> to the new pitch instead of retriggering the envelope. Velocity sets the transition time: a hard note slides in 50 ms, a soft one takes up to 1.7 s</td></tr>
+          <tr><td>Voice cap</td><td>The read-out next to Legato shows how many notes fit under the 192-oscillator cap at the current size. Past it, the quietest-then-oldest notes are stolen with a fast fade, so a big chord or a stuck sustain pedal cannot make the page crackle</td></tr>
+          <tr><td>Remembered</td><td>All five settings are stored per browser, so the Looper opens with the section you were last using</td></tr>
+        </tbody></table>
+      </div>
+      <!-- ensemble:end help -->
+
       <div class="help-section">
         <div class="help-section-title">▦ Piano Roll</div>
         <table class="help-table"><tbody>
@@ -645,6 +769,22 @@
           <tr><td><b>Reset</b></td><td>Clear all notes</td></tr>
           <tr><td><b>Scale Lock</b> (key + scale)</td><td>Major, Minor, Dorian, Mixolydian, Pentatonic maj/min, Blues. Out-of-scale rows dim, and clicking one drops the note on the nearest in-scale row. The synth keyboard and MIDI input snap too (ties snap down). <b>Off</b> = chromatic</td></tr>
           <tr><td><b>Transpose − / +</b></td><td>Shift the whole roll pattern one semitone (up to ±12). With scale lock on, the key moves along with it so the pattern stays in key</td></tr>
+        </tbody></table>
+      </div>
+
+      <div class="help-section">
+        <div class="help-section-title">〰 Expression lane (dynamics curve)</div>
+        <p class="help-p">The red curve under the roll is a <b>continuous dynamics line</b>, 0&nbsp;to&nbsp;1 across the bar — the thing that makes an orchestral mock-up sound played rather than typed. It drives <b>loudness, brightness and harmonic content together</b>, so louder is also brighter and richer. A held note hears the curve <i>move across its whole length</i>, not one value at its onset.</p>
+        <table class="help-table"><tbody>
+          <tr><td><b>Drag</b> on the lane</td><td>Draw freehand. Points snap to the step grid; the line between them stays smooth</td></tr>
+          <tr><td><kbd>Shift</kbd>+drag</td><td>Straight line from where you pressed to where you let go (clean crescendos)</td></tr>
+          <tr><td><b>Double-click</b></td><td>Reset that beat (its 4 steps) back to the middle, <i>mf</i></td></tr>
+          <tr><td><b>Swell · Fall · Arch · Pulse · Flat</b></td><td>One-click shapes: quiet&rarr;loud, loud&rarr;quiet, up-and-back, an accent on every beat, one steady dynamic</td></tr>
+          <tr><td><b>On / Off</b></td><td>Off plays every note at a flat dynamic (the old behaviour)</td></tr>
+          <tr><td><b>Roll · Drums · Mic · Global</b></td><td>One lane per part, plus a Global lane. Tick <b>Use Global</b> and that part follows the Global curve instead of its own</td></tr>
+          <tr><td>Faint curve <b>in the roll</b></td><td>The same line is drawn across the pitch grid, so you read dynamics against pitch at a glance</td></tr>
+          <tr><td>Saved with everything</td><td>Melody <b>&#9733; favorites</b>, the <b>.wploop</b> project, and your browser (so a reload keeps it). <b>&rarr; Loop</b> renders the expression into the audio, and <b>&#8681; MIDI</b> writes it as <b>CC1</b> (mod wheel) next to the notes</td></tr>
+          <tr><td>Melody presets</td><td>Each premade progression loads a matching curve (arch, swell or per-beat pulse) so it arrives alive</td></tr>
         </tbody></table>
       </div>
 
@@ -720,8 +860,13 @@
           <tr><td>Quantize</td><td>Snap the first loop's length to the nearest bar</td></tr>
           <tr><td><b>Swing</b></td><td>Pushes every off-beat 16th late. <b>0%</b> = straight, <b>50%</b> = light shuffle, <b>100%</b> = full triplet feel (off-beats delayed ⅓ of a 16th). Shared by the drum sequencer and piano roll, and baked into <b>→ Loop</b> renders and MIDI export</td></tr>
           <tr><td><b>Humanize</b></td><td>Random timing (up to ±15 ms) and velocity (±20%) per hit at 100%. Applies to playback and → Loop renders (not MIDI export)</td></tr>
-          <tr><td>Master FX</td><td>Global Reverb, Delay (tempo-synced), and Volume</td></tr>
-          <tr><td>⬇ Export</td><td>Render all loops (one cycle, EQ + volume baked in) in the format picked in the top bar</td></tr>
+          <tr><td>Master FX</td><td>Delay (tempo-synced) and Volume. Reverb moved into <b>Space</b> below</td></tr>
+          <tr><td><b>Space</b> &middot; Room</td><td>Convolves with a <b>recorded impulse response of a real place</b> &mdash; small room, live room, studio chamber, concert hall, cathedral, steel plate, spring tank, amp cab. The line under the picker shows that room's tail length, RT60, file size and whether it is stereo or mono. The files ship with the app (<code>assets/ir/</code>, all MIT &mdash; see <code>assets/ir/LICENSES.md</code>)</td></tr>
+          <tr><td><b>Space</b> &middot; Wet</td><td>How much room you hear. This <i>is</i> the old Master FX Reverb slider, so every saved project's reverb setting still means the same thing</td></tr>
+          <tr><td><b>Space</b> &middot; Depth</td><td>How far apart <b>near</b> and <b>far</b> really are. <b>0%</b> flattens the mix to one plane; <b>100%</b> is a 12 m deep stage. Everything a distance implies follows it at once: pre-delay (about 1 ms per 34 cm), a gentle low-pass for air absorption, a drop in dry level, and a rising wet/dry ratio</td></tr>
+          <tr><td><b>Space</b> &middot; You</td><td>Where the keys / drums / mic you are playing <i>live</i> sit. Recording is unaffected &mdash; a recorded loop is always dry, so the room is added once, on playback, and never baked into the take twice</td></tr>
+          <tr><td><b>Space</b> &middot; Seats</td><td><b>near</b> / <b>mid</b> / <b>far</b> per loop slot. Put the drums near and a pad far and the stack separates front to back instead of stacking up in one spot. Internally there are only <b>three</b> convolution busses &mdash; close, tree and far mic positions on the same room, at rising pre-delays &mdash; and a seat is just a mix between them, so 50 voices cost no more convolution than one</td></tr>
+          <tr><td>⬇ Export</td><td>Render all loops (one cycle, EQ + volume + <b>Space</b> baked in) in the format picked in the top bar. With Wet above 0 the render runs several cycles and keeps the last one, so the room is in steady state and the exported cycle still loops seamlessly</td></tr>
           <tr><td><b>Export</b> format (top bar)</td><td><b>WAV</b> (16-bit) or <b>MP3 320</b> kbps</td></tr>
           <tr><td><b>Loudness</b> target (top bar)</td><td><b>Off</b>, <b>−14 LUFS</b> (Spotify / YouTube), <b>−16 LUFS</b> (Apple), <b>−9 LUFS</b> (loud club master). The mix is gained to the target and a look-ahead limiter keeps true peak at or below <b>−1 dBTP</b></td></tr>
           <tr><td>LUFS read-out</td><td>After each export: integrated loudness + true peak, e.g. <b>−14.0 LUFS · −1.1 dBTP</b> (hover for before/after + gain). Turns red if the peak is over −1 dBTP with loudness off</td></tr>

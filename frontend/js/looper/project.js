@@ -15,12 +15,14 @@ import { clearAll, ensureGain, drawWave, slotUI, setVol } from './loops.js';
 import { rotateBuffer } from './looptrim.js';
 import { setBand } from '../shared/eq7.js';
 import { setDrumMode, setStepEdit, stopSeq, applySeqPattern } from './drums.js';
-import { setSynthMode, stopPseq, applyPseqPattern, setScaleRoot, setScaleName, setRollTransposeReadout } from './pianoseq.js';
+import { setSynthMode, stopPseq, applyPseqPattern, setScaleRoot, setScaleName, setRollTransposeReadout,
+         exprState, setExprState } from './pianoseq.js';
 import { chBPM, chCountIn, setSwing, setHumanize, toggleQuantize } from './transport.js';
 import { setWave, toggleGuitar, setGuitarVol, setADSR, setFilter, setArpRate, setArpMode, toggleArp, chOctave } from './synth.js';
 import { storeBank, setBanks, setChainStr, paintBanks } from './banks.js';
 import { getSongState, setSongState } from './songbuilder.js';
 import { safeName } from './loudexport.js';
+import { spaceState, applySpaceState } from './space.js';
 
 export const PROJECT_VERSION = 1;
 const APP = 'WAIvePulse Looper';
@@ -43,7 +45,7 @@ export function collectProject() {
     transport: { bpm: S.bpm, countIn: S.countIn, swing: S.swing, humanize: S.humanize, quantize: S.quantize },
     scale: { root: S.scaleRoot, name: S.scaleName, transpose: S.rollTranspose },
     drums: { mode: S.drumMode, stepEdit: S.stepEdit, pattern: S.seqPattern, prob: S.seqProb, ratchet: S.seqRatchet },
-    roll: { pattern: S.pseqPattern },
+    roll: { pattern: S.pseqPattern, expr: exprState() },   // + the expression (dynamics) lanes
     synth: {
       mode: S.synthMode, wave: S.wave, guitar: S.guitarMode, guitarVol: S.guitarVol, octave: S.octave,
       attackMs: S.attackMs, decayMs: S.decayMs, sustain: S.sustainLevel, releaseMs: S.releaseMs,
@@ -63,6 +65,10 @@ export function collectProject() {
       slot: S.masterSlot,
       reverb: parseFloat(val('revSlider') ?? 0), delay: parseFloat(val('dlySlider') ?? 0), volume: parseFloat(val('masterVolSlider') ?? 0.85),
     },
+    // Space: which room, how wet, how deep, and where each loop sits in it.
+    // master.reverb above is the SAME number as space.amount (the migrated
+    // Reverb slider), kept so older readers of the format still work.
+    space: spaceState(),
     song: getSongState(),
     export: { fmt: val('expFmt') || 'wav', target: val('expTarget') || 'off' },
   };
@@ -217,6 +223,7 @@ export async function applyProject(p, files) {
   setBanks(Array.isArray(bk.list) ? bk.list : [], num(bk.current, 0));
   if (p.drums?.pattern) applySeqPattern(p.drums.pattern, p.drums.prob, p.drums.ratchet);
   if (p.roll?.pattern) applyPseqPattern(p.roll.pattern);
+  if (p.roll?.expr) setExprState(p.roll.expr);          // expression lanes (older files just keep theirs)
   storeBank();
   S.chainOn = !!bk.chainOn; S.chainPos = 0; S.bankQueued = null;
   setChainStr(typeof bk.chain === 'string' ? bk.chain : S.chainStr);
@@ -231,6 +238,11 @@ export async function applyProject(p, files) {
   setDrumMode(p.drums?.mode === 'seq' ? 'seq' : 'pads');
   setSynthMode(sy.mode === 'roll' ? 'roll' : 'keys');
   if (['steps', 'prob', 'ratchet'].includes(p.drums?.stepEdit)) setStepEdit(p.drums.stepEdit);
+
+  // space (rooms + depth) — a project saved before Space existed has no `space`
+  // block, so every field falls back to its default: close seats, one lightly-wet
+  // studio chamber. Its master.reverb still drives the wet amount below.
+  applySpaceState(p.space ? { ...p.space, amount: num(p.master?.reverb, p.space.amount) } : null);
 
   // master FX
   const m = p.master || {};

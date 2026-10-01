@@ -116,7 +116,8 @@ Open the Looper page at any time — it works independently of the AI generation
 - **Per-loop 7-band parametric EQ:** click ⚌ EQ on any loop for a spectrum + draggable curve (HPF · shelves · bells · LPF), baked into the export
 - **Recording feedback:** a blinking count-in, a sweep bar, and a beat-pulsing border show you the timing as you play in
 - **Tempo tools:** BPM, tap tempo, metronome, adjustable count-in, quantize, and a per-loop ½-beat nudge
-- **Master FX:** global reverb, delay (tempo-synced), and master volume
+- **Space — real rooms with front-to-back depth:** convolution with *recorded* impulse responses of actual places (small room, live room, studio chamber, concert hall, cathedral, steel plate, spring tank, amp cab — bundled in `assets/ir/`, 828 KiB, all MIT). Internally there are exactly **three** shared convolution busses — close, tree and far mic positions on the same room — so a voice is *placed* rather than reverberated: each loop slot picks a seat (**near / mid / far**) and gets its own pre-delay (~1 ms per 34 cm), air-absorption low-pass, dry level drop and wet/dry ratio. A **Depth** slider scales the whole stage from flat to 12 m deep. Three convolvers no matter how many voices play
+- **Master FX:** delay (tempo-synced) and master volume
 - **F1–F6** record loops hands-free (each card shows its key); **Export Mix** renders all loops to a single WAV
 - **MIDI export:** a "MIDI" button next to Export renders the piano roll and drum pattern as a Standard MIDI File (.mid) — SMF Format 1, 480 PPQN, melody track + drum track on channel 9 with GM percussion mapping
 - **Vocal harmonizer:** an AudioWorklet adds pitch-shifted harmony voices to the mic input — two configurable voices (default +4 and +7 semitones, major 3rd and perfect 5th) with per-voice volume and semitone controls, wired after autotune in the mic chain
@@ -999,13 +1000,52 @@ Export the piano roll and drum pattern as a Standard MIDI File (.mid).
 
 File: `frontend/js/looper/midi-export.js`
 
+#### Space (rooms + depth)
+
+Reverb is not one convolver fed with generated noise any more. `frontend/js/looper/space.js`
+builds **three** shared convolution busses from the *same* room impulse response — a close
+mic, a "tree" (mid) and a far/room pair — at rising pre-delays and falling brightness, and
+then places each voice between them.
+
+A **seat** is `{pan, distance}`. Its distance decides, all at once:
+
+| From distance | What it drives | At 0 → 1 (Depth 100 %) |
+|---|---|---|
+| pre-delay | `DelayNode` before the sends, ~1 ms per 34 cm | 0 → 35 ms (plus the bus's own 4 / 22 / 55 ms) |
+| air absorption | `BiquadFilter` low-pass on the dry **and** the send | 19 kHz → ~3 kHz |
+| level | dry gain `1 / (1 + 1.3·d)` | 0 → −7 dB |
+| wet | send gain `0.40 + 1.45·d` | 0 → +13 dB |
+| mic mix | triangular crossfade across close / tree / far | 0.78 close → 0.78 far |
+
+Measured on a 1 ms click through the Concert Hall at Depth 100 %: wet onset
+**4.7 → 22.4 → 40.3 ms**, energy above 4 kHz **−1.3 → −3.4 → −9.0 dB**, wet/dry
+**0.16 → 0.52 → 1.50** (+19.6 dB) — later, darker, quieter and wetter, together.
+
+| Control | What it does |
+|---|---|
+| Room | Which recorded space. The line under it shows tail length, RT60, file size, stereo/mono |
+| Wet | Global wet amount. This *is* the old Master FX **Reverb** slider (same id, same project field), so saved projects keep their setting |
+| Depth | Scales every seat's distance. 0 % = flat/2D, 100 % = a 12 m stage |
+| You | Where the live keys / drums / mic sit. Recording still taps upstream, so takes stay dry |
+| Seats L1–L6 | near / mid / far per loop slot — drums up front, pads at the back |
+
+The rooms live in `assets/ir/*.flac` (16-bit, 48 kHz, truncated at −60 dB with a 30 ms fade).
+`scripts/fetch_irs.py` downloads and prepares them; `assets/ir/LICENSES.md` names every source
+and its licence (all MIT) and records which sets were rejected and why.
+
+The same space is rebuilt inside the `OfflineAudioContext`, so **⬇ Export** and the Song
+Builder render with the identical room and seats. For a one-cycle loop export the render runs
+several cycles and keeps the last, so the reverb is in steady state and the exported cycle
+still joins itself seamlessly.
+
+File: `frontend/js/looper/space.js`
+
 #### Master FX
 
 A panel on the right applies global effects to the whole mix off the master bus:
 
 | Control | What it does |
 |---|---|
-| Reverb | Wet level of a synthetic ~1.5 s convolution reverb |
 | Delay | Wet level of a tempo-synced echo (1/8-note, fed back at ~38 %) |
 | Volume | Master output level (0–150 %) |
 

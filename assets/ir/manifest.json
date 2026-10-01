@@ -1,0 +1,121 @@
+{
+ "version": 1,
+ "sampleRate": 48000,
+ "truncateDb": -60.0,
+ "fadeMs": 30.0,
+ "generatedBy": "scripts/fetch_irs.py",
+ "source": {
+  "repo": "itsmusician/IR-Library",
+  "rev": "main",
+  "url": "https://github.com/itsmusician/IR-Library",
+  "license": "MIT",
+  "holder": "Copyright (c) 2022 Conner",
+  "license_url": "https://github.com/itsmusician/IR-Library/blob/main/License.md"
+ },
+ "rooms": [
+  {
+   "id": "small-room",
+   "label": "Small Room",
+   "file": "small-room.flac",
+   "seconds": 0.535,
+   "channels": 2,
+   "sampleRate": 48000,
+   "rt60": 0.476,
+   "peak": 0.8913,
+   "bytes": 41304,
+   "note": "Hotel guest room, XY pair, balloon burst - tight, dry, close walls.",
+   "license": "MIT"
+  },
+  {
+   "id": "live-room",
+   "label": "Live Room",
+   "file": "live-room.flac",
+   "seconds": 0.516,
+   "channels": 2,
+   "sampleRate": 48000,
+   "rt60": 0.623,
+   "peak": 0.8913,
+   "bytes": 44330,
+   "note": "Open residential living room - wood floor slap, drum-friendly.",
+   "license": "MIT"
+  },
+  {
+   "id": "studio-chamber",
+   "label": "Studio Chamber",
+   "file": "studio-chamber.flac",
+   "seconds": 0.862,
+   "channels": 2,
+   "sampleRate": 48000,
+   "rt60": 1.079,
+   "peak": 0.8913,
+   "bytes": 78493,
+   "note": "Treated club room - diffuse, even decay, the classic echo-chamber send.",
+   "license": "MIT"
+  },
+  {
+   "id": "concert-hall",
+   "label": "Concert Hall",
+   "file": "concert-hall.flac",
+   "seconds": 3.759,
+   "channels": 2,
+   "sampleRate": 48000,
+   "rt60": 4.595,
+   "peak": 0.8913,
+   "bytes": 305237,
+   "note": "Large ballroom - long, wide, orchestral tail.",
+   "license": "MIT"
+  },
+  {
+   "id": "cathedral",
+   "label": "Cathedral",
+   "file": "cathedral.flac",
+   "seconds": 2.539,
+   "channels": 2,
+   "sampleRate": 48000,
+   "rt60": 4.007,
+   "peak": 0.8913,
+   "bytes": 120173,
+   "note": "The Pantheon, Rome - stone dome, enormous and dark.",
+   "license": "MIT"
+  },
+  {
+   "id": "plate",
+   "label": "Steel Plate",
+   "file": "plate.flac",
+   "seconds": 3.024,
+   "channels": 2,
+   "sampleRate": 48000,
+   "rt60": 3.25,
+   "peak": 0.8913,
+   "bytes": 122865,
+   "note": "Real steel reverb plate, swept - dense, metallic, no early reflections.",
+   "license": "MIT"
+  },
+  {
+   "id": "spring",
+   "label": "Spring Tank",
+   "file": "spring.flac",
+   "seconds": 2.6,
+   "channels": 2,
+   "sampleRate": 48000,
+   "rt60": 3.275,
+   "peak": 0.8913,
+   "bytes": 131759,
+   "note": "Combo-amp spring tank, swept - boingy, mid-forward, surf guitar.",
+   "license": "MIT"
+  },
+  {
+   "id": "cab",
+   "label": "Amp Cab",
+   "file": "cab.flac",
+   "seconds": 0.091,
+   "channels": 1,
+   "sampleRate": 48000,
+   "rt60": 0.128,
+   "peak": 0.8913,
+   "bytes": 3492,
+   "note": "Twin 12\" combo cab, chorus off - speaker colour, not a room.",
+   "license": "MIT"
+  }
+ ]
+}

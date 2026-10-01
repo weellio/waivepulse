@@ -576,3 +576,113 @@ input[type=range].vslider.groove-slider{flex:0 0 54px;width:54px}
 #dropHint.show{display:flex}
 #dropHint>div{border:2px dashed var(--accent);border-radius:14px;padding:34px 48px;color:var(--accent);
   font-size:16px;background:rgba(140,255,255,.05)}
+
+/* ── Ensemble & Expression ──────────────────────────────────────────────────── */
+/* One note = up to 7 sub-voices (see js/looper/ensemble.js). Same 4-up compact
+   grid as the ADSR row so the panel reads as one family. In Roll mode these
+   controls get squeezed into a ~350px (sometimes ~130px) right-hand column, so
+   the section sizes itself off its OWN width with a container query rather than
+   the viewport — nothing here clips when the roll takes the space. */
+.ens-section{container-type:inline-size}
+.ens-section .ctrl-row{margin-bottom:8px;min-width:0}
+.ens-sel{flex:0 1 auto;min-width:0;max-width:150px;font-size:10px;padding:2px 4px}
+.ens-load{margin-left:auto;font-size:9px;font-weight:700;letter-spacing:.04em;
+  color:var(--txt2);font-variant-numeric:tabular-nums;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.ens-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:4px;min-width:0}
+.ens-col{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:5px;min-width:0}
+.ens-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--txt3);white-space:nowrap}
+.ens-val{font-size:10px;font-weight:700;color:var(--accent);text-align:right;min-width:42px;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.ens-col .vslider{width:100%;min-width:24px}
+@container (max-width:640px){
+  .ens-grid{grid-template-columns:repeat(2,1fr);gap:7px 12px}
+}
+@container (max-width:330px){
+  .ens-grid{grid-template-columns:1fr;gap:5px}
+  .ens-lbl{font-size:8px}
+  .ens-val{min-width:36px}
+  .ens-col .vslider{min-width:18px}
+  .ens-load{display:none}
+  .ens-sel{max-width:100%}
+}
+/* Fallback for engines without container queries: fall back to the viewport. */
+@supports not (container-type:inline-size){
+  @media (max-width:1500px){ .ens-grid{grid-template-columns:repeat(2,1fr);gap:7px 12px} }
+}
+
+/* ── Expression lane (the dynamics curve under the piano roll) ─────────────────
+   High contrast, one colour (red = dynamics), no decoration that competes with
+   the note grid above it. The lane canvas is drawn at exactly the roll's step
+   pitch, so a point in the lane sits under the step it belongs to. */
+#exprLane{margin:6px 0 2px;width:max-content;max-width:100%}
+#exprLane.expr-off{opacity:.45}
+.expr-hdr{display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap}
+.expr-title{font-size:9px;font-weight:800;letter-spacing:.11em;color:#f87171}
+.expr-tabs{display:flex;gap:2px;margin-left:2px}
+.expr-tab{background:var(--b1);border:1px solid var(--b2);color:var(--txt2);
+  font-size:10px;font-weight:600;padding:2px 8px;border-radius:var(--rs);cursor:pointer;
+  transition:all .1s}
+.expr-tab:hover{color:var(--txt);border-color:var(--b3)}
+.expr-tab.on{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.55);color:#fca5a5}
+.expr-link{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--txt2);
+  cursor:pointer;user-select:none}
+.expr-link input{accent-color:#f87171;width:12px;height:12px;cursor:pointer}
+.expr-val{margin-left:auto;font-size:11px;font-weight:700;color:#fca5a5;
+  font-variant-numeric:tabular-nums;min-width:30px;text-align:right}
+#exprCanvas{display:block;background:#0c0c11;border:1px solid var(--b2);
+  border-radius:4px;cursor:crosshair;touch-action:none}
+#exprCanvas:hover{border-color:rgba(248,113,113,.4)}
+.expr-shapes{display:flex;align-items:center;gap:4px;margin-top:4px;flex-wrap:wrap}
+.expr-lbl{font-size:9px;font-weight:800;letter-spacing:.09em;color:var(--txt3)}
+.expr-hint{font-size:9.5px;color:var(--txt2);margin-left:4px;line-height:1.5}
+.expr-hint b{color:var(--txt);font-weight:700}
+
+/* The same curve, faint, across the pitch grid — dynamics read against pitch. */
+#rollExprBg{position:absolute;top:0;pointer-events:none}
+
+/* ── Space panel (real rooms + front-to-back depth) ───────────────────────────
+   Same card language as #masterFX / #midiIn so the side column stays one object.
+   The seat grid is the only new idea: six compact near/mid/far pickers, one per
+   loop slot, so a stack of loops can be spread front to back at a glance. */
+#spacePanel{flex:0 0 auto;background:var(--s1);border:1px solid var(--b1);
+  border-radius:var(--r);padding:12px 14px 11px}
+#spacePanel .fx-hdr{margin-bottom:9px;padding-bottom:7px}
+#spacePanel .sp-sub{text-transform:none;letter-spacing:0;font-weight:400;color:var(--b3)}
+#spacePanel .fx-row{margin-bottom:9px}
+.sp-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.sp-sel{font-size:10.5px;padding:3px 4px;min-width:0}
+.sp-meta{font-size:9px;color:var(--txt2);line-height:1.4;margin:-2px 0 9px 0;
+  font-variant-numeric:tabular-nums;cursor:help}
+.sp-live{margin-bottom:9px}
+.sp-seats-hdr{font-size:8.5px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--txt3);margin:2px 0 5px;padding-top:8px;
+  border-top:1px solid var(--b1);line-height:1.5}
+
+/* six rows of near / mid / far */
+.sp-seats-grid{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}
+.sp-seat-row{display:flex;align-items:center;gap:6px}
+.sp-seat-lbl{font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--txt3);
+  min-width:16px;flex:0 0 auto;cursor:help}
+.sp-seat-btns{display:flex;gap:2px;flex:1}
+.sp-seat{flex:1;background:var(--b1);border:1px solid var(--b2);color:var(--txt2);
+  font-size:9.5px;font-weight:600;padding:2px 0;border-radius:var(--rs);
+  cursor:pointer;transition:all .1s;text-transform:lowercase;letter-spacing:.02em}
+.sp-seat:hover{color:var(--txt);border-color:var(--b3)}
+/* near = up front (cyan), far = pushed back (violet): the colour itself reads as depth */
+.sp-seat.on{background:var(--accent-bg);border-color:rgba(140,255,255,.5);color:var(--accent)}
+.sp-seat[data-seat="mid"].on{background:rgba(167,139,250,.10);
+  border-color:rgba(167,139,250,.45);color:#c4b5fd}
+.sp-seat[data-seat="far"].on{background:rgba(167,139,250,.18);
+  border-color:rgba(167,139,250,.65);color:#ddd6fe}
+#spaceStat{padding-top:7px;border-top:1px solid var(--b1)}
+
+/* Narrow windows (1366 and below): the fixed-width side column has to hold the
+   mic, MIDI, Air Band, Space and Master FX cards, so Space gives back padding. */
+@media (max-width:1400px){
+  #spacePanel{padding:10px 11px 9px}
+  #spacePanel .fx-row,.sp-row{margin-bottom:7px}
+  .sp-meta{font-size:8.5px;margin-bottom:7px}
+  .sp-seats-grid{gap:2px}
+}

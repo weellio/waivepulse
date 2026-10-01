@@ -4,6 +4,38 @@ import { ensureCtx } from './core.js';
 import { setStatus } from './util.js';
 import { refreshRollOctave } from './pianoseq.js';
 import { snapMidi, isLocked } from './scale.js';
+import { buildVoice, PRESETS, glideMsFor, oscCount, voiceCount, MAX_OSC } from './ensemble.js';
+
+// ── Ensemble settings ─────────────────────────────────────────────────────────
+// One note = 1–7 detuned, staggered, seated sub-voices (see ensemble.js). These
+// live on S like every other synth setting; the `solo` preset is the old engine.
+const ENS_KEY = 'wp.looper.ens';
+const P0 = PRESETS.section;
+S.ens = { size: P0.size, spread: P0.spread, stagger: P0.stagger, depth: P0.depth,
+          preset: 'section', legato: false };
+try {
+  const saved = JSON.parse(localStorage.getItem(ENS_KEY) || 'null');
+  if (saved && typeof saved === 'object')
+    for (const k of ['size', 'spread', 'stagger', 'depth', 'preset', 'legato'])
+      if (saved[k] != null) S.ens[k] = saved[k];
+} catch (_) {}
+function saveEns() { try { localStorage.setItem(ENS_KEY, JSON.stringify(S.ens)); } catch (_) {} }
+
+// Default expression for a note with no curve drawn into it: velocity, but
+// mapped so even a hard hit leaves headroom for the onset swell to open into.
+export function defaultExpr(vel) { return Math.min(1, 0.28 + 0.64 * (vel == null ? 1 : vel)); }
+
+// What the current instrument hands ensemble.js as its source spec.
+function waveSpec() {
+  if (S.sampleMode && S.sampleBuffer) return { buffer: S.sampleBuffer, rootHz: 261.63 };
+  return S.wave;
+}
+function ensOpts() {
+  const e = S.ens;
+  return { size: e.size, spread: e.spread, stagger: e.stagger, depth: e.depth };
+}
+
+let voiceSeq = 0;
 
 // Scale lock: semitone correction for a key/MIDI note (0 when unlocked / in scale).
 // A note's MIDI = 60 (C4) + its semi + the OCT shift, exactly as noteOn pitches it.
@@ -90,21 +122,48 @@ export function buildKbd() {
   });
 }
 
-export function noteOn(n) {
+// noteOn(noteObject)                          — keys / pads / MIDI in (as before)
+// noteOn(freqHz, { vel, expr, seat })          — the piano roll's per-note form
+// Returns the voice id, so a caller can drive setExpr(id, …) over the note.
+export function noteOn(n, opts = {}) {
   ensureCtx();
   const ctx = S.ctx;
   if (ctx.state === 'suspended') ctx.resume();
-  if (S.arpOn && !S._arpFiring) { arpHold(n); return; }   // arp captures held notes
+  const byFreq = typeof n === 'number';
+  if (byFreq) n = { hz: n, note: null, semi: null, uid: '_v' + (++voiceSeq) };
+  if (S.arpOn && !S._arpFiring && !byFreq) { arpHold(n); return; }   // arp captures held notes
   const uid = n.uid ?? n.k ?? n.note;
-  if (S.activeOsc[uid]) return;
+  if (S.activeOsc[uid]) return uid;
   const t   = ctx.currentTime;
-  const sd  = scaleDelta(n);                         // scale lock snap (semitones)
-  const hz  = n.hz * Math.pow(2, S.octave - 4 + sd / 12);
+  const sd  = byFreq ? 0 : scaleDelta(n);            // scale lock snap (semitones)
+  const hz  = byFreq ? n.hz : n.hz * Math.pow(2, S.octave - 4 + sd / 12);
   const atk = Math.max(0.004, S.attackMs / 1000);  // ≥4 ms so the onset can't click
   const dec = S.decayMs     / 1000;
-  const vel = n.vel ?? 1;                            // MIDI velocity (keys/mouse = 1)
+  const vel = opts.vel ?? n.vel ?? 1;                // MIDI velocity (keys/mouse = 1)
+  const expr = opts.expr ?? n.expr ?? defaultExpr(vel);
+  const seat = opts.seat ?? n.seat ?? null;
   const pk  = 0.65 * vel;
   const sus = pk * S.sustainLevel;
+
+  // ── Scripted legato ───────────────────────────────────────────────────────
+  // A new note while one is still held on this part glides instead of
+  // retriggering. Velocity sets the transition time (fast attack = short
+  // glide): Infinite Brass models 1700 ms down to 50 ms, so that is the range.
+  if (S.ens.legato && !S.guitarMode) {
+    const held = Object.entries(S.activeOsc).filter(([, a]) => a.voice);
+    if (held.length) {
+      held.sort((a, b) => (b[1]._t || 0) - (a[1]._t || 0));
+      const [oldUid, a] = held[0];
+      delete S.activeOsc[oldUid];
+      if (a._n && a._n.note) document.getElementById('pk-' + a._n.note)?.classList.remove('on');
+      a.voice.setFreq(hz, t, glideMsFor(vel));
+      a.voice.setExpr(expr, t + 0.07);
+      a._n = n; a._t = t; a.legato = true;
+      S.activeOsc[uid] = a;
+      if (n.note) document.getElementById('pk-' + n.note)?.classList.add('on');
+      return uid;
+    }
+  }
 
   if (S.guitarMode) {
     // ── Plucked string: periodic wave + brightness sweep + exponential decay ──
@@ -129,39 +188,47 @@ export function noteOn(n) {
     osc.start(t); osc.stop(t + 2.6);
     S.activeOsc[uid] = {osc, env, out: env, isGuitar: true};
 
-  } else if (S.sampleMode && S.sampleBuffer) {
-    // ── Sample pitched by playbackRate ─────────────────────────────
-    const rate = Math.pow(2, (n.semi + sd + (S.octave - 4) * 12) / 12);
-    const src  = ctx.createBufferSource();
-    src.buffer = S.sampleBuffer;
-    src.playbackRate.value = rate;
-    const env = ctx.createGain();
-    env.gain.setValueAtTime(0, t);
-    env.gain.linearRampToValueAtTime(pk,  t + atk);
-    env.gain.linearRampToValueAtTime(sus, t + atk + dec);
-    const filt = makeSynthFilter();
-    // env BEFORE the filter: the filter only ever sees the smoothly ramped signal,
-    // so its cutoff can't ring on the note-onset step (the "clap before the note").
-    src.connect(env); env.connect(filt); filt.connect(S.inputBus); src.start(t);
-    S.activeOsc[uid] = {src, env, filt, isSample: true};
-
   } else {
-    // ── Oscillator with full ADSR ──────────────────────────────────
-    const osc = ctx.createOscillator(); osc.type = S.wave;
-    osc.frequency.value = hz;
-    const env = ctx.createGain();
-    env.gain.setValueAtTime(0, t);
-    env.gain.linearRampToValueAtTime(pk,  t + atk);
-    env.gain.linearRampToValueAtTime(sus, t + atk + dec);
-    const filt = makeSynthFilter();
-    // env BEFORE the filter: a sawtooth/square turns on at a non-zero value, and the
-    // filter would ring on that instantaneous step. Ramping first kills the click/ring.
-    osc.connect(env); env.connect(filt); filt.connect(S.inputBus); osc.start(t);
-    S.activeOsc[uid] = {osc, env, filt, isSample: false};
+    // ── Ensemble voice: 1–7 sub-voices, one expression value ───────
+    // Covers both the oscillator waves and the sampler (ensemble.js pitches an
+    // AudioBufferSource by playbackRate, and detunes it in cents just the same).
+    // At size 1 / depth 0 this is node-for-node the old single-oscillator graph.
+    const isSample = !!(S.sampleMode && S.sampleBuffer);
+    const voice = buildVoice(ctx, S.inputBus, {
+      freq: isSample ? 261.63 * Math.pow(2, (n.semi + sd + (S.octave - 4) * 12) / 12) : hz,
+      vel, expr, seat, wave: waveSpec(),
+      adsr: { a: S.attackMs, d: S.decayMs, s: S.sustainLevel, r: S.releaseMs },
+      filter: { cutoff: S.filterCutoff, reso: S.filterReso },
+      peak: 0.65, swellMs: 300, when: t, ...ensOpts(),
+    });
+    S.activeOsc[uid] = {
+      voice, isSample, isEnsemble: true,
+      env: voice.nodes.subs[0].env, osc: voice.nodes.subs[0].src,
+      filt: voice.nodes.groups[0], filts: voice.nodes.groups,
+    };
   }
 
   S.activeOsc[uid]._n = n;   // keep note ref so any caller can release it
-  document.getElementById('pk-' + n.note)?.classList.add('on');
+  S.activeOsc[uid]._t = t;
+  if (n.note) document.getElementById('pk-' + n.note)?.classList.add('on');
+  return uid;
+}
+
+// Drive one sounding voice's expression over time — the hook the piano roll uses
+// to draw a CC1-style curve into a held note. `when` = when the value arrives.
+export function setExpr(voiceId, value, when) {
+  const a = typeof voiceId === 'object' && voiceId ? voiceId : S.activeOsc[voiceId];
+  const v = a && (a.voice || (a.setExpr ? a : null));
+  if (!v || !v.setExpr) return false;
+  v.setExpr(value, when);
+  return true;
+}
+
+// Live load read-out for the controls / stress tests.
+export function synthLoad() {
+  // pass S.ctx explicitly: the registry is per-context, and the last context
+  // touched may well be an OfflineAudioContext left over from an export
+  return { oscs: oscCount(S.ctx ? S.ctx.currentTime : 0, S.ctx), voices: voiceCount(S.ctx), cap: MAX_OSC };
 }
 
 export function noteOff(n) {
@@ -169,10 +236,12 @@ export function noteOff(n) {
   const uid = n.uid ?? n.k ?? n.note;
   const a = S.activeOsc[uid]; if (!a) return;
   delete S.activeOsc[uid];
-  document.getElementById('pk-' + n.note)?.classList.remove('on');
+  if (n.note) document.getElementById('pk-' + n.note)?.classList.remove('on');
   const t   = S.ctx.currentTime;
   const rel = S.releaseMs / 1000;
-  if (a.isGuitar) {
+  if (a.voice) {                       // ensemble voice releases all its sub-voices
+    a.voice.stop(t, rel);
+  } else if (a.isGuitar) {
     // Cancel the 2.5 s auto-decay and apply the release slope instead
     a.out.gain.cancelScheduledValues(t);
     a.out.gain.setValueAtTime(a.out.gain.value, t);
@@ -211,14 +280,27 @@ export function makeSynthFilter() {
 // Schedule ONE polyphonic voice at absolute time `when` for `gate` seconds, using the
 // current instrument (wave / guitar / sample), ADSR and filter. `actx`/`dest` let the
 // piano-roll render into either the live graph or an OfflineAudioContext (for → Loop).
-export function spawnVoice(hz, { when, gate, vel = 1, actx = S.ctx, dest = S.inputBus }) {
+export function spawnVoice(hz, { when, gate, vel = 1, expr, seat, actx = S.ctx, dest = S.inputBus }) {
+  // Everything but the guitar pluck goes through the SAME ensemble builder the
+  // live keyboard uses, with actx/dest pointing at either the live graph or an
+  // OfflineAudioContext — which is what makes an exported WAV match what you
+  // heard, ensemble and all.
+  if (!S.guitarMode) {
+    return buildVoice(actx, dest, {
+      freq: hz, vel, expr: expr != null ? expr : defaultExpr(vel), seat,
+      wave: S.sampleMode && S.sampleBuffer ? { buffer: S.sampleBuffer, rootHz: 261.63 } : S.wave,
+      adsr: { a: S.attackMs, d: S.decayMs, s: S.sustainLevel, r: S.releaseMs },
+      filter: { cutoff: S.filterCutoff, reso: S.filterReso },
+      peak: 0.5, swellMs: 300, when, gate, ...ensOpts(),
+    });
+  }
+
+  // ── Guitar pluck: its own engine (brightness sweep + fixed decay), unchanged ──
   const t   = when;
-  const atk = Math.max(0.004, S.attackMs / 1000);   // ≥4 ms so the onset can't click
+  const atk = Math.max(0.004, S.attackMs / 1000);   // ≥ 4 ms so the onset can't click
   const dec = S.decayMs   / 1000;
   const rel = S.releaseMs / 1000;
-  // guitar honors its Vol slider (as the live keyboard does); other voices use a
-  // reduced peak so polyphonic chords don't stack into clipping
-  const pk  = (S.guitarMode ? S.guitarVol : 0.5) * vel;
+  const pk  = S.guitarVol * vel;
   const sus = pk * S.sustainLevel;
   const relStart = t + Math.max(gate, atk + 0.01);
 
@@ -229,31 +311,17 @@ export function spawnVoice(hz, { when, gate, vel = 1, actx = S.ctx, dest = S.inp
   if (decEnd < relStart) {               // normal: attack → decay → hold → release
     env.gain.linearRampToValueAtTime(sus, decEnd);
     env.gain.setValueAtTime(Math.max(sus, 0.0001), relStart);
-  } else {                               // gate shorter than A+D: ramp straight to release, no mid-note step
+  } else {                               // gate shorter than A+D: ramp straight to release
     env.gain.linearRampToValueAtTime(Math.max(sus, 0.0001), relStart);
   }
   env.gain.exponentialRampToValueAtTime(0.0001, relStart + rel);
 
-  let src, filt = null;
-  if (S.guitarMode) {
-    const h = [0, 1, 0.5, 0.25, 0.12, 0.06, 0.03, 0.015];
-    const osc = actx.createOscillator();
-    osc.setPeriodicWave(actx.createPeriodicWave(new Float32Array(h), new Float32Array(h.length)));
-    osc.frequency.value = hz;
-    src = osc;
-  } else if (S.sampleMode && S.sampleBuffer) {
-    const s = actx.createBufferSource();
-    s.buffer = S.sampleBuffer;
-    s.playbackRate.value = hz / 261.63;  // sample root assumed C4
-    src = s;
-  } else {
-    const osc = actx.createOscillator();
-    osc.type = S.wave;
-    osc.frequency.value = hz;
-    src = osc;
-  }
+  const h = [0, 1, 0.5, 0.25, 0.12, 0.06, 0.03, 0.015];
+  const src = actx.createOscillator();
+  src.setPeriodicWave(actx.createPeriodicWave(new Float32Array(h), new Float32Array(h.length)));
+  src.frequency.value = hz;
 
-  filt = actx.createBiquadFilter();
+  const filt = actx.createBiquadFilter();
   filt.type = 'lowpass';
   filt.frequency.value = S.filterCutoff;
   filt.Q.value = S.filterReso;
@@ -263,17 +331,23 @@ export function spawnVoice(hz, { when, gate, vel = 1, actx = S.ctx, dest = S.inp
   src.connect(env); env.connect(filt); filt.connect(dest);
   src.start(t);
   try { src.stop(relStart + rel + 0.05); } catch (_) {}
+  return null;
 }
 
 export function setFilter() {
   S.filterCutoff = parseFloat(document.getElementById('cutSlider').value);
   S.filterReso   = parseFloat(document.getElementById('resSlider').value);
-  // Update any currently-sounding voices live
+  // Update any currently-sounding voices live (an ensemble voice has up to three
+  // filter groups; their cutoffs sit a little apart, so keep them proportional)
   if (S.ctx) Object.values(S.activeOsc).forEach(a => {
-    if (a.filt) {
-      a.filt.frequency.setValueAtTime(S.filterCutoff, S.ctx.currentTime);
-      a.filt.Q.setValueAtTime(S.filterReso, S.ctx.currentTime);
-    }
+    const fs = a.filts || (a.filt ? [a.filt] : []);
+    const base = fs.length ? fs[0].frequency.value || S.filterCutoff : S.filterCutoff;
+    fs.forEach(f => {
+      const k = fs.length > 1 ? (f.frequency.value || base) / base : 1;
+      f.frequency.cancelScheduledValues(S.ctx.currentTime);
+      f.frequency.setValueAtTime(Math.max(60, Math.min(20000, S.filterCutoff * k)), S.ctx.currentTime);
+      f.Q.setValueAtTime(S.filterReso, S.ctx.currentTime);
+    });
   });
   document.getElementById('cutVal').textContent = S.filterCutoff >= 1000
     ? (S.filterCutoff / 1000).toFixed(1) + 'k' : Math.round(S.filterCutoff);
@@ -424,4 +498,77 @@ export function useAsSample(id) {
   const mb = document.getElementById('synthModeBtn');
   mb.textContent = '🎹 Sample'; mb.classList.add('on'); mb.style.display = '';
   setStatus('Loop ' + (id + 1) + ' loaded as sample — play keyboard to pitch it');
+}
+
+// ── Ensemble controls ─────────────────────────────────────────────────────────
+// Size / spread / stagger / expression depth + a preset dropdown + legato.
+// Kept in S.ens and remembered per browser under 'wp.looper.ens', the same way
+// the export format / loudness selectors are remembered.
+const ENS_IDS = { size: 'ensSizeSlider', spread: 'ensSpreadSlider', stagger: 'ensStagSlider', depth: 'ensDepthSlider' };
+
+function ensLabels() {
+  const g = id => document.getElementById(id);
+  const e = S.ens;
+  if (g('ensSizeVal'))   g('ensSizeVal').textContent   = e.size + (e.size === 1 ? ' voice' : ' voices');
+  if (g('ensSpreadVal')) g('ensSpreadVal').textContent = e.spread.toFixed(0) + '¢';
+  if (g('ensStagVal'))   g('ensStagVal').textContent   = e.stagger.toFixed(0) + 'ms';
+  if (g('ensDepthVal'))  g('ensDepthVal').textContent  = Math.round(e.depth * 100) + '%';
+  if (g('ensLoad'))      g('ensLoad').textContent      = `${e.size}×${Math.floor(MAX_OSC / e.size)} notes max`;
+  if (g('ensLegatoBtn')) g('ensLegatoBtn').classList.toggle('on', !!e.legato);
+  if (g('ensPreset'))    g('ensPreset').value = e.preset || 'custom';
+}
+
+// Read the four sliders into S.ens. Changes land on the NEXT note (a sub-voice
+// count can't be grown underneath a note that is already sounding).
+export function setEnsemble() {
+  const num = id => parseFloat(document.getElementById(id).value);
+  S.ens.size    = Math.max(1, Math.min(7, Math.round(num(ENS_IDS.size))));
+  S.ens.spread  = num(ENS_IDS.spread);
+  S.ens.stagger = num(ENS_IDS.stagger);
+  S.ens.depth   = num(ENS_IDS.depth) / 100;
+  // the sliders no longer match a named shape unless they happen to
+  const hit = Object.keys(PRESETS).find(k => {
+    const p = PRESETS[k];
+    return p.size === S.ens.size && p.spread === S.ens.spread &&
+           p.stagger === S.ens.stagger && Math.abs(p.depth - S.ens.depth) < 0.005;
+  });
+  S.ens.preset = hit || 'custom';
+  ensLabels(); saveEns();
+}
+
+export function setEnsemblePreset(name) {
+  const p = PRESETS[name];
+  if (!p) { S.ens.preset = 'custom'; ensLabels(); saveEns(); return; }
+  S.ens.size = p.size; S.ens.spread = p.spread; S.ens.stagger = p.stagger;
+  S.ens.depth = p.depth; S.ens.preset = name;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set(ENS_IDS.size, p.size); set(ENS_IDS.spread, p.spread);
+  set(ENS_IDS.stagger, p.stagger); set(ENS_IDS.depth, Math.round(p.depth * 100));
+  ensLabels(); saveEns();
+  setStatus(`Ensemble: ${p.label} — ${p.size} sub-voice${p.size === 1 ? '' : 's'}, ` +
+            `${p.spread}¢ spread, ${p.stagger}ms stagger, ${Math.round(p.depth * 100)}% expression`);
+}
+
+export function toggleLegato() {
+  S.ens.legato = !S.ens.legato;
+  ensLabels(); saveEns();
+  setStatus(S.ens.legato
+    ? 'Legato on — a new note glides from the held one (fast attack = short glide)'
+    : 'Legato off — every note retriggers its own envelope');
+}
+
+export function initEnsembleUI() {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set(ENS_IDS.size, S.ens.size); set(ENS_IDS.spread, S.ens.spread);
+  set(ENS_IDS.stagger, S.ens.stagger); set(ENS_IDS.depth, Math.round(S.ens.depth * 100));
+  ensLabels();
+}
+
+// main.js owns the window bindings for everything that existed before the
+// ensemble; these four are ours, so we bind them here rather than edit it.
+Object.assign(window, { setEnsemble, setEnsemblePreset, toggleLegato, setExpr, synthLoad });
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initEnsembleUI);
+  else initEnsembleUI();
 }

@@ -5,6 +5,7 @@ import { fmtSec, setStatus } from './util.js';
 import { quantizeLen, playClick } from './transport.js';
 import { createEq7, resetEq } from '../shared/eq7.js';
 import { studioOpen } from './bridge.js';
+import { seatForSlot } from './space.js';
 
 // ── Loop slots ────────────────────────────────────────────────────────────────
 const N = 6;
@@ -65,7 +66,11 @@ export function ensureGain(s) {
   if (!s.gainNode) {
     s.gainNode = S.ctx.createGain();
     s.gainNode.gain.value = s.vol ?? 1;
-    s.gainNode.connect(S.loopBus);
+    // Place the slot in the room: its DRY output still lands on the loop bus
+    // exactly as before, and a parallel send feeds the three shared mic busses.
+    // If the space isn't up yet, fall back to the plain dry connection.
+    s.space = seatForSlot(s, S.loopBus);
+    if (s.space) s.gainNode.connect(s.space); else s.gainNode.connect(S.loopBus);
     s.eq = createEq7(S.ctx);          // 7-band parametric EQ in front of the gain
     s.eq.output.connect(s.gainNode);
   }

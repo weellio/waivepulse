@@ -15,6 +15,7 @@ import { stopAllPlayback } from './loops.js';
 import { applyEqOffline, snapshotEq, eqIsFlat } from '../shared/eq7.js';
 import { encodePcmWav } from './wavio.js';
 import { finishExport, readoutText } from './loudexport.js';
+import { buildOfflineSpace, offlineSpaceOpts, slotSeat } from './space.js';
 
 // arrangement = ordered list of sections: { on:[bool x6], beats:int, vol:0..1.5, label:str }
 let arr = [];
@@ -164,28 +165,25 @@ async function renderMix() {
   const sr  = S.ctx.sampleRate;
   const off = new OfflineAudioContext(2, Math.ceil(dur * sr), sr);
 
-  // master bus → (dry) + optional reverb/delay sends
+  // master bus → (dry) + optional delay send; the room comes from space.js, which
+  // is rebuilt here so an exported song carries the same rooms and the same
+  // front-to-back placement as the live monitor path.
   const master = off.createGain();
+  master.connect(off.destination);
+  let space = null;
   if (o.fx) {
-    master.connect(off.destination);
-    const rev = parseFloat(document.getElementById('revSlider')?.value || 0);
     const dly = parseFloat(document.getElementById('dlySlider')?.value || 0);
-    if (rev > 0) {
-      const conv = off.createConvolver(); conv.buffer = makeIR(off);
-      const rg = off.createGain(); rg.gain.value = rev;
-      master.connect(conv); conv.connect(rg); rg.connect(off.destination);
-    }
     if (dly > 0) {
       const d = off.createDelay(1.0); d.delayTime.value = bd / 2;
       const fb = off.createGain(); fb.gain.value = 0.38;
       const dg = off.createGain(); dg.gain.value = dly * 0.45;
       master.connect(d); d.connect(fb); fb.connect(d); d.connect(dg); dg.connect(off.destination);
     }
-  } else {
-    master.connect(off.destination);
+    space = await buildOfflineSpace(off, off.destination, offlineSpaceOpts());
   }
 
-  active.forEach(s => connectLoop(off, s, bd, true, master));
+  active.forEach(s => connectLoop(off, s, bd, true,
+    space ? space.seatFor(slotSeat(s.id), master) : master));
 
   setStatus('Rendering full track…');
   const buf = await off.startRendering();
@@ -286,16 +284,6 @@ function applyFades(buf, fin, fout) {
     for (let i = 0; i < nout; i++) d[L - 1 - i] *= i / nout;
   }
 }
-function makeIR(off) {                              // ~1.6 s synthetic reverb tail
-  const len = Math.floor(off.sampleRate * 1.6);
-  const ir = off.createBuffer(2, len, off.sampleRate);
-  for (let ch = 0; ch < 2; ch++) {
-    const d = ir.getChannelData(ch);
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 1.8);
-  }
-  return ir;
-}
-
 // ── WAV encode (16- or 24-bit PCM) → shared encoder in wavio.js ──────────────────
 const encodeWav = encodePcmWav;
 function download(buf, name, bits) {

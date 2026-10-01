@@ -16,7 +16,8 @@ import {
 } from './synth.js';
 import { chBPM, toggleMetro, chCountIn, tapTempo, toggleQuantize, setSwing, setHumanize } from './transport.js';
 import { toggleMic, toggleAutotune, setAtKey, setAtScaleSel, setAtSpeed, toggleHarmonizer, setHarmInterval, toggleHarmVoice2 } from './mic.js';
-import { setSynthMode, togglePseq, pushPseqToLoop, clearPseq, renderSheet, setScaleRoot, setScaleName, transposeRoll, pseqRuns } from './pianoseq.js';
+import { setSynthMode, togglePseq, pushPseqToLoop, clearPseq, renderSheet, setScaleRoot, setScaleName, transposeRoll, pseqRuns,
+         initExpression, toggleExpr, setExprPart, toggleExprLink, applyExprShape, clearExpr, exprLanePts, redrawExprLane } from './pianoseq.js';
 import { initMidi, connectMidi, setMidiDevice, toggleMidiDrums } from './midi-in.js';
 import { initAirBand, toggleAirBand, toggleAirBig, setAirPreset, setAirGrid, setAirSens, toggleAirMirror, airAssign } from './airband.js';
 import { exportMIDI, setMidiBarsProvider } from './midi-export.js';
@@ -53,6 +54,8 @@ Object.assign(window, {
   toggleArp, setArpRate, setArpMode, loadSample, toggleSampleMode, useAsSample,
   // piano roll
   setSynthMode, togglePseq, pushPseqToLoop, clearPseq, exportMIDI,
+  // expression lane (the dynamics curve under the roll)
+  toggleExpr, setExprPart, toggleExprLink, applyExprShape, clearExpr,
   // scale lock + transpose
   setScaleRoot, setScaleName, transposeRoll,
   // MIDI input
@@ -111,11 +114,13 @@ setSynthMode('keys');
 renderSheet();
 renderBeatBar();   // premade-beat buttons + saved favorites under the sequencer
 renderMelodyBar(); // premade chord/melody buttons + favorites under the keyboard
+initExpression();  // expression lane: the dynamics curve under the piano roll
 initBanks();       // pattern banks A–D + chain (status-bar strip)
 setMidiBarsProvider(() => {                       // ⬇ MIDI writes the current bank, or the whole chain when on
   const plan = renderPlan();
   if (!plan.ok) { setStatus(plan.error); return []; }
-  return plan.bars.map(b => ({ runs: pseqRuns(b.roll), seqPattern: b.seq, seqRatchet: b.rat }));
+  const expr = exprLanePts('roll');                // the dynamics curve → CC1
+  return plan.bars.map(b => ({ runs: pseqRuns(b.roll), seqPattern: b.seq, seqRatchet: b.rat, expr }));
 });
 initProject({ onMidiFile: f => importMidiFile(f) });   // unsaved-work guard + drag-drop .wploop / .mid
 // remember the viewer's export format / loudness choice (per-browser convenience)
@@ -131,4 +136,4 @@ refreshExportButtons();                                   // grey ⬇Export / �
 setInterval(refreshExportButtons, 350);                   // …and keep them in sync as loops/sequencer/piano-roll change
 
 // Read-only handle for automated page tests (state snapshot + project collector).
-window.__looper = { S, collectProject };
+window.__looper = { S, collectProject, exprLanePts, redrawExprLane };

@@ -13,8 +13,7 @@ export const S = {
   captureOutGain: undefined,
   inputClip: undefined,     // soft clipper between inputBus and the recorder
   bypassGain: undefined,
-  reverbNode: undefined,
-  reverbGain: undefined,
+  space: undefined,         // space.js handle: 3 shared convolution busses (close/tree/far)
   delayFX: undefined,
   delayFB: undefined,
   delayGain: undefined,

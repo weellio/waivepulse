@@ -3,6 +3,7 @@
 // it as sheet music); switch to Roll to play or → Loop it.
 import { S } from './state.js';
 import { applyPseqPattern } from './pianoseq.js';
+import { exprState, setExprState, shapeCurve, exprLanes, drawExprLane } from './expression.js';
 import { setStatus } from './util.js';
 import { bankFavExtras, applyBankFav, paintBanks } from './banks.js';
 
@@ -12,19 +13,21 @@ const rowOf = midi => 71 - midi;             // row 0 = B4 (71) … row 23 = C3 
 // note = [midi, startStep, lengthInSteps]; chords are just several notes sharing a start
 const chord = (mids, start, len) => mids.map(m => [m, start, len]);
 
+// Each preset carries the dynamic shape that suits it, so a premade melody
+// arrives with a curve under it instead of a flat line.
 const PRESETS = [
-  { name: 'Pop I–V–vi–IV',     notes: [...chord([60,64,67],0,4), ...chord([55,59,62],4,4), ...chord([57,60,64],8,4), ...chord([53,57,60],12,4)] },
-  { name: '50s I–vi–IV–V',     notes: [...chord([60,64,67],0,4), ...chord([57,60,64],4,4), ...chord([53,57,60],8,4), ...chord([55,59,62],12,4)] },
-  { name: '6-4-1-5',           notes: [...chord([57,60,64],0,4), ...chord([53,57,60],4,4), ...chord([60,64,67],8,4), ...chord([55,59,62],12,4)] }, // vi–IV–I–V (Am F C G)
-  { name: 'Jazz ii7–V7–I',     notes: [...chord([50,53,57,60],0,4), ...chord([55,59,62,65],4,4), ...chord([60,64,67,71],8,8)] },               // Dm7 G7 Cmaj7
-  { name: 'Arp Up',            notes: [[60,0,2],[64,2,2],[67,4,2],[71,6,2],[67,8,2],[64,10,2],[60,12,2],[64,14,2]] },
-  { name: 'Scale Run',         notes: [[60,0,2],[62,2,2],[64,4,2],[65,6,2],[67,8,2],[69,10,2],[71,12,2],[69,14,2]] },
-  { name: 'Pentatonic',        notes: [[60,0,2],[64,2,2],[67,4,2],[69,6,2],[67,8,2],[64,10,2],[60,12,2],[57,14,2]] },
-  { name: 'Oct Bass',          notes: [[48,0,2],[60,2,2],[48,4,2],[60,6,2],[48,8,2],[60,10,2],[48,12,2],[60,14,2]] },
+  { name: 'Pop I–V–vi–IV', shape: 'arch',     notes: [...chord([60,64,67],0,4), ...chord([55,59,62],4,4), ...chord([57,60,64],8,4), ...chord([53,57,60],12,4)] },
+  { name: '50s I–vi–IV–V', shape: 'swell',     notes: [...chord([60,64,67],0,4), ...chord([57,60,64],4,4), ...chord([53,57,60],8,4), ...chord([55,59,62],12,4)] },
+  { name: '6-4-1-5', shape: 'arch',           notes: [...chord([57,60,64],0,4), ...chord([53,57,60],4,4), ...chord([60,64,67],8,4), ...chord([55,59,62],12,4)] }, // vi–IV–I–V (Am F C G)
+  { name: 'Jazz ii7–V7–I', shape: 'swell',     notes: [...chord([50,53,57,60],0,4), ...chord([55,59,62,65],4,4), ...chord([60,64,67,71],8,8)] },               // Dm7 G7 Cmaj7
+  { name: 'Arp Up', shape: 'arch',            notes: [[60,0,2],[64,2,2],[67,4,2],[71,6,2],[67,8,2],[64,10,2],[60,12,2],[64,14,2]] },
+  { name: 'Scale Run', shape: 'swell',         notes: [[60,0,2],[62,2,2],[64,4,2],[65,6,2],[67,8,2],[69,10,2],[71,12,2],[69,14,2]] },
+  { name: 'Pentatonic', shape: 'arch',        notes: [[60,0,2],[64,2,2],[67,4,2],[69,6,2],[67,8,2],[64,10,2],[60,12,2],[57,14,2]] },
+  { name: 'Oct Bass', shape: 'pulse',          notes: [[48,0,2],[60,2,2],[48,4,2],[60,6,2],[48,8,2],[60,10,2],[48,12,2],[60,14,2]] },
   // Bach Prelude in C (BWV 846) — the flowing C–E–G–C–E broken-chord figure, ×2
-  { name: 'Bach Prelude',      notes: [[48,0,1],[52,1,1],[55,2,1],[60,3,1],[64,4,1],[55,5,1],[60,6,1],[64,7,1],[48,8,1],[52,9,1],[55,10,1],[60,11,1],[64,12,1],[55,13,1],[60,14,1],[64,15,1]] },
+  { name: 'Bach Prelude', shape: 'arch',      notes: [[48,0,1],[52,1,1],[55,2,1],[60,3,1],[64,4,1],[55,5,1],[60,6,1],[64,7,1],[48,8,1],[52,9,1],[55,10,1],[60,11,1],[64,12,1],[55,13,1],[60,14,1],[64,15,1]] },
   // Mozart-style Alberti bass (low–high–mid–high, à la Sonata K545) under a held melody
-  { name: 'Mozart Alberti',    notes: [[48,0,2],[55,2,2],[52,4,2],[55,6,2],[48,8,2],[55,10,2],[52,12,2],[55,14,2],[67,0,8],[64,8,8]] },
+  { name: 'Mozart Alberti', shape: 'swell',    notes: [[48,0,2],[55,2,2],[52,4,2],[55,6,2],[48,8,2],[55,10,2],[52,12,2],[55,14,2],[67,0,8],[64,8,8]] },
 ];
 
 const FAV_KEY = 'waivepulse_melodies';
@@ -42,6 +45,12 @@ function gridFromNotes(notes) {
 function loadMelody(i) {
   const p = PRESETS[i]; if (!p) return;
   applyPseqPattern(gridFromNotes(p.notes));
+  if (p.shape) {                                   // draw the matching dynamics curve
+    const pts = shapeCurve(p.shape), roll = exprLanes().roll;
+    roll.link = false;
+    for (let k = 0; k < pts.length; k++) roll.pts[k] = pts[k];
+    drawExprLane();
+  }
   setStatus(`Loaded "${p.name}" into the roll — open Roll to play or → Loop it`);
 }
 
@@ -54,7 +63,7 @@ function saveMelody() {
   const name = (prompt('Name this melody:', 'My melody') || '').trim();
   if (!name) return;
   const grid = S.pseqPattern.map(row => row.map(v => (v ? 1 : 0)));
-  const fav = { name, grid };
+  const fav = { name, grid, expr: exprState() };
   const extra = bankFavExtras('roll');            // Chain on → keep all 4 banks' rolls + the chain
   if (extra) Object.assign(fav, extra);
   const favs = getFavs(); favs.push(fav); setFavs(favs);
@@ -66,8 +75,9 @@ function loadFav(i) {
   const f = getFavs()[i]; if (!f) return;
   const chained = applyBankFav('roll', f);
   if (!chained) applyPseqPattern(f.grid);
+  if (f.expr) setExprState(f.expr);                // the saved dynamics curve comes back too
   paintBanks();
-  setStatus(`Loaded "${f.name}"` + (chained ? ` (banks A–D + chain ${f.chain})` : ''));
+  setStatus(`Loaded "${f.name}"` + (chained ? ` (banks A–D + chain ${f.chain})` : '') + (f.expr ? ' + expression' : ''));
 }
 function deleteFav(i) { const favs = getFavs(); if (!favs[i]) return; favs.splice(i, 1); setFavs(favs); renderMelodyBar(); }
 

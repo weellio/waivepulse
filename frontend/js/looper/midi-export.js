@@ -8,6 +8,7 @@
 import { S } from './state.js';
 import { setStatus } from './util.js';
 import { PAD_TO_GM } from './gm.js';
+import { exprCC1 } from './expression.js';
 
 export const PPQN = 480;       // ticks per quarter note
 const STEP_TICKS = 120;        // 16th note = PPQN / 4
@@ -59,16 +60,22 @@ function buildTrack(events) {
 /** Create a delta-time + event byte sequence */
 function evt(delta, ...bytes) { return [...vlq(delta), ...bytes]; }
 
-function noteEventsToTrack(name, noteEvents, onStatus, offStatus) {
+// Event kinds: 'on' / 'off' (notes) and 'cc' (controller, e.g. CC1 expression).
+// At one tick the order is note-off, then CC, then note-on — so a note starts
+// already sitting at the right expression value.
+const EVT_ORDER = { off: 0, cc: 1, on: 2 };
+
+function noteEventsToTrack(name, noteEvents, onStatus, offStatus, ccStatus) {
   const events = [];
   const nm = str(name);
   events.push(evt(0, 0xFF, 0x03, nm.length, ...nm));
-  // Sort by tick; note-offs before note-ons at the same tick to avoid overlaps
-  noteEvents.sort((a, b) => a.tick - b.tick || (a.type === 'off' ? -1 : 1));
+  noteEvents.sort((a, b) => a.tick - b.tick || (EVT_ORDER[a.type] ?? 2) - (EVT_ORDER[b.type] ?? 2));
   let lastTick = 0;
   for (const ne of noteEvents) {
     const delta = ne.tick - lastTick;
-    events.push(ne.type === 'on' ? evt(delta, onStatus, ne.midi, ne.vel) : evt(delta, offStatus, ne.midi, 0));
+    if (ne.type === 'cc')       events.push(evt(delta, ccStatus ?? (onStatus - 0x90 + 0xB0), ne.ctrl, ne.val));
+    else if (ne.type === 'on')  events.push(evt(delta, onStatus, ne.midi, ne.vel));
+    else                        events.push(evt(delta, offStatus, ne.midi, 0));
     lastTick = ne.tick;
   }
   events.push(evt(0, 0xFF, 0x2F, 0x00));
@@ -92,12 +99,22 @@ export function buildSMF({ bpm, swing = 0, bars }) {
   t.push(evt(0, 0xFF, 0x2F, 0x00));
   const tempoTrack = buildTrack(t);
 
-  // melody (channel 1)
+  // melody (channel 1) + the expression lane as CC1 (mod wheel), the controller
+  // every orchestral library reads as dynamics
   const mel = [];
+  let notes = 0, ccs = 0;
   bars.forEach((b, bi) => {
     for (const r of b.runs || []) {
       mel.push({ tick: stepTick(bi, r.start), type: 'on', midi: r.midi, vel: 100 });
       mel.push({ tick: stepTick(bi, r.start + r.len), type: 'off', midi: r.midi, vel: 0 });
+      notes++;
+    }
+    const pts = b.expr;
+    if (notes && Array.isArray(pts) && pts.length > 1) {
+      for (const e of exprCC1(pts, { stepTicks: STEP_TICKS, baseTick: bi * BAR_TICKS })) {
+        mel.push({ tick: e.tick, type: 'cc', ctrl: 1, val: e.val });
+        ccs++;
+      }
     }
   });
 
@@ -125,8 +142,8 @@ export function buildSMF({ bpm, swing = 0, bars }) {
   });
 
   const tracks = [tempoTrack];
-  if (mel.length) tracks.push(noteEventsToTrack('Piano Roll', mel, 0x90, 0x80));
-  if (drm.length) tracks.push(noteEventsToTrack('Drums', drm, 0x99, 0x89));
+  if (notes) tracks.push(noteEventsToTrack('Piano Roll', mel, 0x90, 0x80, 0xB0));
+  if (drm.length) tracks.push(noteEventsToTrack('Drums', drm, 0x99, 0x89, 0xB9));
   if (tracks.length === 1) return null;
 
   const header = [...str('MThd'), ...u32(6), ...u16(1), ...u16(tracks.length), ...u16(PPQN)];
@@ -136,8 +153,9 @@ export function buildSMF({ bpm, swing = 0, bars }) {
   out.set(header, 0);
   let off = header.length;
   for (const tr of tracks) { out.set(tr, off); off += tr.length; }
-  out.hasMelody = mel.length > 0;
+  out.hasMelody = notes > 0;
   out.hasDrums  = drm.length > 0;
+  out.ccCount   = ccs;
   return out;
 }
 
@@ -164,7 +182,7 @@ export function exportMIDI() {
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 
   const parts = [];
-  if (bytes.hasMelody) parts.push('piano roll');
+  if (bytes.hasMelody) parts.push('piano roll' + (bytes.ccCount ? ' + expression (CC1)' : ''));
   if (bytes.hasDrums)  parts.push('drums');
   setStatus('Exported MIDI (' + parts.join(' + ') + (bars.length > 1 ? `, ${bars.length}-bar chain` : '') + ') at ' + S.bpm + ' BPM');
 }
