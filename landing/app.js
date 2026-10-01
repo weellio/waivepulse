@@ -134,7 +134,8 @@
       if (radius < 6 * dpr) continue;
 
       const near = 1 - z;                             // how close to the viewer
-      const alpha = Math.min(1, z * 2.6) * (0.10 + 0.5 * near) * (0.55 + energy * 0.45);
+      const alpha = Math.min(1, z * 2.6) * (0.10 + 0.5 * near) * (0.55 + energy * 0.45)
+                  * (portalReady > 2 ? 0.45 : 1);   // step back once the portal is up
       if (alpha < 0.012) continue;
 
       // Each ring is a waveform wrapped into a circle; the phase rotates with depth,
@@ -169,6 +170,61 @@
     ctx.globalCompositeOperation = 'source-over';
   }
 
+
+  /* ---------- The portal: WAIvePulse's own visualizer, scrubbed by scroll ----------
+     These 24 frames are a real recording of the Hex Portal visualizer reacting to a song
+     made in the app (frames captured deterministically, not screen-grabbed). Scroll scrubs
+     through them while the whole thing grows and turns, so the background of the site is
+     literally the product's output. ~417 KiB, loaded after first paint, and the page is
+     perfectly fine before they arrive. */
+  const FRAMES = 24;
+  const portal = [];
+  let portalReady = 0;
+  function loadPortal() {
+    for (let i = 0; i < FRAMES; i++) {
+      const im = new Image();
+      im.decoding = 'async';
+      im.src = `img/viz/v${String(i).padStart(2, '0')}.webp`;
+      im.onload = () => { portalReady++; };
+      portal.push(im);
+    }
+  }
+  // Wait for the page to settle so the frames never compete with content for bandwidth.
+  if ('requestIdleCallback' in window) requestIdleCallback(loadPortal, { timeout: 2500 });
+  else addEventListener('load', () => setTimeout(loadPortal, 400));
+
+  function drawPortal(p, time) {
+    if (portalReady < 2) return;
+    const exact = p * (FRAMES - 1);
+    const i0 = Math.max(0, Math.min(FRAMES - 1, Math.floor(exact)));
+    const i1 = Math.min(FRAMES - 1, i0 + 1);
+    const mix = exact - i0;
+    const a = portal[i0], b = portal[i1];
+    if (!a || !a.complete) return;
+
+    // Grows from behind the hero to fill the screen, and keeps turning as you read.
+    const scale = (0.50 + p * 0.95) * Math.hypot(W, H) / 900;
+    const turn = p * 0.9 + time * 0.02;
+    // Recessive on purpose: this sits behind body copy, and the owner reads with dyslexia.
+    const alpha = (0.17 + 0.11 * Math.sin(p * Math.PI)) * (0.7 + energy * 0.5);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.translate(W * (0.5 + (mouse.x - 0.5) * 0.04), H * (0.46 + (mouse.y - 0.5) * 0.04));
+    ctx.rotate(turn);
+    ctx.scale(scale, scale * 0.94);
+    const d = 900;                              // draw size before scale
+    ctx.globalAlpha = alpha * (1 - mix);
+    ctx.drawImage(a, -d / 2, -d / 2, d, d);
+    if (b && b.complete && mix > 0.01) {
+      ctx.globalAlpha = alpha * mix;            // crossfade, so 24 frames read as smooth
+      ctx.drawImage(b, -d / 2, -d / 2, d, d);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   let t = 0;
   function draw() {
     t += 0.016;
@@ -177,6 +233,7 @@
     scrollP += (scrollTarget - scrollP) * 0.08;   // ease the camera, scroll alone is jumpy
 
     drawSky(scrollP);
+    drawPortal(scrollP, t);
     drawVortex(scrollP, t);
 
     // The logo's pulse belongs to the hero; it hands over to the tunnel as you leave it.
@@ -229,9 +286,11 @@
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   if (reduced.matches) {
     // One still frame: the picture, none of the motion.
-    buildStars(); drawSky(scrollTarget); drawVortex(scrollTarget, 0);
-    addEventListener('scroll', () => { readScroll(); scrollP = scrollTarget;
-      drawSky(scrollP); drawVortex(scrollP, 0); }, { passive: true });
+    buildStars();
+    const still = () => { drawSky(scrollP); drawPortal(scrollP, 0); drawVortex(scrollP, 0); };
+    scrollP = scrollTarget; still();
+    addEventListener('scroll', () => { readScroll(); scrollP = scrollTarget; still(); }, { passive: true });
+    setTimeout(still, 3000);        // redraw once the frames have loaded
   } else {
     buildStars();
     draw();
