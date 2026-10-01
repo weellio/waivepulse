@@ -527,3 +527,6 @@ input[type=number]:focus { border-color: #2ab8b8; }
 }
 .rating-badge[hidden] { display: none; }
 .btn-action.working, .btn-action:disabled { color: #8cffff; border-color: #0d6b6b; cursor: progress; }
+
+  .cover-ai-credit { font-size: 0.68rem; color: #5a5a68; line-height: 1.5; margin-top: 10px; border-top: 1px solid #23232f; padding-top: 8px; }
+  .cover-ai-credit a { color: #7a9ab8; }

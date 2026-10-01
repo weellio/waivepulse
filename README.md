@@ -1537,3 +1537,37 @@ The page is a static install guide until Ollama is reachable. Install Ollama (`w
 ## License
 
 MIT + Commons Clause. The Commons Clause restricts commercial sale of the software itself but allows commercial use of its output. Use the songs and videos you generate for whatever you want.
+
+### Can I sell what I make with this?
+
+**Yes.** Nothing in the chain restricts what you do with a song you generate:
+
+| Part | Licence | Your output |
+|---|---|---|
+| HeartMuLa 3B + HeartCodec (the song model) | Apache 2.0 | yours to sell |
+| Demucs (stem separation) | MIT | yours |
+| faster-whisper (karaoke sync) | MIT | yours |
+| Llama 3.1 via Ollama (lyric writing) | Llama 3.1 Community Licence | yours |
+| AudioSeal (watermark), C2PA (provenance) | MIT / Apache 2.0 | yours |
+| SDXL + the cover checkpoint (optional AI art) | CreativeML Open RAIL++-M | the licensor claims no rights in generated images |
+
+Two notes that are not about you selling songs, but about this software: whether AI-generated audio
+can be copyrighted at all is unsettled (in the US, the Copyright Office requires human authorship),
+and the Commons Clause means somebody else cannot sell WAIvePulse itself or a hosted service whose
+value is substantially this software.
+
+### Built with Llama
+
+The Lyric Helper writes with Meta's Llama 3.1 running locally through Ollama.
+*Llama 3.1 is licensed under the Llama 3.1 Community License, Copyright © Meta Platforms, Inc.*
+
+### Credits
+
+- **HeartMuLa** (HeartMuLa-oss-3B, HeartCodec) - the song generation model, Apache 2.0
+- **Demucs** by Meta Research - stem separation, MIT
+- **faster-whisper** / OpenAI Whisper - lyric transcription, MIT
+- **AudioSeal** by Meta Research - neural watermarking, MIT
+- **Juggernaut XL** by RunDiffusion - the default checkpoint for optional AI cover art
+- **Stable Diffusion XL** by Stability AI - CreativeML Open RAIL++-M
+- **GSAP**, **Pillow**, **FastAPI**, **librosa**, and the 15 SIL OFL type families listed in
+  [assets/fonts/LICENSES.md](assets/fonts/LICENSES.md)

@@ -158,7 +158,13 @@ function renderCoverAiSetup() {
       <button type="button" class="btn-action" id="aiTest" onclick="testCoverAi()"
               ${d.available ? '' : 'disabled'} title="Paints one real 512px image and reports how long it took">Test</button>
     </div>
-    <div class="cover-ai-result" id="aiResult"></div>`;
+    <div class="cover-ai-result" id="aiResult"></div>
+    <p class="cover-ai-credit">
+      Art is painted by Stable Diffusion XL on your own GPU. The default checkpoint is
+      <a href="https://civitai.com/models/133005" target="_blank" rel="noopener">Juggernaut XL</a>
+      by RunDiffusion, which asks to be credited; SDXL is Stability AI's, under CreativeML Open
+      RAIL++-M. Images you make are yours.
+    </p>`;
 }
 
 function linkify(text) {
