@@ -18,7 +18,7 @@ $features = [
     'kicker'=> 'HeartMuLa 3B',
     'title' => 'Type lyrics. Get a finished song.',
     'body'  => 'Paste your words, pick a few style tags, and a 3-billion-parameter model writes, sings, and produces a complete track as an MP3 — vocals and all. Jobs queue up; BPM and key are detected automatically.',
-    'points'=> ['Full vocal songs from text', 'Seed lock + 1–4 takes per click', 'Searchable library with stars + ratings', 'One-click 1080p YouTube video with cover art', 'Neural watermark + provenance baked in'],
+    'points'=> ['Full vocal songs from text', 'Seed lock + 1–4 takes per click', 'Twelve designed cover-art styles, one per song', 'One-click 1080p YouTube video with cover art', 'Neural watermark + provenance baked in'],
   ],
   [
     'tag'   => 'Lyrics',
@@ -44,8 +44,8 @@ $features = [
     'img'   => 'img/looper.jpg',
     'kicker'=> 'Ed Sheeran in a tab',
     'title' => 'Build a track, layer by layer.',
-    'body'  => 'A full loop station: synthesized drums with a 16-step sequencer, a two-octave synth with filter, arpeggiator and ADSR, a polyphonic piano roll for chords, a plucked-guitar voice, a sampler, and a mic with autotune — stacked into six loops. Fill cells to make held notes and read them back on a live sheet-music staff. Overdubs are auto-quantized, so every layer lands on the beat.',
-    'points'=> ['Six layers with quantized overdub', 'Play it from a real MIDI keyboard', 'Swing, probability, ratchets + pattern banks', 'Piano roll with scale lock → live sheet music', 'Import and export MIDI files', 'Export WAV or MP3 at streaming loudness'],
+    'body'  => 'A full loop station: synthesized drums with a 16-step sequencer, a two-octave synth, a polyphonic piano roll, a plucked-guitar voice, a sampler, and a mic with autotune — stacked into six loops. Every note can be played by up to seven slightly detuned voices spread across the stereo field, so a part sounds like a section rather than a keyboard. Draw a dynamics curve under the roll and held notes get brighter as well as louder when they swell, then place each loop near or far in a real room.',
+    'points'=> ['Ensemble voices: one note, up to seven players', 'Expression curve: loud is brighter, not just louder', 'Eight real rooms, with near-to-far depth', 'Play it from a real MIDI keyboard', 'Swing, probability, ratchets + pattern banks', 'Import and export MIDI files'],
   ],
   [
     'tag'   => 'Karaoke',
@@ -81,6 +81,8 @@ $compare = [
   ['YouTube-loudness export', true, false, 'plugin'],
   ['Reference-track mastering', true, false, 'plugin'],
   ['MIDI keyboard input',    true,  false, true],
+  ['Ensemble + expression synth', true, false, 'plugin'],
+  ['Album art for every song', true, false, false],
   ['Subscription',           'None','Monthly','Monthly'],
   ['Usage caps',             'None','Credits','None'],
 ];

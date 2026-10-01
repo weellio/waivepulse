@@ -130,6 +130,9 @@ Open the Looper page at any time — it works independently of the AI generation
 - **Project files (.wploop):** every loop, pattern, bank, synth setting, FX, and song arrangement in one file (Ctrl+S; drag-drop to open). Warns before you lose unsaved work
 - **MIDI file import:** channel 10 fills the drum grid, other channels fill the piano roll; tempo is offered; multi-bar files spread across banks
 - **Better export:** WAV or MP3 320, with a loudness target (−14/−16/−9 LUFS, ≤ −1 dBTP) and a readout. The Song Builder has the same options
+- **Ensemble voices:** every note can be played by up to 7 sub-voices, each detuned a few cents, placed across the stereo field, entering up to 30 ms apart, and drifting slowly in pitch. That is the difference between one synth and a section. Size 1 sounds exactly like it always did
+- **Expression lane:** the dynamics curve under the piano roll. Draw it freehand, shift-drag a straight line, or drop a swell, fall, arch or pulse. It feeds the ensemble twice per step across a note's whole length, so a held note *moves*: louder comes out brighter and wider, the way a player blowing harder does. Saved with the project and exported as MIDI CC1
+- **Real rooms:** eight impulse responses (small room, live room, studio chamber, concert hall, the Pantheon, plate, spring, cab) through three shared convolution busses standing in for close, mid and far microphones. Put a loop at the back and it arrives later, darker and wetter — front-to-back depth instead of one flat reverb
 - **Pattern banks A–D + chain:** four drum+roll patterns, switched on the next bar, chained like "A A B A C"; → Loop and MIDI export render the whole chain
 
 [Detail section below](#looper-in-depth)
@@ -1048,6 +1051,30 @@ A panel on the right applies global effects to the whole mix off the master bus:
 |---|---|
 | Delay | Wet level of a tempo-synced echo (1/8-note, fed back at ~38 %) |
 | Volume | Master output level (0–150 %) |
+
+### Depth: ensemble, expression and rooms
+
+Three things make a synthesised part sound like players in a room rather than a keyboard, and the
+Looper now does all three.
+
+**Ensemble.** A note becomes 1-7 sub-voices. Each gets its own detune (a few cents, never two the
+same), its own seat in the stereo field, an onset delay of up to 30 ms, a slightly different
+attack, and a slow random pitch walk. Presets run from Solo to Choir. Measured: a section reads
+about 19% side energy against 0% for a solo voice, and onsets smear from 5 ms to 70 ms.
+
+**Expression.** One value per note, 0 to 1, that can ramp *while the note sustains*. It drives
+level, filter cutoff, detune spread and a saturated harmonic path together, so loud is brighter
+and wider rather than simply louder. A swell lifts loudness about 6.5 dB while the spectral
+centroid rises 1.3x (almost 2x in the lower register). This is the single biggest difference
+between a mockup that sounds alive and one that does not.
+
+**Rooms.** Each loop takes a seat: pan, plus a distance from near to far. Distance adds pre-delay
+(about 1 ms per 34 cm), rolls off the highs the way air does, and raises the wet-to-dry ratio.
+Near to far measures as reverb onset moving 4.5 ms to 40 ms, 11 dB of high-frequency loss, and a
+24.6 dB swing in wet/dry. Only three convolvers ever exist, however many parts play.
+
+Everything here is baked into **→ Loop** renders, Export Mix and the Song Builder, so what you
+heard is what lands in the file.
 
 ### Transport controls
 
