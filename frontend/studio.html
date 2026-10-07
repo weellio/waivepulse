@@ -97,6 +97,108 @@
   <span id="match-master-readout"></span>
   <script type="module" src="/js/studio/server-fx.js"></script>
   <!-- server-fx:end -->
+  <!-- repaint:start -->
+  <div class="t-divider"></div>
+  <button class="t-btn" id="ace-btn" title="Regenerate the selected section of the song from a description, using the ACE-Step engine. Select a region on the ruler first.">✨ Rewrite Section</button>
+
+  <div id="ace-modal" role="dialog" aria-modal="true" aria-labelledby="ace-title">
+    <div id="ace-panel">
+      <div id="ace-head">
+        <h3 id="ace-title">Regenerate this section from a description</h3>
+        <span class="ace-sub">ACE-Step 1.5</span>
+        <button type="button" id="ace-close" title="Close">&times;</button>
+      </div>
+
+      <div id="ace-body">
+        <!-- Shown when ACE-Step is not installed yet -->
+        <div id="ace-install" style="display:none">
+          <p class="ace-note"><b>This is a second music engine.</b> WAIvePulse's usual engine
+          (HeartMuLa) writes a song from start to finish and cannot go back and change part of
+          one. ACE-Step 1.5 is a diffusion model, so a time span can be masked and redrawn in
+          place. It is MIT licensed, code and weights, so commercial use is allowed.</p>
+          <p class="ace-note ace-warn"><b>One-time download: about 16 GB</b> — roughly 6 GB of
+          libraries plus 9.4 GB of model weights. Everything is installed to
+          <span id="ace-root">G:\acestep</span>, never your C: drive.</p>
+          <p class="ace-note ace-warn"><b>It needs about 9.5 GB of free graphics memory</b> while it
+          runs — measured on a 12 GB card, not estimated. That is most of the card, so close games
+          and other GPU work first. Any model your local Ollama is holding is evicted
+          automatically. Nothing stays loaded between uses.</p>
+          <p class="ace-note">Until you install it, WAIvePulse works exactly as it does now.
+          Nothing else changes.</p>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+            <button type="button" class="ace-btn ace-go" id="ace-install-btn">Install ACE-Step</button>
+            <span class="ace-status" id="ace-install-status"></span>
+          </div>
+        </div>
+
+        <!-- The working panel -->
+        <div id="ace-work" style="display:none">
+          <p class="ace-note" id="ace-expect"><b>How this works.</b> ACE-Step does not edit your
+          audio and does not understand instructions. It <b>throws the selected span away and
+          regenerates it</b> from a description, listening to the audio either side for key and
+          tempo. So the voice, the exact melody and the lyrics in the new section <b>can all
+          come out different</b>. Check the preview before you apply it.</p>
+
+          <div>
+            <span class="ace-lbl">Selected section</span>
+            <div id="ace-range">no region selected</div>
+          </div>
+
+          <div>
+            <label class="ace-lbl" for="ace-instruction">What do you want here?</label>
+            <input type="text" id="ace-instruction" placeholder="make the chorus a gospel choir">
+          </div>
+
+          <div>
+            <label class="ace-lbl" for="ace-desc">Description the model will actually receive <span style="color:#d98cff">(edit this)</span></label>
+            <textarea id="ace-desc" rows="2" placeholder="gospel choir, Hammond organ, big room reverb, soulful"></textarea>
+            <p class="ace-note" style="margin-top:5px">Your sentence above is rewritten into musical
+            descriptors by your local Ollama model, because that is what ACE-Step responds to.
+            <b>Nothing is generated until you have seen this line</b>, and you can change it.
+            <span id="ace-desc-why"></span></p>
+          </div>
+
+          <div class="ace-row">
+            <div>
+              <label class="ace-lbl" for="ace-lyrics">New lyrics for this section (optional)</label>
+              <textarea id="ace-lyrics" rows="2" placeholder="leave empty to let the model choose"></textarea>
+            </div>
+            <div style="flex:0 0 190px">
+              <label class="ace-lbl" for="ace-strength">Keep the original <b id="ace-strength-val">60%</b></label>
+              <input type="range" id="ace-strength" min="0" max="100" value="60">
+              <p class="ace-note" style="margin-top:4px;padding:5px 7px">Higher keeps more of the
+              original performance; lower follows your description more freely.</p>
+            </div>
+          </div>
+
+          <p class="ace-note ace-warn" id="ace-stem-warn"><b>About your stems.</b> The new section is
+          one piece of finished music, so it is written into every track at once. Inside that
+          section the stems stop being separate instruments, which means per-stem mute and solo
+          no longer isolate anything there. Everywhere else is untouched, and <b>Uncut</b> undoes
+          the whole thing.</p>
+
+          <p class="ace-note ace-err" id="ace-cut-warn" style="display:none"><b>You have cut this
+          song.</b> The timeline no longer lines up with the file on disk, so the section we
+          regenerate would come from the wrong place. Press <b>Uncut</b> until the cuts are gone,
+          or reload the Studio, then try again.</p>
+
+          <div id="ace-log"></div>
+          <div id="ace-metrics"></div>
+        </div>
+      </div>
+
+      <div id="ace-foot">
+        <button type="button" class="ace-btn ace-go" id="ace-run">Generate</button>
+        <button type="button" class="ace-btn" id="ace-preview" disabled title="Hear the whole song with the new section crossfaded in">&#9654; Preview</button>
+        <button type="button" class="ace-btn ace-apply" id="ace-apply" disabled title="Splice the new section into the timeline, crossfaded. Undo with Uncut.">Apply to timeline</button>
+        <span class="ace-spacer"></span>
+        <span class="ace-status" id="ace-status"></span>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/js/studio/repaint.js"></script>
+  <!-- repaint:end -->
   <div class="t-divider"></div>
   <button class="t-btn" style="font-size:10px;width:auto;padding:0 9px" title="Import audio track (or drag & drop)" onclick="document.getElementById('_importInput').click()">＋ Track</button>
   <input type="file" id="_importInput" accept="audio/*" multiple style="display:none" onchange="handleImportFiles(this.files);this.value=''">
@@ -580,6 +682,84 @@
     </div>
   </div>
 </div>
+
+<!-- mashup:start -->
+<!-- Mashup builder + "Sample this" + the beat-grid overlay.
+     Logic: frontend/js/studio/mashup.js (it also injects the two toolbar buttons next to
+     Stem Swap and the two help sections, so this block stays in one piece).
+     Styles: the .mg-* rules at the end of frontend/css/studio.css. -->
+<div id="mashup-modal" class="mg-modal">
+  <div id="mashup-panel" class="mg-panel">
+    <div class="help-hdr">
+      <div>
+        <div class="help-hdr-title">Mashup Builder — one song per instrument</div>
+        <div class="help-hdr-sub">Vocals from one song, drums from another · tempo, key and downbeats matched for you · <kbd>Esc</kbd> to close</div>
+      </div>
+      <button class="help-close" onclick="closeMashup()">×</button>
+    </div>
+    <div class="help-body">
+      <div id="mg-grid-banner" class="mg-banner">Checking the beat grid…</div>
+      <p class="help-p">Pick where each instrument comes from. Every stem is time-stretched to this
+        song's tempo (pitch preserved), shifted into its key and slid onto its downbeats — then
+        dropped on the timeline as an <b>ordinary track</b> you can mix, re-stretch, re-pitch or delete.
+        Nothing is hidden: the exact numbers applied to each stem are listed below after you build.</p>
+      <div class="mg-opts">
+        <label><input type="checkbox" id="mg-opt-tempo" checked> match tempo</label>
+        <label><input type="checkbox" id="mg-opt-key" checked> match key</label>
+        <label><input type="checkbox" id="mg-opt-align" checked> align downbeats</label>
+        <label>build at <input type="number" id="mg-target-bpm" min="40" max="240" step="0.01"> BPM</label>
+        <label>in <select id="mg-target-key" class="mg-sel" style="width:auto;max-width:130px"></select></label>
+      </div>
+      <table class="mg-roles">
+        <thead><tr><th style="width:84px">instrument</th><th style="width:270px">take it from</th><th>what will change</th></tr></thead>
+        <tbody id="mg-roles-body"></tbody>
+      </table>
+      <div id="mg-build-log" class="mg-hint"></div>
+    </div>
+    <div class="mg-foot">
+      <span id="mg-status" class="mg-status"></span>
+      <span class="mg-spacer"></span>
+      <button class="mg-ghost" id="mg-plan-btn" onclick="planMashup()" title="Work out the numbers without touching the timeline">Plan it</button>
+      <button class="mg-go" id="mg-build-btn" onclick="buildMashup()" title="Plan, then lay every chosen stem on its own track, already matched">Build mashup</button>
+    </div>
+  </div>
+</div>
+
+<div id="sample-modal" class="mg-modal">
+  <div id="sample-panel" class="mg-panel">
+    <div class="help-hdr">
+      <div>
+        <div class="help-hdr-title">Sample this — a bar-exact clip from the selection</div>
+        <div class="help-hdr-sub">Isolate one stem · trimmed to whole bars on the grid · hand it to the Looper in time and in key · <kbd>Esc</kbd> to close</div>
+      </div>
+      <button class="help-close" onclick="closeSample()">×</button>
+    </div>
+    <div class="help-body">
+      <div id="mg-sample-banner" class="mg-banner">Checking the beat grid…</div>
+      <div class="mg-sel-box" id="mg-sample-box">
+        <div class="mg-sel-row"><span>you dragged</span><b id="mg-sel-raw">—</b></div>
+        <div class="mg-sel-row"><span>snapped to bars</span><b id="mg-sel-snap">—</b></div>
+        <div class="mg-sel-row"><span>edges moved</span><span id="mg-sel-shift" class="mg-shift">—</span></div>
+        <div class="mg-sel-row"><span>goes to the Looper as</span><b id="mg-sel-meta">—</b></div>
+      </div>
+      <div style="font-size:10px;color:#555;letter-spacing:.6px;text-transform:uppercase;font-weight:700">length</div>
+      <div class="mg-bars" id="mg-bars-row"></div>
+      <div style="font-size:10px;color:#555;letter-spacing:.6px;text-transform:uppercase;font-weight:700;margin-top:12px">isolate</div>
+      <div class="mg-stem-pick" id="mg-stem-pick"></div>
+      <div class="mg-hint" id="mg-sample-hint"></div>
+    </div>
+    <div class="mg-foot">
+      <span id="mg-sample-status" class="mg-status"></span>
+      <span class="mg-spacer"></span>
+      <button class="mg-ghost" id="mg-prev-btn" onclick="previewSample()" title="Hear the clip">▶ Preview</button>
+      <button class="mg-ghost" id="mg-track-btn" onclick="sampleToTrack()" title="Drop the clip on the timeline where it was taken from">＋ Add as track</button>
+      <button class="mg-ghost" id="mg-dl-btn" onclick="downloadSample()" title="Download the clip as a WAV">⬇ WAV</button>
+      <button class="mg-go" id="mg-looper-btn" onclick="sampleToLooper()" title="Open the Looper as a sampler instrument, already at this clip's tempo and key">🎹 Send to Looper</button>
+    </div>
+  </div>
+</div>
+<script type="module" src="/js/studio/mashup.js"></script>
+<!-- mashup:end -->
 
 <script type="module" src="/js/studio/main.js"></script>
 </body>

@@ -302,3 +302,154 @@ canvas.auto-lane{display:none;position:absolute;left:0;right:0;top:80px;width:10
 #proj-toast.show{opacity:1}
 #overlay-open{background:#0a1e1e;border:1px solid #0d6b6b;color:#8cffff;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
 #overlay-open:hover{background:#062828}
+
+/* ── ACE-Step "Regenerate section" panel (repaint.js) ────────────────────────
+   Second generation engine. Styled to match the existing modals: fixed overlay,
+   #111 panel, cyan for information, amber for anything that rewrites audio.     */
+#ace-btn{font-size:10px;width:auto;padding:0 8px;color:#d98cff;border-color:#5a2a6b}
+#ace-btn:disabled{opacity:.45;cursor:not-allowed}
+#ace-modal{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:500;display:none;align-items:center;justify-content:center;padding:20px}
+#ace-modal.open{display:flex}
+#ace-panel{background:#111;border:1px solid #2a2a2a;border-radius:10px;width:100%;max-width:660px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.6)}
+#ace-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #222;flex-shrink:0}
+#ace-head h3{margin:0;font-size:14px;color:#d98cff;font-weight:700;letter-spacing:.3px}
+#ace-head .ace-sub{font-size:11px;color:#777}
+#ace-head button{margin-left:auto;background:none;border:1px solid #333;color:#888;width:26px;height:26px;border-radius:5px;cursor:pointer;font-size:15px;line-height:1;flex-shrink:0}
+#ace-head button:hover{color:#ddd;border-color:#555}
+#ace-body{padding:14px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+#ace-foot{padding:11px 16px;border-top:1px solid #222;display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap}
+
+.ace-lbl{display:block;font-size:10px;letter-spacing:.7px;color:#7a8a8a;font-weight:700;margin-bottom:4px;text-transform:uppercase}
+.ace-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.ace-row>div{flex:1 1 180px;min-width:150px}
+#ace-modal textarea,#ace-modal input[type=text]{width:100%;box-sizing:border-box;background:#081515;border:1px solid #2a3a3a;color:#cfe;border-radius:6px;padding:7px 9px;font-size:12px;font-family:inherit;resize:vertical}
+#ace-modal textarea:focus,#ace-modal input[type=text]:focus{outline:none;border-color:#1ab8b8}
+#ace-desc{border-color:#5a2a6b;color:#f0d8ff}
+#ace-range{font-family:'Courier New',monospace;font-size:12px;color:#8cffff}
+#ace-range b{color:#e8cc4a}
+#ace-strength{width:100%;accent-color:#d98cff;cursor:pointer}
+
+.ace-note{font-size:11px;line-height:1.5;color:#8a8a8a;background:#0c1418;border-left:2px solid #2a4a52;border-radius:0 5px 5px 0;padding:8px 10px;margin:0}
+.ace-note b{color:#b8c8c8}
+.ace-warn{border-left-color:#6b5200;background:#1a1408;color:#c8b070}
+.ace-warn b{color:#e8cc4a}
+.ace-err{border-left-color:#7a2a22;background:#1e0f0c;color:#f09a8a}
+
+#ace-log{background:#0a1e1e;border:1px solid #0d6b6b;border-radius:6px;padding:8px;font-family:'Courier New',monospace;font-size:10.5px;color:#6a8a8a;white-space:pre-wrap;max-height:130px;overflow-y:auto;display:none}
+#ace-log.show{display:block}
+#ace-metrics{display:none;font-size:11px;font-family:'Courier New',monospace;color:#9a9a9a;background:#0d0d0d;border:1px solid #242424;border-radius:6px;padding:9px 10px;line-height:1.65}
+#ace-metrics.show{display:block}
+#ace-metrics table{border-collapse:collapse;width:100%}
+#ace-metrics td{padding:1px 8px 1px 0;vertical-align:top}
+#ace-metrics td:first-child{color:#667;white-space:nowrap}
+#ace-metrics b{color:#8cffff}
+#ace-metrics .ace-good{color:#5cbe6a}
+#ace-metrics .ace-bad{color:#e8a04a}
+
+.ace-btn{background:#0a1e1e;border:1px solid #0d6b6b;color:#8cffff;padding:7px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap}
+.ace-btn:hover:not(:disabled){background:#062828}
+.ace-btn:disabled{opacity:.4;cursor:not-allowed}
+.ace-btn.ace-go{background:#1a0c20;border-color:#5a2a6b;color:#d98cff}
+.ace-btn.ace-go:hover:not(:disabled){background:#240f2c}
+.ace-btn.ace-apply{background:#1a1408;border-color:#6b5200;color:#e8cc4a}
+.ace-btn.ace-apply:hover:not(:disabled){background:#241a06}
+.ace-spacer{margin-left:auto}
+#ace-foot .ace-status{font-size:11px;color:#777;font-family:'Courier New',monospace}
+
+/* ── Mashup builder + Sample this + the beat grid (frontend/js/studio/mashup.js) ──
+   Two workflows over one new idea: the app now knows where the bar lines are.
+   Markup lives in studio.html between <!-- mashup:start --> / <!-- mashup:end -->;
+   the toolbar buttons and the help entries are injected by mashup.js. */
+
+/* Toolbar */
+.mg-btn{background:#0b1a22;border:1px solid #2a5a6b;color:#8cd8ff;padding:0 9px;height:28px;
+  border-radius:6px;cursor:pointer;font-size:10px;font-weight:700;letter-spacing:.4px;
+  white-space:nowrap;flex-shrink:0;transition:background .15s,border-color .15s}
+.mg-btn:hover:not(:disabled){background:#102733;border-color:#4a9ec8}
+.mg-btn:disabled{opacity:.4;cursor:not-allowed}
+.mg-btn.busy{cursor:progress;color:#8cffff;border-color:#0d6b6b}
+#mg-readout{font-size:10px;color:#777;font-family:'Courier New',monospace;white-space:nowrap;cursor:help}
+#mg-readout b{color:#8cd8ff}
+#mg-readout .mg-weak{color:#e8cc4a}
+#mg-readout .mg-bad{color:#ff6b5a}
+
+/* Bar lines drawn over the timeline (downbeats from the grid) */
+#mg-lines{position:absolute;top:0;left:0;pointer-events:none;z-index:6;display:none}
+#mg-lines.on{display:block}
+#mg-lines .mg-bar{position:absolute;top:0;bottom:0;width:1px;background:rgba(140,216,255,.10)}
+#mg-lines .mg-bar.mg-four{background:rgba(140,216,255,.22)}
+#mg-lines .mg-num{position:absolute;top:15px;font-size:8px;color:#3c6e85;font-family:'Courier New',monospace;
+  transform:translateX(2px);line-height:1}
+
+/* Shared modal shell (same shape as the help / stem-library modals) */
+.mg-modal{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:520;display:none;
+  align-items:center;justify-content:center;padding:20px}
+.mg-modal.open{display:flex}
+.mg-panel{background:#111;border:1px solid #2a2a2a;border-radius:10px;width:100%;max-height:90vh;
+  display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.6)}
+#mashup-panel{max-width:860px}
+#sample-panel{max-width:640px}
+
+/* Grid banner — which tracker, how confident, what to distrust */
+.mg-banner{display:flex;align-items:flex-start;gap:10px;background:#0c1418;border:1px solid #1e3540;
+  border-radius:8px;padding:9px 12px;margin-bottom:16px;font-size:11px;color:#8aa;line-height:1.6}
+.mg-banner b{color:#8cd8ff}
+.mg-banner.mg-shaky{border-color:#5a4a16;background:#17140a}
+.mg-banner.mg-shaky b{color:#e8cc4a}
+.mg-banner.mg-none{border-color:#5a2020;background:#180c0c}
+.mg-banner .mg-warn{display:block;color:#e8cc4a;margin-top:3px}
+
+/* Role picker */
+.mg-roles{width:100%;border-collapse:collapse;font-size:12px}
+.mg-roles th{text-align:left;color:#444;font-size:9px;letter-spacing:.6px;text-transform:uppercase;
+  padding:0 8px 6px;border-bottom:1px solid #1d1d1d;font-weight:700}
+.mg-roles td{padding:6px 8px;border-bottom:1px solid #0f0f0f;vertical-align:middle}
+.mg-roles tr:last-child td{border-bottom:none}
+.mg-role-name{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;white-space:nowrap}
+.mg-sel{background:#0a1e1e;color:#bcd;border:1px solid #244;border-radius:5px;font-size:11px;
+  padding:3px 4px;max-width:260px;width:100%;cursor:pointer}
+.mg-sel:hover{border-color:#1ab8b8}
+.mg-sel option{background:#131313;color:#ddd}
+.mg-plan{font-size:10.5px;color:#7e8e94;font-family:'Courier New',monospace;line-height:1.5}
+.mg-plan .mg-num2{color:#8cd8ff}
+.mg-plan .mg-skip{color:#4a4a4a}
+.mg-plan .mg-err{color:#ff6b5a}
+.mg-plan .mg-ok{color:#5cbe6a}
+.mg-plan .mg-pend{color:#e8cc4a}
+
+/* Option row + footer */
+.mg-opts{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:4px 0 14px;font-size:11px;color:#888}
+.mg-opts label{display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap}
+.mg-opts input[type=checkbox]{accent-color:#8cd8ff;cursor:pointer}
+.mg-opts input[type=number]{background:#0a1e1e;color:#8cffff;border:1px solid #244;border-radius:4px;
+  width:62px;font-size:11px;padding:2px 4px;font-family:'Courier New',monospace}
+.mg-foot{display:flex;align-items:center;gap:10px;padding:12px 20px;border-top:1px solid #1e1e1e;
+  background:#0d0d0d;flex-shrink:0;flex-wrap:wrap}
+.mg-foot .mg-spacer{margin-left:auto}
+.mg-status{font-size:11px;color:#777;font-family:'Courier New',monospace}
+.mg-go{background:#0b2018;border:1px solid #2a6b4a;color:#6ce8a8;padding:6px 14px;border-radius:6px;
+  cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap}
+.mg-go:hover:not(:disabled){background:#0f2d20}
+.mg-go:disabled{opacity:.4;cursor:not-allowed}
+.mg-ghost{background:#141414;border:1px solid #333;color:#aaa;padding:6px 12px;border-radius:6px;
+  cursor:pointer;font-size:12px;white-space:nowrap}
+.mg-ghost:hover:not(:disabled){background:#1c1c1c;border-color:#555}
+.mg-ghost:disabled{opacity:.4;cursor:not-allowed}
+
+/* Sample panel */
+.mg-sel-box{background:#0e0e0e;border:1px solid #1e1e1e;border-radius:8px;padding:12px 14px;margin-bottom:14px}
+.mg-sel-row{display:flex;justify-content:space-between;gap:12px;font-size:11.5px;color:#999;
+  font-family:'Courier New',monospace;padding:3px 0}
+.mg-sel-row b{color:#8cd8ff;font-weight:600}
+.mg-sel-row .mg-shift{color:#e8cc4a}
+.mg-bars{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:10px 0 2px}
+.mg-bar-btn{background:#141414;border:1px solid #333;color:#aaa;padding:3px 10px;border-radius:5px;
+  cursor:pointer;font-size:10.5px;font-weight:600}
+.mg-bar-btn:hover{background:#1c1c1c;border-color:#4a9ec8}
+.mg-bar-btn.on{background:#0b1a22;border-color:#4a9ec8;color:#8cd8ff}
+.mg-stem-pick{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 2px}
+.mg-stem-btn{background:#161616;border:1px solid #333;color:#aaa;padding:4px 12px;border-radius:6px;
+  cursor:pointer;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.mg-stem-btn:hover{background:#1e1e1e;border-color:currentColor}
+.mg-stem-btn.on{background:#0e1e1e;border-color:currentColor;box-shadow:inset 0 0 0 1px currentColor}
+.mg-hint{font-size:10.5px;color:#555;line-height:1.6;margin-top:8px}

@@ -31,6 +31,48 @@
   <button class="sidebar-toggle" onclick="toggleSidebar()" title="Collapse sidebar">◀</button>
   <div class="panel-create-inner">
 
+<!-- vibe:start -->
+    <div class="vibe-card" id="vibeCard">
+      <div class="vibe-head">
+        <label style="margin-bottom:0">Start from</label>
+        <span class="vibe-sub">a clip, a picture — or just pick tags below</span>
+      </div>
+      <div class="vibe-row">
+        <button type="button" class="vibe-btn" id="vibeRefBtn"
+                title="Drop any audio file and read its BPM, key, timbre and style into the tag picker. Nothing is applied until you click a chip.">♪ Sounds like this</button>
+        <button type="button" class="vibe-btn" id="vibeImgBtn"
+                title="A local vision model describes the picture, then the Lyrics page's text model turns that description into tags and a lyric theme.">▣ From a picture</button>
+      </div>
+      <div class="vibe-drop" id="vibeDrop">drop an audio file or an image here</div>
+      <select id="vibeSongPick" class="vibe-song" title="Use a song you already made as the reference">
+        <option value="">…or one of your own songs</option>
+      </select>
+      <div class="vibe-status" id="vibeStatus"></div>
+      <div class="vibe-result" id="vibeResult" hidden>
+        <div class="vibe-why" id="vibeWhy"></div>
+        <div class="vibe-desc" id="vibeDesc"></div>
+        <div class="vibe-chips" id="vibeChips"></div>
+        <div class="vibe-actions">
+          <button type="button" class="vibe-apply" id="vibeApplyAll">Apply tags</button>
+          <button type="button" class="vibe-ghost" id="vibeThemeBtn" hidden>Copy lyric theme</button>
+          <button type="button" class="vibe-ghost" id="vibeDismiss">Dismiss</button>
+        </div>
+      </div>
+      <input type="file" id="vibeRefFile" accept="audio/*" style="display:none">
+      <input type="file" id="vibeImgFile" accept="image/*" style="display:none">
+
+      <div class="vibe-tier">
+        <div class="vibe-head">
+          <label style="margin-bottom:0">Render tier</label>
+          <span class="vibe-sub">measured on this machine</span>
+        </div>
+        <div class="vibe-tier-seg" id="vibeTierSeg"></div>
+        <div class="vibe-tier-help" id="vibeTierHelp"></div>
+      </div>
+    </div>
+    <script type="module" src="/js/index/vibe.js"></script>
+<!-- vibe:end -->
+
     <div>
       <label>Song Title</label>
       <input type="text" id="title" placeholder="My awesome track" value="Untitled">

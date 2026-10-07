@@ -67,11 +67,37 @@ app = FastAPI(title="WAIvePulse")
 for _sub in ("js", "css", "worklets"):
     (FRONTEND_DIR / _sub).mkdir(parents=True, exist_ok=True)
 
+# ── Feature routers ───────────────────────────────────────────────────────────
+# Anything in backend/routers/*.py that exports `router` is mounted here. A feature can ship
+# its endpoints in its own file instead of growing this one, and a broken or half-installed
+# feature logs a line and is skipped rather than taking the whole app down.
+def _mount_routers():
+    import importlib
+    import traceback
+    folder = Path(__file__).parent / "routers"
+    if not folder.is_dir():
+        return
+    for path in sorted(folder.glob("*.py")):
+        if path.stem.startswith("_"):
+            continue
+        try:
+            mod = importlib.import_module(f"routers.{path.stem}")
+            r = getattr(mod, "router", None)
+            if r is not None:
+                app.include_router(r)
+                print(f"[waivepulse] routes: {path.stem}", flush=True)
+        except Exception:
+            print(f"[waivepulse] routes: {path.stem} failed to load", flush=True)
+            traceback.print_exc()
+
+
 app.mount("/outputs",  StaticFiles(directory=str(OUTPUTS_DIR)), name="outputs")
 app.mount("/assets",   StaticFiles(directory=str(ASSETS_DIR)),  name="assets")
 app.mount("/js",       StaticFiles(directory=str(FRONTEND_DIR / "js")),       name="js")
 app.mount("/css",      StaticFiles(directory=str(FRONTEND_DIR / "css")),      name="css")
 app.mount("/worklets", StaticFiles(directory=str(FRONTEND_DIR / "worklets")), name="worklets")
+
+_mount_routers()
 
 
 @app.middleware("http")
