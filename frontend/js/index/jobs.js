@@ -76,6 +76,7 @@ export function jobCardHTML(jobId, title, tags, status, message, file, fileSize,
       <div class="card-actions">
         <a class="btn-action" href="${file}" download>⬇ Download</a>
         ${!jobId.startsWith('local_') ? `<button class="btn-action" onclick="openDetails('${jobId}')">ℹ Details</button>` : ''}
+        ${!jobId.startsWith('local_') ? `<button class="btn-action" onclick="runSongCheck('${jobId}', this);event.stopPropagation()" title="Check this render for the faults generated songs usually ship with: loudness creeping up, peaks over the ceiling, a hard stop, dead air, tempo drift. Each finding names the control that fixes it. Instant, no GPU.">🩺 Check</button>` : ''}
         ${!isLocal ? reuseBtn : ''}
         ${!jobId.startsWith('local_')
           ? `<a class="btn-action" href="/studio?job=${jobId}" target="_blank">🎛 Studio</a>`

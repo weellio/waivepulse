@@ -62,6 +62,7 @@ The main page. Paste lyrics, pick tags from an organised grid (Genre, Timbre, Mo
 - **Ratings:** 1–5 stars per song, a "Top rated" sort, and a minimum-rating filter
 - **🖼 Cover art:** every song gets a designed record sleeve — twelve art directions (Swiss, Brutalist, Risograph, Blue Note, Metal, Neon horizon, Minimal, Pop, Label mono, Letterpress, Bauhaus, Xerox zine) picked from its genre and mood tags, set in vendored open-licence type, with measured 4.5:1 contrast. Pick a style or hit ↻ Regenerate on any card; the MP3's embedded cover updates with it
 - **🎬 Video:** turns any song into a 1080p H.264 MP4 for YouTube, with the song's cover art, title, and a waveform strip. The same cover is embedded in new MP3s
+- **🩺 Check:** tells you what is wrong with a render and which control fixes it — loudness creeping up, peaks over the ceiling, a hard stop, dead air, tempo drift, and (with stems) the backing dropping out under the vocal. Instant, no GPU. [Details below](#song-check)
 - Drop external MP3s onto the history panel to play them, or to send them into Studio for stem separation
 
 [Detail section below](#generate-page-in-depth)
@@ -432,6 +433,48 @@ To reproduce: unload Ollama first (`POST 127.0.0.1:11434/api/generate` with `{"m
 Audio quality is deterministic **within** a session but not across them: the same locked seed produced different audio in a different process, so the loudness, flatness, stereo-width and word-count proxies in `measured` rank the tiers only as measured in one pass. They are not a cross-machine promise.
 
 Quick take used to fail with a shape error if it ran after any other tier in the same server session. Fixed: the tier hook now drops key-value caches built for the previous batch size before each render. The fix restores state rather than just dodging the crash — a Balanced render before and after an intervening Quick render produced bit-identical audio on every metric.
+
+### Song Check
+
+**🩺 Check** on any finished song card. It reads the render and reports the faults generated
+music actually ships with, and every finding ends with the control that fixes it and the page
+it lives on. A diagnosis with no destination is just bad news.
+
+It is pure numpy over the decoded audio: no GPU, no model, no network, so it runs while a
+generation is in flight and finishes in a second or two.
+
+| Check | What it means | Where you fix it |
+|---|---|---|
+| Loudness ramp | First third and last third differ by 2 LU or more. The model piles on layers; it is not a mix decision | Automation lanes / Master FX |
+| Flat-topped clipping | Consecutive samples sitting still at the ceiling. Real digital clipping, baked in | Master FX → CLP |
+| Over full scale | Peaks decode above 0 dBFS without being flat-topped. Players and re-encodes will distort them | Master FX → LMT |
+| Hard stop | The last 0.2 s is still near full level — the song ran out of tokens instead of ending | Master fade in/out |
+| Dead air | Over 1.2 s of near-silence in the middle | Cut (ripple delete) / Rewrite Section |
+| Instrumental dropout | The backing falls 12 dB under the vocal and comes back. Needs stems | Side-chain ducking / Automation |
+| Tempo drift | The two halves of the song do not share a tempo | Time-stretch / Cut |
+| Narrow stereo | Two channels but almost no stereo information | Master FX |
+| Quiet master | More than 5 LU below the −14 LUFS streaming target. Not a defect, just quiet | 🎚 Match master |
+
+Three things it deliberately does **not** do:
+
+- **It never starts a separation.** Demucs needs the GPU and several minutes, and the check
+  promises to be instant. Without stems the dropout test stays quiet instead of guessing, and
+  the panel says so. Separate the song in Studio and run it again for that one.
+- **It does not call a sparse arrangement a defect.** A dropout has to be a hole punched in
+  continuous backing: 0.2 to 2 s, with the instruments returning on both sides. Before those
+  rules the check called a vocal-only intro a 6.4-second fault and reported 56 of them on a
+  song that is simply airy.
+- **It does not confuse clipping with overshoot.** A lossy decode routinely overshoots past
+  1.0 even when the encoder's input never clipped, and it smears any flat top away, so
+  counting samples at full scale and calling them clipped would be wrong on exactly the MP3s
+  most people have. Flat-topping is only claimed when the waveform really does sit still.
+
+Measured against the 25 songs in this repo's `outputs/`: 7 came back with nothing worth
+flagging, loudness ramp fired on 12, peaks over full scale on 13, hard stop on 5 and tempo
+drift on 4. A check that fires on everything is as useless as one that never fires.
+
+`POST /songcheck/upload` runs the same analysis on any audio file, so it works on songs that
+did not come from here.
 
 ### Cover art
 

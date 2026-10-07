@@ -645,3 +645,27 @@ input[type=number]:focus { border-color: #2ab8b8; }
 @media (max-width: 1400px) {
   .vibe-tier-seg button span { font-size: 0.66rem; }
 }
+
+/* ── Song Check panel (🩺 Check on a finished card) ─────────────────────────── */
+.songcheck-panel { border: 1px solid #2a2a38; border-radius: 8px; margin: 8px 0 4px;
+  background: #121220; font-size: 0.74rem; overflow: hidden; }
+.sc-head { display: flex; align-items: baseline; gap: 8px; padding: 7px 10px;
+  background: #171729; color: #c8c8d8; font-weight: 600; }
+.sc-sub { color: #6a6a7a; font-weight: 400; font-variant-numeric: tabular-nums; }
+.sc-close { margin-left: auto; background: none; border: none; color: #55556a;
+  cursor: pointer; font-size: 0.8rem; padding: 0 2px; }
+.sc-close:hover { color: #c8c8d8; }
+.sc-empty, .sc-foot, .sc-loading { padding: 9px 10px; color: #6a6a7a; line-height: 1.55; }
+.sc-foot { border-top: 1px solid #23232f; font-size: 0.7rem; }
+.sc-item { padding: 8px 10px; border-top: 1px solid #23232f; border-left: 3px solid #2a2a38; }
+/* severity reads at a glance, so the eye lands on what is actually audible */
+.sc-item.sc-high { border-left-color: #c05b5b; }
+.sc-item.sc-med  { border-left-color: #c0a05b; }
+.sc-item.sc-note { border-left-color: #3a5a6a; }
+.sc-title { color: #ddd; font-weight: 600; display: flex; gap: 8px; align-items: baseline; }
+.sc-pill { font-size: 0.62rem; font-weight: 400; color: #6a6a7a; border: 1px solid #2a2a38;
+  border-radius: 10px; padding: 0 6px; white-space: nowrap; }
+.sc-detail { color: #8a8a9a; line-height: 1.55; margin-top: 3px; }
+.sc-fix { color: #8fb9b9; line-height: 1.55; margin-top: 4px; }
+.sc-fix b { color: #6a9a9a; font-weight: 600; }
+.sc-where { color: #55556a; }
