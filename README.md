@@ -55,7 +55,7 @@ The main page. Paste lyrics, pick tags from an organised grid (Genre, Timbre, Mo
 - **↺ Reuse** on any card refills the whole form (lyrics, tags, duration, temperature, CFG, seed)
 - **Instrumental (experimental):** sends only section markers plus the `instrumental` tag. HeartMuLa has no true instrumental mode
 - **Start from a song or a picture:** drop an audio clip (or pick one of your own songs) and the page reads its BPM, key, timbre and CLAP-scored genre / mood / instrument / vocals into suggested tag chips. Drop an image and a local vision model turns the scene into tags and a lyric theme. [Details below](#start-from-a-song-or-a-picture)
-- **Render tier:** Quick take / Balanced / Deep / Wild / Custom above the Generate button. Balanced is exactly the old behaviour. Each button shows the seconds it took on this machine. [Details below](#render-tiers)
+- **Render tier:** Quick take / Balanced / Deep / Wild / Custom above the Generate button. Balanced is exactly the old behaviour. Each button shows the mean seconds measured on this machine, and the panel gives the spread and run count. [Details below](#render-tiers)
 - **Duration estimate:** "≈ 2:45 for these lyrics · use" under the duration slider
 - **✨ Suggest tags:** local Ollama picks tags from the page's own tag list based on your idea or lyrics
 - **Library:** search, ★ favorites filter, and sort above the song list
@@ -418,7 +418,7 @@ The Render tier control sits above the Generate button. Pick one and the Tempera
 | Deep | temp 0.95, CFG 2.0, 25 vocoder steps at 1.6 | 1396 s | 1085–1708 s | 2 | 2.36x |
 | Wild | temp 1.35, CFG 1.15, top-k 150; vocoder as Balanced | 485 s | single run | 1 | 0.82x |
 
-**One render is not a repeatable benchmark on this machine, so read the spread, not just the mean.** All clips are 8 seconds, same seed, same lyrics and tags, on an RTX 3060 12 GB. Balanced was measured four times and ranged 491 to 630 s for byte-identical audio. The variance is not Ollama: the slowest Balanced run had the card to itself, and the run with a 5 GB model resident came in faster. It is memory pressure, and Deep shows it worst — its two runs are 623 s apart, and in the slower one the language-model phase alone took 226 s against 61 to 84 s everywhere else, with 128 MB of VRAM left.
+**One render is not a repeatable benchmark on this machine, so read the spread, not just the mean.** All clips are 8 seconds, same seed, same lyrics and tags, on an RTX 3060 12 GB. Balanced was measured four times and ranged 491 to 630 s for the same prompt and seed. The variance is not Ollama: the slowest Balanced run had the card to itself, and the run with a 5 GB model resident came in faster. It is memory pressure, and Deep shows it worst — its two runs are 623 s apart, and in the slower one the language-model phase alone took 226 s against 61 to 84 s everywhere else, with 128 MB of VRAM left.
 
 Two numbers are more trustworthy than the absolute seconds:
 

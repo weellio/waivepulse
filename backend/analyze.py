@@ -84,11 +84,20 @@ TIERS: Dict[str, Dict[str, Any]] = {
 DEFAULT_TIER = "balanced"
 CUSTOM_TIER = "custom"   # the user moved a slider → apply nothing, send as-is
 
-# Filled in by measurement (see README). Each tier's total_s is the MEAN of 'runs'
-# timed renders on this machine, with total_min_s / total_max_s giving the observed
-# spread; vs_balanced is a same-session ratio. 'quality' entries are listen-free
-# proxies from one consistent pass, and they only hold within a session: the same
-# seed produced different audio in a different process.
+# Filled in by measurement (see README). Field by field:
+#   total_s         mean of 'runs' timed renders on this machine
+#   total_min_s     the observed spread. Read it: balanced ranged 491-630 s for the
+#   total_max_s     same prompt and seed, so the mean alone overstates the precision
+#   lm_s, codec_s   language model vs vocoder, averaged over 'split_runs' renders
+#                   (fewer than 'runs' — only some runs carried a timing probe)
+#   vs_balanced     derived from the published means, so the displayed arithmetic adds up
+#   vs_balanced_same_session
+#                   the tighter estimate: tier and balanced measured back to back under
+#                   identical conditions. Differs from vs_balanced where a tier's runs
+#                   are far apart (deep: 1.76 vs 2.36)
+# 'quality' entries are listen-free proxies from one consistent pass. They only hold
+# within a session: the same seed produced different audio in a different process, so
+# they rank the tiers as measured and are not a cross-machine promise.
 MEASURED_NOTE = (
     "Timed on an RTX 3060 12 GB, 8-second clips, same seed, lyrics and tags. One render is "
     "not a repeatable benchmark here: the model and vocoder together exceed 12 GB, so every "
