@@ -54,14 +54,14 @@ TIERS: Dict[str, Dict[str, Any]] = {
                  "(batch 1 in the language model) and a 5-step vocoder.",
         "temperature": 1.0, "cfg_scale": 1.0, "topk": 50,
         "num_steps": 5, "guidance_scale": 1.0,
-        "seconds": 249.1, "measured": {"audio_s": 8, "total_s": 249.1, "lm_s": 61.3, "codec_s": 187.8, "vs_balanced": 0.4, "lufs": -12.8, "spectral_flatness": 0.29545, "stereo_width": 0.3395, "whisper_words": 5, "whisper_logprob": -0.812, "repeat_drift_pct": 20.2},
+        "seconds": 248.3, "measured": {"audio_s": 8, "runs": 2, "total_s": 248.3, "total_min_s": 247.6, "total_max_s": 249.1, "lm_s": 61.3, "codec_s": 187.8, "split_runs": 1, "vs_balanced": 0.42, "vs_balanced_same_session": 0.45, "lufs": -12.8, "spectral_flatness": 0.29545, "stereo_width": 0.3395, "whisper_words": 5, "whisper_logprob": -0.812, "verdict": "248 s for 8 s of audio; 0.42x Balanced. The vocoder is 76% of it."},
     },
     "balanced": {
         "label": "Balanced",
         "blurb": "Today's behaviour, unchanged. The default.",
         "temperature": 1.0, "cfg_scale": 1.5, "topk": 50,
         "num_steps": 10, "guidance_scale": 1.25,
-        "seconds": 615.2, "measured": {"audio_s": 8, "total_s": 615.2, "lm_s": 83.5, "codec_s": 531.8, "vs_balanced": 1.0, "lufs": -24.69, "spectral_flatness": 0.35833, "stereo_width": 0.2986, "whisper_words": 6, "whisper_logprob": -0.594, "repeat_drift_pct": 20.2},
+        "seconds": 591.7, "measured": {"audio_s": 8, "runs": 4, "total_s": 591.7, "total_min_s": 491.2, "total_max_s": 630.2, "lm_s": 76.8, "codec_s": 476.4, "split_runs": 2, "vs_balanced": 1.0, "vs_balanced_same_session": 1.0, "lufs": -24.69, "spectral_flatness": 0.35833, "stereo_width": 0.2986, "whisper_words": 6, "whisper_logprob": -0.594, "verdict": "592 s for 8 s of audio, 491-630 s across 4 runs; the reference. The vocoder is 81% of it."},
     },
     "deep": {
         "label": "Deep",
@@ -69,7 +69,7 @@ TIERS: Dict[str, Dict[str, Any]] = {
                  "the same idea. Slower.",
         "temperature": 0.95, "cfg_scale": 2.0, "topk": 50,
         "num_steps": 25, "guidance_scale": 1.6,
-        "seconds": 1084.6, "measured": {"audio_s": 8, "total_s": 1084.6, "lm_s": 65.6, "codec_s": 1019.0, "vs_balanced": 1.76, "lufs": -16.74, "spectral_flatness": 0.22939, "stereo_width": 0.3734, "whisper_words": 11, "whisper_logprob": -0.362, "repeat_drift_pct": 20.2},
+        "seconds": 1396.1, "measured": {"audio_s": 8, "runs": 2, "total_s": 1396.1, "total_min_s": 1084.6, "total_max_s": 1707.6, "lm_s": 145.9, "codec_s": 1250.2, "split_runs": 2, "vs_balanced": 2.36, "vs_balanced_same_session": 1.76, "lufs": -16.74, "spectral_flatness": 0.22939, "stereo_width": 0.3734, "whisper_words": 11, "whisper_logprob": -0.362, "verdict": "1396 s for 8 s of audio, 1085-1708 s across 2 runs; 2.36x Balanced. The vocoder is 90% of it."},
     },
     "wild": {
         "label": "Wild",
@@ -77,21 +77,25 @@ TIERS: Dict[str, Dict[str, Any]] = {
                  "speed as Balanced.",
         "temperature": 1.35, "cfg_scale": 1.15, "topk": 150,
         "num_steps": 10, "guidance_scale": 1.25,
-        "seconds": 485.2, "measured": {"audio_s": 8, "total_s": 485.2, "lm_s": 70.7, "codec_s": 414.5, "vs_balanced": 0.79, "lufs": -20.71, "spectral_flatness": 0.1318, "stereo_width": 0.4422, "whisper_words": 2, "whisper_logprob": -0.873, "repeat_drift_pct": 20.2},
+        "seconds": 485.2, "measured": {"audio_s": 8, "runs": 1, "total_s": 485.2, "total_min_s": 485.2, "total_max_s": 485.2, "lm_s": 70.7, "codec_s": 414.5, "split_runs": 1, "vs_balanced": 0.82, "vs_balanced_same_session": 0.99, "lufs": -20.71, "spectral_flatness": 0.1318, "stereo_width": 0.4422, "whisper_words": 2, "whisper_logprob": -0.873, "verdict": "485 s for 8 s of audio; 0.82x Balanced. The vocoder is 85% of it."},
     },
 }
 
 DEFAULT_TIER = "balanced"
 CUSTOM_TIER = "custom"   # the user moved a slider → apply nothing, send as-is
 
-# Filled in by measurement (scripts below / see README). Everything in
-# MEASURED was timed on this machine, one 8 s generation per tier, same seed,
-# same lyrics, RTX 3060 12 GB. 'quality' entries are listen-free proxies.
+# Filled in by measurement (see README). Each tier's total_s is the MEAN of 'runs'
+# timed renders on this machine, with total_min_s / total_max_s giving the observed
+# spread; vs_balanced is a same-session ratio. 'quality' entries are listen-free
+# proxies from one consistent pass, and they only hold within a session: the same
+# seed produced different audio in a different process.
 MEASURED_NOTE = (
-    "Timed on an RTX 3060 12 GB: one 8-second generation per tier, same seed, "
-    "same lyrics and tags. The language model and vocoder together exceed 12 GB, "
-    "so every run pages into shared system memory; the Balanced repeat landed "
-    "20% faster with the GPU to itself, so treat timings as ratios, not promises."
+    "Timed on an RTX 3060 12 GB, 8-second clips, same seed, lyrics and tags. One render is "
+    "not a repeatable benchmark here: the model and vocoder together exceed 12 GB, so every "
+    "render pages about 14 GB through shared system memory and the clock moves with whatever "
+    "else touches the bus. Two Balanced runs inside one process landed 630.2 s and 630.1 s, "
+    "but across sessions Balanced ranged 491-630 s. Read each number as the mean of its runs "
+    "and the ratios between tiers as the stable part. Unload Ollama first to reproduce."
 )
 
 _tier_lock = threading.Lock()

@@ -1303,9 +1303,14 @@ async def progress_stream(job_id: str):
 
 @app.get("/history")
 def history():
+    # `or ""` matters: _recover_job() and _recover_sep() store created_at as None for anything
+    # rebuilt from the outputs directory, and .get(key, "") returns that None rather than the
+    # default. Two such rows made this whole endpoint 500 with
+    # "'<' not supported between instances of 'NoneType' and 'NoneType'", which empties the
+    # Library in the browser for every song, not just the undated ones.
     sorted_jobs = sorted(
         jobs.items(),
-        key=lambda x: x[1].get("created_at", ""),
+        key=lambda x: x[1].get("created_at") or "",
         reverse=True,
     )
     return [{"job_id": k, **v} for k, v in sorted_jobs]

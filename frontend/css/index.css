@@ -631,7 +631,16 @@ input[type=number]:focus { border-color: #2ab8b8; }
 .vibe-tier-seg button:hover { color: #ddd; }
 .vibe-tier-seg button.active { background: #0a3030; color: #b8ffff; }
 .vibe-tier-seg button.active em { color: #2a7a7a; }
-.vibe-tier-help { font-size: 0.7rem; color: #6a6a7a; line-height: 1.6; }
+.vibe-tier-help { font-size: 0.7rem; color: #6a6a7a; line-height: 1.6;
+  display: flex; flex-direction: column; gap: 4px; }
+.vibe-tier-knobs { color: #55556a; font-variant-numeric: tabular-nums; }
+/* the measured seconds are the point of the panel, so they get contrast the caveats do not */
+.vibe-tier-timing { color: #8fb9b9; }
+.vibe-tier-note > summary { cursor: pointer; color: #55556a; list-style: none; }
+.vibe-tier-note > summary::before { content: '▸ '; }
+.vibe-tier-note[open] > summary::before { content: '▾ '; }
+.vibe-tier-note > summary:hover { color: #8a8a9a; }
+.vibe-tier-note[open] { color: #5a5a6a; padding-top: 2px; }
 
 @media (max-width: 1400px) {
   .vibe-tier-seg button span { font-size: 0.66rem; }

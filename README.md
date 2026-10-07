@@ -411,18 +411,27 @@ Requirements and limits:
 
 The Render tier control sits above the Generate button. Pick one and the Temperature and CFG sliders in Advanced settings mirror it, so what the model receives is always visible. Moving either slider by hand switches to **Custom**, and the server then applies nothing of its own.
 
-| Tier | What changes | Measured (8 s clip) | vs Balanced |
-|---|---|---|---|
-| Quick take | CFG 1.0 (language model runs batch 1 instead of 2), 5 vocoder steps, no vocoder guidance | 249 s | 0.40x |
-| Balanced | The old defaults, untouched: temp 1.0, CFG 1.5, top-k 50, 10 vocoder steps at 1.25 | 615 s | 1.00x |
-| Deep | temp 0.95, CFG 2.0, 25 vocoder steps at 1.6 | 1085 s | 1.76x |
-| Wild | temp 1.35, CFG 1.15, top-k 150; vocoder as Balanced | 485 s | 0.79x |
+| Tier | What changes | Mean (8 s clip) | Spread | Runs | vs Balanced |
+|---|---|---|---|---|---|
+| Quick take | CFG 1.0 (language model runs batch 1 instead of 2), 5 vocoder steps, no vocoder guidance | 248 s | 248–249 s | 2 | 0.42x |
+| Balanced | The old defaults, untouched: temp 1.0, CFG 1.5, top-k 50, 10 vocoder steps at 1.25 | 592 s | 491–630 s | 4 | 1.00x |
+| Deep | temp 0.95, CFG 2.0, 25 vocoder steps at 1.6 | 1396 s | 1085–1708 s | 2 | 2.36x |
+| Wild | temp 1.35, CFG 1.15, top-k 150; vocoder as Balanced | 485 s | single run | 1 | 0.82x |
 
-How the numbers were taken: one 8-second render per tier on an RTX 3060 12 GB, same seed, same lyrics and tags, then listen-free proxies (loudness, spectral flatness, stereo width) and a faster-whisper word count on each clip. A seed-locked Balanced repeat produced identical audio metrics, so generation is deterministic. The repeat ran 20% faster with the GPU to itself, so read the seconds as ratios between tiers, not promises. The numbers live in `backend/analyze.py` (`TIERS[...]["measured"]`) and the UI reads them from `/vibe/status`.
+**One render is not a repeatable benchmark on this machine, so read the spread, not just the mean.** All clips are 8 seconds, same seed, same lyrics and tags, on an RTX 3060 12 GB. Balanced was measured four times and ranged 491 to 630 s for byte-identical audio. The variance is not Ollama: the slowest Balanced run had the card to itself, and the run with a 5 GB model resident came in faster. It is memory pressure, and Deep shows it worst — its two runs are 623 s apart, and in the slower one the language-model phase alone took 226 s against 61 to 84 s everywhere else, with 128 MB of VRAM left.
 
-Where the time goes: the HeartMuLa language model (about 7.5 GB in bf16) and the HeartCodec vocoder (6.2 GB in fp32) are loaded together, which is more than a 12 GB card holds. Windows lets CUDA spill into shared system memory, so a render runs with about 11.5 GB on the card and 14 GB more in system RAM, paging over PCIe. That is why the vocoder is 75 to 95% of every render and why the machine feels slow while a song generates. Deep spends almost all of its extra time there.
+Two numbers are more trustworthy than the absolute seconds:
 
-Quick take used to fail with a shape error if it ran after any other tier in the same server session. Fixed: the tier hook now drops key-value caches built for the previous batch size before each render.
+- **Within one process, timing is near-exact.** Two Balanced renders in a single process landed 630.2 s and 630.1 s.
+- **Same-session ratios are tighter than mean-over-mean.** Measuring a tier and a Balanced run back to back gives Quick 0.45x, Wild 0.99x and Deep 1.76x, against the 0.42x / 0.82x / 2.36x in the table. Both are published, as `vs_balanced` and `vs_balanced_same_session`.
+
+The vocoder is 76 to 90% of every render, which is why `num_steps` is the knob that moves the clock: 188 s at 5 steps, 421 to 532 s at 10, and 1019 to 1481 s at 25. That is 38 to 59 s per step depending on memory pressure. The reason is that the HeartMuLa language model (about 7.5 GB in bf16) and the HeartCodec vocoder (6.2 GB in fp32) are loaded together, which is more than a 12 GB card holds; Windows lets CUDA spill into shared system memory, so a render runs with about 11.5 GB on the card and 14 GB more in system RAM, paging over PCIe. That is also why the machine feels slow while a song generates.
+
+To reproduce: unload Ollama first (`POST 127.0.0.1:11434/api/generate` with `{"model":"<name>","keep_alive":0}`), then render the same lyrics at a locked seed several times per tier and keep the spread. The numbers live in `backend/analyze.py` (`TIERS[...]["measured"]`) and the UI reads them from `/vibe/status`.
+
+Audio quality is deterministic **within** a session but not across them: the same locked seed produced different audio in a different process, so the loudness, flatness, stereo-width and word-count proxies in `measured` rank the tiers only as measured in one pass. They are not a cross-machine promise.
+
+Quick take used to fail with a shape error if it ran after any other tier in the same server session. Fixed: the tier hook now drops key-value caches built for the previous batch size before each render. The fix restores state rather than just dodging the crash — a Balanced render before and after an intervening Quick render produced bit-identical audio on every metric.
 
 ### Cover art
 

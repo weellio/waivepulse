@@ -298,7 +298,7 @@ async function analyseImage(file) {
 function renderTiers(note) {
   const seg = $('vibeTierSeg');
   seg.innerHTML = tiers.map(t => {
-    const secs = t.seconds ? `${t.seconds}s` : '—';
+    const secs = t.seconds ? `${Math.round(t.seconds)}s` : '—';   // 248s, not 248.3s
     return `<button type="button" data-tier="${t.id}" class="${t.id === currentTier ? 'active' : ''}"
       title="${esc(t.blurb)}"><span>${esc(t.label)}</span><em>${secs}</em></button>`;
   }).join('') + `<button type="button" data-tier="custom" class="${currentTier === 'custom' ? 'active' : ''}"
@@ -315,16 +315,24 @@ function describeTier(note) {
     return;
   }
   const m = t.measured || {};
-  const parts = [t.blurb,
-    `temp ${t.temperature} · CFG ${t.cfg_scale} · top-k ${t.topk} · vocoder ${t.num_steps} steps @ ${t.guidance_scale}`];
-  if (t.seconds) {
-    parts.push(`${t.seconds}s measured${m.audio_s ? ` for ${m.audio_s}s of audio` : ''}`);
-    if (m.verdict) parts.push(m.verdict);
-    if (note) parts.push(note);
+  // Three short lines, not one long paragraph: what it is, what it sends, what it measured.
+  // The caveat note is long and the same for every tier, so it goes behind a disclosure
+  // instead of burying the numbers under eight lines of grey prose.
+  const knobs = `temp ${t.temperature} · CFG ${t.cfg_scale} · top-k ${t.topk} · vocoder ${t.num_steps} steps @ ${t.guidance_scale}`;
+  let timing;
+  if (!t.seconds) {
+    timing = 'not measured on this machine yet';
+  } else if (m.verdict) {
+    // the verdict already reads "248 s for 8 s of audio, ... across N runs"
+    timing = m.verdict;
   } else {
-    parts.push('not measured on this machine yet');
+    timing = `${t.seconds}s measured${m.audio_s ? ` for ${m.audio_s}s of audio` : ''}`;
   }
-  help.textContent = parts.join(' · ');
+  help.innerHTML =
+    `<div>${esc(t.blurb)}</div>` +
+    `<div class="vibe-tier-knobs">${esc(knobs)}</div>` +
+    `<div class="vibe-tier-timing">${esc(timing)}</div>` +
+    (note ? `<details class="vibe-tier-note"><summary>Why the seconds move</summary>${esc(note)}</details>` : '');
 }
 
 async function chooseTier(id, fromClick) {
