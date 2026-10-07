@@ -54,6 +54,8 @@ The main page. Paste lyrics, pick tags from an organised grid (Genre, Timbre, Mo
 - **Takes 1–4:** queue several takes of the same prompt in one click, labelled "Take 2/3"
 - **↺ Reuse** on any card refills the whole form (lyrics, tags, duration, temperature, CFG, seed)
 - **Instrumental (experimental):** sends only section markers plus the `instrumental` tag. HeartMuLa has no true instrumental mode
+- **Start from a song or a picture:** drop an audio clip (or pick one of your own songs) and the page reads its BPM, key, timbre and CLAP-scored genre / mood / instrument / vocals into suggested tag chips. Drop an image and a local vision model turns the scene into tags and a lyric theme. [Details below](#start-from-a-song-or-a-picture)
+- **Render tier:** Quick take / Balanced / Deep / Wild / Custom above the Generate button. Balanced is exactly the old behaviour. Each button shows the seconds it took on this machine. [Details below](#render-tiers)
 - **Duration estimate:** "≈ 2:45 for these lyrics · use" under the duration slider
 - **✨ Suggest tags:** local Ollama picks tags from the page's own tag list based on your idea or lyrics
 - **Library:** search, ★ favorites filter, and sort above the song list
@@ -77,6 +79,9 @@ Click the Studio button on any finished song card. Demucs splits the song into s
 - **Master fade in/out:** smoothly ramps the whole mix up at the start and down at the end (0–15 s each) — cleans up the hard stops AI music often has. The fade-out is measured back from the current song end, so it follows a Cut, and it catches the reverb/exciter/plate tails
 - **MASTER preset:** one click applies a starter mastering chain (drum ADT thickening, per-stem EQ, exciter, clipper, master sub and air EQ boost)
 - **Mute automation:** shift-drag any waveform to draw red mute regions, baked into Export Mix
+- **✨ Rewrite Section (ACE-Step):** select a span on the ruler, describe the change in plain words, and a second engine redraws that span, singer, melody and lyrics included. Needs a separate 16 GB install and about 9.5 GB of free VRAM. [Details below](#rewrite-section-ace-step)
+- **🎛 Mashup:** pick a source song per stem, and the builder tempo-matches, key-shifts and downbeat-aligns them onto separate tracks. [Details below](#mashup-builder)
+- **✂ Sample this:** snap a ruler selection to whole bars and preview it, add it as a track, download a WAV, or send it to the Looper with BPM and scale already set. [Details below](#sample-this)
 - **Track import:** drag any audio file onto the page and it becomes a full mixer track with its own knob set and loop toggle
 - **Export Mix** renders a lossless WAV with every knob, EQ band, mute region, and master-chain stage baked in. What you hear is what you get
 - **Mix presets / genre templates:** save and load full mixer configurations as named presets. Four built-in genre templates (Radio Pop, Lo-Fi Hip Hop, Rock, EDM) plus user-saved presets with one-click recall and delete
@@ -383,6 +388,41 @@ Two phases run sequentially:
 2. Codec decode phase, audio tokens to waveform, ~41 sec/step, ~10 steps per ~30s of audio
 
 Both phases stream live in the browser via the job card.
+
+### Start from a song or a picture
+
+The **Start from** card above the tag grid has two buttons, **♪ Sounds like this** and **▣ From a picture**, a drop zone, and a dropdown to use one of your own finished songs instead of uploading.
+
+**From a clip.** BPM and key come from the same librosa code the song cards use. Genre, mood, instrument and vocal gender are scored by CLAP (`laion/clap-htsat-fused`, Apache-2.0) against the Generate page's own tag list only. Timbre and density come from plain spectral analysis. Scene, Region and Topic are never guessed. Results appear as chips with a confidence percentage. Nothing is applied until you click a chip or **Apply N tags**; one tag per category, so a chip replaces whatever was in that slot.
+
+Trust the results in this order: BPM, key and timbre are measured and solid. CLAP is weak: on this machine it matched a song's original genre 1 time in 17, mood 1 in 15, instrument 1 in 10. Treat those chips as a starting point.
+
+**From a picture.** `qwen3-vl:4b` (through Ollama) describes the scene, then `llama3.1:8b` turns the description into tags plus a lyric theme. **Copy lyric theme** puts the theme on the clipboard for the Lyric Helper. If `qwen3-vl:4b` is missing it falls back to any other installed vision model.
+
+Requirements and limits:
+
+- CLAP downloads once (about 618 MB into the Hugging Face cache) and needs the `transformers` package, which is not in `requirements.txt`: `pip install transformers`. The page asks before downloading.
+- The vision model is about 3.3 GB through Ollama and needs `ollama serve` running. The page asks before pulling it.
+- Upload limits: 80 MB audio, 20 MB image.
+- Analysis refuses while HeartMuLa holds the GPU; it needs about 4 GB free. Run it before you queue songs.
+- If CLAP cannot load, you still get BPM, key and timbre, with a "CLAP was unavailable" note.
+
+### Render tiers
+
+The Render tier control sits above the Generate button. Pick one and the Temperature and CFG sliders in Advanced settings mirror it, so what the model receives is always visible. Moving either slider by hand switches to **Custom**, and the server then applies nothing of its own.
+
+| Tier | What changes | Measured (8 s clip) | vs Balanced |
+|---|---|---|---|
+| Quick take | CFG 1.0 (language model runs batch 1 instead of 2), 5 vocoder steps, no vocoder guidance | 249 s | 0.40x |
+| Balanced | The old defaults, untouched: temp 1.0, CFG 1.5, top-k 50, 10 vocoder steps at 1.25 | 615 s | 1.00x |
+| Deep | temp 0.95, CFG 2.0, 25 vocoder steps at 1.6 | 1085 s | 1.76x |
+| Wild | temp 1.35, CFG 1.15, top-k 150; vocoder as Balanced | 485 s | 0.79x |
+
+How the numbers were taken: one 8-second render per tier on an RTX 3060 12 GB, same seed, same lyrics and tags, then listen-free proxies (loudness, spectral flatness, stereo width) and a faster-whisper word count on each clip. A seed-locked Balanced repeat produced identical audio metrics, so generation is deterministic. The repeat ran 20% faster with the GPU to itself, so read the seconds as ratios between tiers, not promises. The numbers live in `backend/analyze.py` (`TIERS[...]["measured"]`) and the UI reads them from `/vibe/status`.
+
+Where the time goes: the HeartMuLa language model (about 7.5 GB in bf16) and the HeartCodec vocoder (6.2 GB in fp32) are loaded together, which is more than a 12 GB card holds. Windows lets CUDA spill into shared system memory, so a render runs with about 11.5 GB on the card and 14 GB more in system RAM, paging over PCIe. That is why the vocoder is 75 to 95% of every render and why the machine feels slow while a song generates. Deep spends almost all of its extra time there.
+
+Quick take used to fail with a shape error if it ran after any other tier in the same server session. Fixed: the tier hook now drops key-value caches built for the previous batch size before each render.
 
 ### Cover art
 
@@ -766,6 +806,44 @@ Two buttons for reworking sections of a mix:
 - **Splice:** select a region by dragging on the ruler, click Splice, and choose an audio file. The selected region's audio is replaced with the file's audio, crossfaded at both boundaries for a smooth transition. The operation integrates with the existing undo system — click Undo to revert.
 
 ---
+
+### Rewrite Section (ACE-Step)
+
+Section regeneration above keeps HeartMuLa's take and splices a variation in. **✨ Rewrite Section** is different: it hands the span to a second engine, ACE-Step 1.5 (MIT-licensed code and weights), which throws the span away and redraws it. The singer, the melody and the lyrics can all change.
+
+How to use it:
+
+1. Drag across the ruler, or press `[` and `]`, to pick a span (0.2 s minimum). The song must be uncut; undo any Cuts first.
+2. Click **✨ Rewrite Section**. Type what you want in plain words, for example "make the chorus a gospel choir". The local Ollama model rewrites that into musical descriptors you can edit before anything is generated.
+3. Optionally paste new lyrics for the span, and set **Keep the original** (0 to 100 percent, default 60).
+4. **Preview** plays from 2 s before the span. **Apply to timeline** goes through the existing Splice tool with a crossfade. **Uncut** reverses it.
+
+The panel reports generation time, peak VRAM and how clean the two joins measure. The new audio is written into every stem, so mute and solo stop working inside that span.
+
+Install and requirements:
+
+- One-click install from the modal, about 16 GB: 6 GB of libraries plus 9.4 GB of weights, in its own Python 3.11 / torch cu128 environment at `G:\acestep`. Override with `WP_ACESTEP_ROOT`, `WP_ACESTEP_REPO`, `WP_ACESTEP_PYTHON`, `ACESTEP_CHECKPOINTS_DIR` and `WP_ACESTEP_MIN_VRAM_MB`. `HF_HOME` defaults to `G:\cache\huggingface`.
+- About 9.2 to 9.5 GB of free VRAM, more for longer songs. Models Ollama is holding are evicted first; HeartMuLa must not be mid-render.
+- The backend also exposes whole-song restyle and reference-clip generation endpoints. Nothing in the UI calls them yet.
+
+### Mashup builder
+
+**🎛 Mashup…** sits next to Stem Swap. For each of the six stems (vocals, drums, bass, guitar, piano, other) choose a source song, "this song", or "leave out". Every source song must have been separated once. **Plan it** shows the proposed stretch, shift and offset per stem without touching anything. **Build mashup** puts each stem on its own normal mixer track.
+
+How the matching works:
+
+- Tempo: pitch-preserving time-stretch, clamped to 0.25x to 4x. Tempos are folded to half or double time, so 170 against 85 counts as a match. Target BPM can be overridden.
+- Key: the shortest shift round the circle, −6 to +5 semitones. Target key can be overridden.
+- Downbeats: the offset with the lowest median error over the whole overlap. The grid finds bar one, not the musically right bar, so phrasing is still by ear.
+- Warnings appear when grid confidence is under 0.6 or alignment error is over 40 ms. At most 12 roles per build.
+
+The beat tracker is Beat This! (MIT), on CPU by default or on GPU with `WAIVEPULSE_BEATGRID_DEVICE=cuda`. Its 81 MB checkpoint `final0.ckpt` is a manual download into `G:/cache/waivepulse/beatgrid` or `~/.cache/waivepulse/beatgrid`, or point `WAIVEPULSE_BEATGRID_CKPT` at it. The `beat_this` package is not in `requirements.txt`. Without either, librosa takes over: downbeats are estimated and 4/4 is assumed. `G` toggles bar lines over the timeline, and the toolbar shows the grid BPM and confidence.
+
+### Sample this
+
+**✂ Sample this…** uses the same ruler selection as Cut, Splice and Rewrite Section and widens it to whole bars. The panel shows what you dragged, where it snapped and how many milliseconds each edge moved. Length can stay as selected or be forced to 1, 2, 4 or 8 bars, never past the end of the song. Isolate the full mix or any one stem; the bar grid always comes from the full mix.
+
+Outputs: **▶ Preview**, **＋ Add as track** at the bar it came from, **⬇ WAV** (16-bit, 3 ms fade on each edge), and **🎹 Send to Looper**, which opens the Looper with the BPM (folded into 40 to 240) and scale lock set and the clip loaded as the sampler. Click once in the Looper window to start audio.
 
 ## Karaoke (in depth)
 
