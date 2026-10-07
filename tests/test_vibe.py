@@ -177,6 +177,32 @@ def test_deep_and_wild_move_the_right_knobs():
     assert wild["cfg_scale"] < bal["cfg_scale"]
 
 
+def test_quick_after_balanced_drops_the_batch_2_caches():
+    """torchtune never rebuilds an existing kv cache, so a batch-1 (quick) run after
+    a batch-2 (balanced) run must forget the old caches first or it crashes."""
+    class Cache:
+        def __init__(self, bs):
+            self.batch_size = bs
+
+    class Attn:
+        def __init__(self, bs):
+            self.kv_cache = Cache(bs)
+            self.cache_enabled = True
+
+    class Model:
+        def __init__(self, layers):
+            self.layers = layers
+
+        def modules(self):
+            return [self] + self.layers
+
+    m = Model([Attn(2), Attn(2), Attn(1)])
+    assert analyze._drop_stale_kv_caches(m, 1) == 2
+    assert [a.kv_cache for a in m.layers[:2]] == [None, None]
+    assert m.layers[2].kv_cache is not None, "a cache of the right size is kept"
+    assert analyze._drop_stale_kv_caches(m, 1) == 0
+
+
 def test_set_tier_rejects_nonsense():
     try:
         analyze.set_tier("ludicrous")

@@ -54,14 +54,14 @@ TIERS: Dict[str, Dict[str, Any]] = {
                  "(batch 1 in the language model) and a 5-step vocoder.",
         "temperature": 1.0, "cfg_scale": 1.0, "topk": 50,
         "num_steps": 5, "guidance_scale": 1.0,
-        "seconds": None, "measured": {},
+        "seconds": 249.1, "measured": {"audio_s": 8, "total_s": 249.1, "lm_s": 61.3, "codec_s": 187.8, "vs_balanced": 0.4, "lufs": -12.8, "spectral_flatness": 0.29545, "stereo_width": 0.3395, "whisper_words": 5, "whisper_logprob": -0.812, "repeat_drift_pct": 20.2},
     },
     "balanced": {
         "label": "Balanced",
         "blurb": "Today's behaviour, unchanged. The default.",
         "temperature": 1.0, "cfg_scale": 1.5, "topk": 50,
         "num_steps": 10, "guidance_scale": 1.25,
-        "seconds": None, "measured": {},
+        "seconds": 615.2, "measured": {"audio_s": 8, "total_s": 615.2, "lm_s": 83.5, "codec_s": 531.8, "vs_balanced": 1.0, "lufs": -24.69, "spectral_flatness": 0.35833, "stereo_width": 0.2986, "whisper_words": 6, "whisper_logprob": -0.594, "repeat_drift_pct": 20.2},
     },
     "deep": {
         "label": "Deep",
@@ -69,7 +69,7 @@ TIERS: Dict[str, Dict[str, Any]] = {
                  "the same idea. Slower.",
         "temperature": 0.95, "cfg_scale": 2.0, "topk": 50,
         "num_steps": 25, "guidance_scale": 1.6,
-        "seconds": None, "measured": {},
+        "seconds": 1084.6, "measured": {"audio_s": 8, "total_s": 1084.6, "lm_s": 65.6, "codec_s": 1019.0, "vs_balanced": 1.76, "lufs": -16.74, "spectral_flatness": 0.22939, "stereo_width": 0.3734, "whisper_words": 11, "whisper_logprob": -0.362, "repeat_drift_pct": 20.2},
     },
     "wild": {
         "label": "Wild",
@@ -77,7 +77,7 @@ TIERS: Dict[str, Dict[str, Any]] = {
                  "speed as Balanced.",
         "temperature": 1.35, "cfg_scale": 1.15, "topk": 150,
         "num_steps": 10, "guidance_scale": 1.25,
-        "seconds": None, "measured": {},
+        "seconds": 485.2, "measured": {"audio_s": 8, "total_s": 485.2, "lm_s": 70.7, "codec_s": 414.5, "vs_balanced": 0.79, "lufs": -20.71, "spectral_flatness": 0.1318, "stereo_width": 0.4422, "whisper_words": 2, "whisper_logprob": -0.873, "repeat_drift_pct": 20.2},
     },
 }
 
@@ -85,17 +85,19 @@ DEFAULT_TIER = "balanced"
 CUSTOM_TIER = "custom"   # the user moved a slider → apply nothing, send as-is
 
 # Filled in by measurement (scripts below / see README). Everything in
-# MEASURED was timed on this machine, one 40 s generation per tier, same seed,
+# MEASURED was timed on this machine, one 8 s generation per tier, same seed,
 # same lyrics, RTX 3060 12 GB. 'quality' entries are listen-free proxies.
 MEASURED_NOTE = (
-    "Timed on an RTX 3060 12 GB: one 40-second generation per tier, same seed, "
-    "same lyrics and tags."
+    "Timed on an RTX 3060 12 GB: one 8-second generation per tier, same seed, "
+    "same lyrics and tags. The language model and vocoder together exceed 12 GB, "
+    "so every run pages into shared system memory; the Balanced repeat landed "
+    "20% faster with the GPU to itself, so treat timings as ratios, not promises."
 )
 
 _tier_lock = threading.Lock()
 _tier_name = DEFAULT_TIER
 _active_codec: Optional[Dict[str, Any]] = None   # read by the patched postprocess
-_hook_state: Dict[str, Any] = {"generation": False, "codec": False, "error": None}
+_hook_state: Dict[str, Any] = {"generation": False, "codec": False, "caches": False, "error": None}
 
 
 def tier_names() -> List[str]:
@@ -155,6 +157,49 @@ def _app_module():
         if getattr(m, "__name__", "").endswith("app") and hasattr(m, "_run_generation"):
             return m
     return None
+
+
+def _drop_stale_kv_caches(model, max_batch_size: int) -> int:
+    """Forget any torchtune key-value cache built for a different batch size.
+
+    torchtune's ``setup_cache`` refuses to rebuild an existing cache ("already
+    setup ... Skipping"), so after one classifier-free-guidance run (batch 2) a
+    cfg_scale == 1.0 run (batch 1) attends against batch-2 caches and dies with
+    ``mat1 and mat2 shapes cannot be multiplied (Nx6144 and 3072x3072)``.
+    Returns how many caches were dropped.
+    """
+    dropped = 0
+    for mod in model.modules():
+        cache = getattr(mod, "kv_cache", None)
+        if cache is not None and getattr(cache, "batch_size", max_batch_size) != max_batch_size:
+            mod.kv_cache = None
+            mod.cache_enabled = False
+            dropped += 1
+    return dropped
+
+
+def _patch_setup_caches() -> bool:
+    """Make ``HeartMuLa.setup_caches(bs)`` honour a batch-size change (see above)."""
+    if _hook_state.get("caches"):
+        return True
+    try:
+        from heartlib.heartmula.modeling_heartmula import HeartMuLa
+    except Exception as e:                                    # pragma: no cover
+        _hook_state["error"] = f"cache hook unavailable: {type(e).__name__}: {e}"
+        return False
+    if getattr(HeartMuLa, "_wv_cache_patched", False):
+        _hook_state["caches"] = True
+        return True
+    original = HeartMuLa.setup_caches
+
+    def setup_caches(self, max_batch_size: int):           # noqa: ANN001
+        _drop_stale_kv_caches(self, max_batch_size)
+        return original(self, max_batch_size)
+
+    HeartMuLa.setup_caches = setup_caches
+    HeartMuLa._wv_cache_patched = True
+    _hook_state["caches"] = True
+    return True
 
 
 def _patch_codec_detokenize() -> bool:
@@ -235,6 +280,7 @@ def install_generation_hook() -> bool:
                 record["codec_num_steps"] = t["num_steps"]
                 record["codec_guidance_scale"] = t["guidance_scale"]
             _patch_codec_detokenize()
+            _patch_setup_caches()
         else:
             _active_codec = None          # "custom": run exactly what was sent
             if isinstance(record, dict):
