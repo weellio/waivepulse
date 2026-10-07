@@ -564,6 +564,41 @@ Open `/lyrics` or click "Lyrics" in the top nav. Generation runs entirely on you
 - Section markers (`[Verse]`, `[Chorus]`, etc.) baked into the system prompt so output matches HeartMuLa's expected format
 - "Send to Generator" stores the lyrics in `localStorage` and bounces you to the main page with the lyrics box pre-filled
 - The final status line reports elapsed time and token count
+- **🗣 Pronunciation:** finds the words the singer is likely to get wrong and writes the respelling for you. [Details below](#pronunciation)
+
+### Pronunciation
+
+The singer reads your spelling. You cannot tell it "say it like this", but you can spell the
+word the way you want it sung, which is what people already do by hand. **Check my lyrics**
+scans for the words worth respelling, and clicking a suggestion swaps it into the lyrics.
+
+| Flagged | Why | What you get |
+|---|---|---|
+| Heteronyms | One spelling, two real pronunciations. The model picks one and cannot know which you meant | Both readings, labelled: `read` → "reed" (present) or "red" (past) |
+| Numbers | Digits are read inconsistently | `1999` → "nineteen ninety-nine" (year) or "one thousand nine hundred ninety-nine" |
+| Acronyms | Nothing in the spelling says letters-or-word | `KTLA` → "kay-tee-ell-ay" |
+| Unknown words | Not in the dictionary, so the singer is guessing from spelling | A warning, and no invented suggestion |
+
+**How is it sung?** answers the same question for a single word: `colonel` → `KUR-nuhl`, with
+the stressed syllable capitalised. The respelling is generated from the bundled CMU
+pronunciation dictionary, so it is the real pronunciation rather than a guess, and
+`island` → `EYE-luhnd`, `choir` → `KWY-ur`, `wednesday` → `WEHNZ-dee`.
+
+Three judgement calls worth knowing:
+
+- **A word being unusual does not mean it is flagged.** Siobhan, BBC, DJ and NASA are all in
+  the 30k dictionary with correct pronunciations, so flagging them would be noise. Only words
+  genuinely outside it (Aoife, quokka) are called unknown.
+- **No suggestion is invented for an unknown word.** If the dictionary does not have it,
+  neither do we, and writing a confident guess into someone's lyrics is worse than saying
+  nothing. You know how your own name sounds.
+- **Section markers are never scanned or rewritten.** `[Verse]` is an instruction to the
+  model, not something sung.
+
+Everything is offline and instant — the same dictionary already used for syllable counts and
+rhymes. Whether a respelling changes what HeartMuLa sings is not something this can promise;
+the technique is what Suno and Udio users report working, and the tool makes it one click
+instead of a manual edit.
 
 ### Ollama setup
 

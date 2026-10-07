@@ -26,6 +26,22 @@ def js_files():
                 yield p
 
 
+def test_all_frontend_js_parses():
+    """The module had no test_ function, so pytest collected the file and ran nothing —
+    the parse check that exists to stop a stray apostrophe killing a page was only ever
+    run by hand. This is the same check, as a real test."""
+    import pytest
+    if not NODE:
+        pytest.skip("node is not on PATH")
+    bad = []
+    for p in js_files():
+        r = subprocess.run([NODE, "--check", str(p)], capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            first = next((l for l in (r.stderr or "").splitlines() if "Error" in l), "").strip()
+            bad.append(f"{p.relative_to(ROOT)}: {first}")
+    assert not bad, "JS files that do not parse:\n  " + "\n  ".join(bad)
+
+
 def main():
     if not NODE:
         print("SKIP: node is not on PATH")

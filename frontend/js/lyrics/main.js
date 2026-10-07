@@ -7,6 +7,7 @@ import { generateLyrics } from './generate-stream.js';
 import { copyOutput, sendToGenerator } from './handoff.js';
 import { initEditor, loadDictionary } from './editor.js';
 import { initRhymeFinder, showRhymes } from './rhyme-finder.js';
+import { initPronounce } from './pronounce-panel.js';
 
 // Tone chips — single-select toggle.
 document.querySelectorAll('#toneChips .chip').forEach(c => {
@@ -32,6 +33,7 @@ Object.assign(window, {
 // Editable lyrics box with syllable/rhyme gutter + rhyme finder.
 initEditor({ onPickWord: showRhymes });
 initRhymeFinder();
+initPronounce();
 loadDictionary();
 
 // Initial detection on load.

@@ -141,6 +141,18 @@
       <div class="dict-state" id="dictState">loading pronunciation dictionary…</div>
     </div>
 
+    <div class="rhyme-finder">
+      <h3>🗣 Pronunciation</h3>
+      <div class="rf-controls">
+        <button type="button" id="btnPronounce">Check my lyrics</button>
+        <input type="text" id="pronWord" placeholder="or a single word, e.g. colonel" autocomplete="off" spellcheck="false">
+        <button type="button" class="secondary" id="btnPronWord">How is it sung?</button>
+      </div>
+      <div class="rf-tip">The singer reads your spelling, so a word spelled one way and said
+        two ways is a coin flip. Click a suggestion to swap it into the lyrics.</div>
+      <div id="pronResults"></div>
+    </div>
+
     <div class="help-note">
       <b>Send to Generator</b> stores the lyrics in your browser and switches to the Generate page with the lyrics box pre-filled. Tags and other settings are untouched.
       Syllables and rhymes use the CMU Pronouncing Dictionary (stored on this page, works offline), with spelling rules for words it doesn't know. The rhyme finder leaves out people's names, places and brands.
