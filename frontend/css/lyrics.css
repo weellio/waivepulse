@@ -301,7 +301,7 @@
 
   /* ── Pronunciation panel ─────────────────────────────────────────────── */
   .pr-head { font-size: 13px; color: #9a9aa8; margin: 12px 0 8px; }
-  .pr-row { border-left: 3px solid #2f2f40; padding: 7px 0 8px 10px; margin-bottom: 9px; }
+  .pr-row { border-left: 3px solid #2f2f40; padding: 7px 10px 8px 10px; margin-bottom: 9px; }
   /* colour only the two kinds you can act on; unknown is a warning, not a task */
   .pr-row.pr-heteronym { border-left-color: #c0a05b; }
   .pr-row.pr-number    { border-left-color: #6a8fc0; }

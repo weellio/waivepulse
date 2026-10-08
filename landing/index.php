@@ -18,7 +18,7 @@ $features = [
     'kicker'=> 'HeartMuLa 3B',
     'title' => 'Type lyrics. Get a finished song.',
     'body'  => 'Paste your words, pick a few style tags, and a 3-billion-parameter model writes, sings, and produces a complete track as an MP3 — vocals and all. Jobs queue up; BPM and key are detected automatically.',
-    'points'=> ['Full vocal songs from text', 'Seed lock + 1–4 takes per click', 'Twelve designed cover-art styles, one per song', 'One-click 1080p YouTube video with cover art', 'Neural watermark + provenance baked in'],
+    'points'=> ['Full vocal songs from text', 'Seed lock + 1–4 takes per click', 'Song Check: what is wrong with this render, and the control that fixes it', 'Twelve designed cover-art styles, one per song', 'One-click 1080p YouTube video with cover art', 'Neural watermark + provenance baked in'],
   ],
   [
     'tag'   => 'Lyrics',
@@ -27,7 +27,7 @@ $features = [
     'kicker'=> 'Local Llama via Ollama',
     'title' => 'Writer’s block, solved — privately.',
     'body'  => 'Stuck on a line? A local Llama model streams lyrics word-by-word, pre-formatted with the verse and chorus markers the generator expects. Then polish them: a syllable gutter flags lines that break the flow, rhyme schemes are colour-coded, and a built-in rhyme finder works fully offline.',
-    'points'=> ['Streaming, token-by-token output', 'Syllable counts + rhyme-scheme colours', 'Offline rhyme finder', 'Never leaves your machine'],
+    'points'=> ['Streaming, token-by-token output', 'Syllable counts + rhyme-scheme colours', 'Offline rhyme finder', 'Pronunciation check: respell the words singers get wrong', 'Never leaves your machine'],
   ],
   [
     'tag'   => 'Studio',
@@ -68,6 +68,10 @@ $gallery = [
    'blurb' => 'Ten genre presets fill the step sequencer instantly. Tweak them, or save your own grooves as favorites.'],
   ['img' => 'img/feat-looper.png',   'accent' => 'magenta', 'title' => 'A loop station in a tab',
    'blurb' => 'Stack drums, synths and chord progressions into six loops — then send any of them straight to the Studio.'],
+  ['img' => 'img/feat-songcheck.png', 'accent' => 'amber',  'title' => 'It tells you what is wrong',
+   'blurb' => 'One click reads the render for loudness creeping up, peaks over the ceiling, dead air, tempo drift and backing dropping out under the vocal — and names the control that fixes each one.'],
+  ['img' => 'img/feat-pronounce.png', 'accent' => 'cyan',   'title' => 'Make it sing the right word',
+   'blurb' => 'Finds the words a singer gets wrong — read, bass, 1999, names it has never seen — and writes the respelling. Click one to swap it into your lyrics.'],
 ];
 
 $compare = [
@@ -80,6 +84,8 @@ $compare = [
   ['Lyric-video output',     true,  false, false],
   ['YouTube-loudness export', true, false, 'plugin'],
   ['Reference-track mastering', true, false, 'plugin'],
+  ['Finds the flaws in a render for you', true, false, 'plugin'],
+  ['Pronunciation respelling for lyrics', true, false, false],
   ['MIDI keyboard input',    true,  false, true],
   ['Ensemble + expression synth', true, false, 'plugin'],
   ['Album art for every song', true, false, false],

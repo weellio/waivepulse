@@ -436,6 +436,8 @@ Quick take used to fail with a shape error if it ran after any other tier in the
 
 ### Song Check
 
+![Song Check](assets/songcheck.png)
+
 **🩺 Check** on any finished song card. It reads the render and reports the faults generated
 music actually ships with, and every finding ends with the control that fixes it and the page
 it lives on. A diagnosis with no destination is just bad news.
@@ -567,6 +569,8 @@ Open `/lyrics` or click "Lyrics" in the top nav. Generation runs entirely on you
 - **🗣 Pronunciation:** finds the words the singer is likely to get wrong and writes the respelling for you. [Details below](#pronunciation)
 
 ### Pronunciation
+
+![Pronunciation](assets/pronounce.png)
 
 The singer reads your spelling. You cannot tell it "say it like this", but you can spell the
 word the way you want it sung, which is what people already do by hand. **Check my lyrics**
