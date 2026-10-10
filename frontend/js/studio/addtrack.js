@@ -218,7 +218,50 @@ async function open() {
   render();
 }
 
+// ── In-app help ──────────────────────────────────────────────────────────────
+// Feature modules add their own section to the Studio help modal (mashup.js does the same).
+// Rewrite Section never had one, and it is the sibling of these three, so it is covered here
+// too rather than left as the one ACE-Step feature the help does not mention.
+const HELP_ACESTEP = `
+<div class="help-section" id="help-addtrack">
+  <div class="help-section-title">🎸 Add a Part &amp; ✨ Rewrite Section — the second engine</div>
+  <p class="help-p">WAIvePulse's usual engine (HeartMuLa) writes a song start to finish and
+    cannot go back into one. ACE-Step is a diffusion model, so parts of a song can be masked
+    and redrawn. Both buttons use it, with different checkpoints.</p>
+  <table class="help-table"><tbody>
+    <tr><td><b>✨ Rewrite Section</b></td><td>Select a span on the ruler and redraw just that
+      span from a description. Held to the song's own tempo and key. Turbo checkpoint, which
+      the normal ACE-Step install includes.</td></tr>
+    <tr><td><b>🎸 Add a layer</b></td><td>Writes a new instrument part that plays along with
+      the whole song.</td></tr>
+    <tr><td><b>🎸 Build a backing track</b></td><td>Puts a band behind a bare vocal or a
+      sparse take. Point it at a vocal stem for this.</td></tr>
+    <tr><td><b>🎸 Isolate a track</b></td><td>Pulls one instrument out of the mix. Reaches
+      strings, brass, woodwinds, synth, fx and backing vocals, which the six-stem separation
+      has no track for.</td></tr>
+    <tr><td>Where the result goes</td><td>Add a Part returns the new part <b>on its own</b>,
+      so it arrives as a new mixer track with its own fader and EQ. It never replaces the
+      song. Rewrite Section is different: that one splices into the timeline.</td></tr>
+    <tr><td>Isolate vs. separation</td><td>Studio's separation is a real separation and is
+      sample-accurate against the mix. Isolate <b>rebuilds</b> the part, so prefer separation
+      whenever one of its six stems is what you want.</td></tr>
+    <tr><td>Second download</td><td>The three Add a Part jobs need the ACE-Step base
+      checkpoint, about 4.5 GB on top of the normal install. The panel says so and does not
+      let you start without it. Run
+      <code>python scripts/get_acestep_base.py</code> once.</td></tr>
+    <tr><td>How long</td><td>Measured on a 12 GB card: 58–82 s per job, peaking 7.3–9.3 GB of
+      graphics memory. Nothing stays loaded afterwards.</td></tr>
+  </tbody></table>
+</div>`;
+
+function injectHelp() {
+  const body = document.querySelector('#help-modal .help-body');
+  if (!body || $('help-addtrack')) return;
+  body.insertAdjacentHTML('beforeend', HELP_ACESTEP);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  injectHelp();
   const btn = $('addtrk-btn');
   if (!btn) return;
   btn.addEventListener('click', open);

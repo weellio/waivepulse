@@ -36,7 +36,7 @@ $features = [
     'kicker'=> 'Demucs stem mixer',
     'title' => 'A full DAW in your browser.',
     'body'  => 'Every song splits into six stems on your GPU — vocals, drums, bass, guitar, piano, other. Mix them with per-track EQ, volume and pan automation, a master chain, and a rack of creative effects. Match your master to any reference song, then export at YouTube loudness as WAV or MP3.',
-    'points'=> ['Six-stem separation + key change', 'Per-track 7-band EQ + automation lanes', 'Reference-track mastering', 'Export at −14 LUFS · WAV or MP3', 'Song markers → YouTube chapters', 'Save and reopen whole projects'],
+    'points'=> ['Six-stem separation + key change', 'Write a new instrument part into a song you already have', 'Per-track 7-band EQ + automation lanes', 'Reference-track mastering', 'Export at −14 LUFS · WAV or MP3', 'Song markers → YouTube chapters', 'Save and reopen whole projects'],
   ],
   [
     'tag'   => 'Looper',
@@ -70,6 +70,8 @@ $gallery = [
    'blurb' => 'Stack drums, synths and chord progressions into six loops — then send any of them straight to the Studio.'],
   ['img' => 'img/feat-songcheck.png', 'accent' => 'amber',  'title' => 'It tells you what is wrong',
    'blurb' => 'One click reads the render for loudness creeping up, peaks over the ceiling, dead air, tempo drift and backing dropping out under the vocal — and names the control that fixes each one.'],
+  ['img' => 'img/feat-addtrack.png', 'accent' => 'green',  'title' => 'Add a part it never had',
+   'blurb' => 'Write a new instrument into a finished song, put a band behind a bare vocal, or pull one instrument back out. Twelve instruments, including strings, brass and woodwinds.'],
   ['img' => 'img/feat-pronounce.png', 'accent' => 'cyan',   'title' => 'Make it sing the right word',
    'blurb' => 'Finds the words a singer gets wrong — read, bass, 1999, names it has never seen — and writes the respelling. Click one to swap it into your lyrics.'],
 ];
@@ -85,6 +87,7 @@ $compare = [
   ['YouTube-loudness export', true, false, 'plugin'],
   ['Reference-track mastering', true, false, 'plugin'],
   ['Finds the flaws in a render for you', true, false, 'plugin'],
+  ['Writes a new instrument into your song', true, false, false],
   ['Pronunciation respelling for lyrics', true, false, false],
   ['MIDI keyboard input',    true,  false, true],
   ['Ensemble + expression synth', true, false, 'plugin'],
