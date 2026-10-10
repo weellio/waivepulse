@@ -10,6 +10,7 @@ Invoked as:  <ace_venv_python> acestep_worker.py <job.json>
 
 Job JSON keys (all paths absolute):
     task         "probe" | "download" | "repaint" | "cover" | "generate"
+                 | "layer" | "accompany" | "isolate"   (base-checkpoint only)
     repo         ACE-Step checkout root (added to sys.path, used as project_root)
     checkpoints  checkpoints directory (ACESTEP_CHECKPOINTS_DIR)
     out_dir      where generated audio is written
@@ -21,6 +22,9 @@ Job JSON keys (all paths absolute):
     seconds      target length for a from-scratch generate
     ref_audio    optional reference clip for style
     seed, steps  optional overrides
+    instruction  base tasks only: the literal instruction string (see BASE_TASKS)
+    dit_model    checkpoint name; base tasks need "acestep-v15-base"
+    bpm / keyscale / timesignature   pin the output to a known tempo and key
 
 Events on stdout, one JSON object per line:
     {"ev":"log","msg":"..."}                  progress for the UI
@@ -150,6 +154,62 @@ def _init_handler(job):
     return handler, repo
 
 
+# The three base-only tasks, in the words the app uses for them. ACE-Step reads `instruction`
+# literally and the phrasing is part of the conditioning, so the templates are the ones from
+# the official docs (guides/INFERENCE.md) rather than something rewritten to read nicely.
+TRACK_NAMES = ("vocals", "backing_vocals", "drums", "bass", "guitar", "keyboard",
+               "percussion", "strings", "synth", "fx", "brass", "woodwinds")
+
+BASE_TASKS = {
+    # add ONE named instrument that plays along with what is already there
+    "layer":    {"task_type": "lego",
+                 "verb": "Adding a layer",
+                 "template": "Generate the {track} track based on the audio context:"},
+    # fill in a backing band behind a partial track (a bare vocal, say)
+    "accompany": {"task_type": "complete",
+                  "verb": "Building a backing track",
+                  "template": "Complete the input track with {track}:"},
+    # pull one instrument out of a finished mix
+    "isolate":  {"task_type": "extract",
+                 "verb": "Isolating a track",
+                 "template": "Extract the {track} track from the audio:"},
+}
+
+
+def _musical_metadata(job):
+    """bpm / keyscale / timesignature, when the caller knows them.
+
+    These are NOT just prompt decoration for the language model: inference.py puts them into
+    dit_generate_kwargs (the "bpm"/"key_scale"/"time_signature" keys), so they condition the
+    DiT directly and still apply on repaint, where the LM is skipped entirely. They reach the
+    model as a plain text block built by core/generation/handler/metadata_utils.py:
+
+        - bpm: 128
+        - timesignature: 4/4
+        - keyscale: C major
+
+    so free-form strings like "C major" are exactly right. Anything omitted is sent as N/A.
+
+    The field names are `keyscale` and `timesignature`, with no underscore. GenerationParams is
+    a dataclass, so the underscored spellings used elsewhere in ACE-Step's own internals would
+    raise TypeError here rather than being quietly ignored.
+    """
+    out = {}
+    bpm = job.get("bpm")
+    try:
+        if bpm and 30 <= int(bpm) <= 300:          # the documented range
+            out["bpm"] = int(bpm)
+    except (TypeError, ValueError):
+        pass
+    key = (job.get("keyscale") or "").strip()
+    if key:
+        out["keyscale"] = key[:32]
+    ts = (job.get("timesignature") or "").strip()
+    if ts:
+        out["timesignature"] = ts[:16]
+    return out
+
+
 def _common_params(job):
     """Turbo-model parameter block shared by every generation task."""
     return dict(
@@ -181,6 +241,7 @@ def task_generate(job):
         handler, repo = _init_handler(job)
         task = job["task"]
         kw = _common_params(job)
+        kw.update(_musical_metadata(job))   # pin tempo/key when the caller knows them
         strength = float(job.get("strength", 0.6))
         strength = min(1.0, max(0.0, strength))
 
@@ -213,6 +274,33 @@ def task_generate(job):
                 audio_cover_strength=strength,
             )
             log(f"Covering the whole song (strength {strength:.2f})")
+        elif task in BASE_TASKS:
+            # lego / complete / extract exist only in the BASE checkpoint — the turbo one
+            # has no weights for them. The caller must therefore have asked for
+            # dit_model="acestep-v15-base", and base is not distilled, so the turbo
+            # settings in _common_params are wrong for it: guidance is real here (turbo
+            # forces it to 1.0) and 8 steps is far too few. Docs: base 32-64 steps,
+            # guidance 7.0-9.0, shift 3.0.
+            spec = BASE_TASKS[task]
+            kw.update(
+                task_type=spec["task_type"],
+                src_audio=job["src_audio"],
+                instruction=job["instruction"],
+                inference_steps=int(job.get("steps") or 32),
+                guidance_scale=float(job.get("guidance_scale") or 7.0),
+                repainting_start=float(job.get("start_s") or 0.0),
+                repainting_end=float(job.get("end_s") if job.get("end_s") is not None else -1),
+                # _common_params turns normalisation OFF because a repaint is spliced into
+                # the user's own mix and must not be re-gained. These jobs are the opposite:
+                # the result is a standalone part that lands on its own mixer fader, and the
+                # model's raw level is all over the place — a strings pad came back at
+                # -39.6 dBFS, quiet enough to look like a failed render. Normalise to -6 so
+                # it arrives audible, with headroom left for summing.
+                enable_normalization=True,
+                normalization_db=-6.0,
+            )
+            log(f"{spec['verb']}: {job['instruction']}")
+            log(f"Base model, {kw['inference_steps']} steps at guidance {kw['guidance_scale']}")
         else:
             secs = float(job.get("seconds") or 30)
             kw.update(
@@ -289,6 +377,8 @@ TASKS = {
     "repaint": task_generate,
     "cover": task_generate,
     "generate": task_generate,
+    # base-checkpoint multi-track jobs; all three run through task_generate
+    **{name: task_generate for name in BASE_TASKS},
 }
 
 

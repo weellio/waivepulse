@@ -199,6 +199,23 @@
 
   <script type="module" src="/js/studio/repaint.js"></script>
   <!-- repaint:end -->
+
+  <!-- addtrack:start -->
+  <button class="t-btn" id="addtrk-btn" title="Write a new instrument part that plays along with this song, build a backing track behind a bare vocal, or pull one instrument out of the mix. Uses the ACE-Step base model.">🎸 Add a Part</button>
+
+  <div id="addtrk-modal" role="dialog" aria-modal="true" aria-labelledby="addtrk-title">
+    <div id="addtrk-panel">
+      <div id="addtrk-head">
+        <h3 id="addtrk-title">Add a part to this song</h3>
+        <span class="ace-sub">ACE-Step 1.5 · base model</span>
+        <button type="button" id="addtrk-close" title="Close">&times;</button>
+      </div>
+      <div id="addtrk-body"></div>
+    </div>
+  </div>
+
+  <script type="module" src="/js/studio/addtrack.js"></script>
+  <!-- addtrack:end -->
   <div class="t-divider"></div>
   <button class="t-btn" style="font-size:10px;width:auto;padding:0 9px" title="Import audio track (or drag & drop)" onclick="document.getElementById('_importInput').click()">＋ Track</button>
   <input type="file" id="_importInput" accept="audio/*" multiple style="display:none" onchange="handleImportFiles(this.files);this.value=''">

@@ -660,12 +660,17 @@ def _resolve_src(src_wav) -> Path:
 
 def repaint(src_wav, start_s, end_s, instruction, tags, lyrics, strength,
             *, log: Callable[[str], None] = _noop, out_dir=None,
-            seed: int = -1, steps: int = 8, ref_audio=None, metrics: Optional[dict] = None):
+            seed: int = -1, steps: int = 8, ref_audio=None, metrics: Optional[dict] = None,
+            bpm=None, keyscale: str = "", timesignature: str = ""):
     """Regenerate [start_s, end_s) of `src_wav` from a description.
 
     `instruction` and `tags` are joined into the caption. ACE-Step does not follow
     instructions — the caller should already have turned the user's words into a
     description of the desired sound (see routers/acestep.py: /acestep/describe).
+
+    `bpm` / `keyscale` / `timesignature` pin the rewritten span to the song it is going back
+    into. Without them the model picks its own tempo for the patch, which is how a rewrite
+    ends up drifting against the bars either side of the seam.
 
     Returns the path to a splice-ready clip exactly (end_s - start_s) long, or raises
     AceStepError. Fills `metrics` with the measured seam numbers when given.
@@ -701,6 +706,7 @@ def repaint(src_wav, start_s, end_s, instruction, tags, lyrics, strength,
             "start_s": start_s, "end_s": end_s, "caption": caption,
             "lyrics": lyrics or "", "strength": float(strength), "seed": int(seed),
             "steps": int(steps), "ref_audio": str(ref_audio) if ref_audio else None,
+            "bpm": bpm, "keyscale": keyscale, "timesignature": timesignature,
         }, log)
         wall = time.time() - t0
 
@@ -715,6 +721,7 @@ def repaint(src_wav, start_s, end_s, instruction, tags, lyrics, strength,
         "peak_alloc_mb": res.get("peak_alloc_mb"),
         "seed": res.get("seed"),
         "caption": caption,
+        "bpm": bpm, "keyscale": keyscale,
         "time_costs": res.get("time_costs"),
         "patch": patch_path,
         "preview": preview_path,
@@ -767,6 +774,89 @@ def cover(src_wav, tags, strength, *, log: Callable[[str], None] = _noop,
             "preview": res["path"], "vram_after_mb_free": nvidia_vram()[0]}
     if metrics is not None:
         metrics.update(info)
+    return res["path"]
+
+
+BASE_MODEL = "acestep-v15-base"
+
+# The three multi-track jobs, and the instruction template each one needs. ACE-Step reads the
+# instruction literally, so these are the strings from its own docs.
+TRACK_TASKS = {
+    "layer":     "Generate the {track} track based on the audio context:",
+    "accompany": "Complete the input track with {track}:",
+    "isolate":   "Extract the {track} track from the audio:",
+}
+TRACK_NAMES = ("vocals", "backing_vocals", "drums", "bass", "guitar", "keyboard",
+               "percussion", "strings", "synth", "fx", "brass", "woodwinds")
+
+
+def base_weights_present() -> bool:
+    """Is the base checkpoint downloaded? The turbo one cannot do these three tasks."""
+    d = ACE_CKPT / BASE_MODEL
+    return d.is_dir() and any(d.glob("*.safetensors"))
+
+
+def track_job(kind: str, src_wav, track: str, caption: str = "", *,
+              log: Callable[[str], None] = _noop, out_dir=None, seed: int = -1,
+              steps: int = 32, guidance: float = 7.0, start_s: float = 0.0,
+              end_s: float = -1.0, bpm=None, keyscale: str = "",
+              metrics: Optional[dict] = None):
+    """lego / complete / extract — the base-checkpoint multi-track tasks.
+
+        layer      add one named instrument that plays along with the song
+        accompany  build a backing band behind a partial track (a bare vocal, say)
+        isolate    pull one named instrument out of a finished mix
+
+    `isolate` overlaps Demucs, but not completely: Demucs gives six fixed stems, and this
+    names twelve, so strings, brass, woodwinds, synth and fx are reachable here and nowhere
+    else in the app. It is a generative reconstruction, not a separation, so it will not be
+    sample-accurate against the mix the way Demucs is — use Demucs when the six it knows are
+    enough.
+
+    Needs the base checkpoint (another ~4.5 GB); turbo has no weights for these.
+    """
+    if kind not in TRACK_TASKS:
+        raise AceStepError(f"Unknown track job: {kind}")
+    if track not in TRACK_NAMES:
+        raise AceStepError(f"{track!r} is not one of: {', '.join(TRACK_NAMES)}")
+    ok, reason = available(check_vram=False)
+    if not ok:
+        raise AceStepError(reason)
+    if not base_weights_present():
+        raise AceStepError(
+            "This needs the ACE-Step base model, which is a separate ~4.5 GB download. "
+            "The turbo model already installed cannot do layer, backing track or isolate.")
+    src = _resolve_src(src_wav)
+
+    job_dir = Path(out_dir) if out_dir else (WORK_DIR / f"{kind}_{int(time.time())}")
+    job_dir.mkdir(parents=True, exist_ok=True)
+    instruction = TRACK_TASKS[kind].format(track=track.replace("_", " "))
+
+    with _gpu_lock:
+        release_ollama(log)
+        free, total = nvidia_vram()
+        if free is not None and free < MIN_FREE_VRAM_MB:
+            raise AceStepError(
+                f"Only {free} MB of graphics memory is free and about {MIN_FREE_VRAM_MB} MB "
+                "is needed. Close anything else using the GPU and try again.")
+        t0 = time.time()
+        res = _run_worker({
+            "task": kind, "src_audio": str(src), "out_dir": str(job_dir),
+            "instruction": instruction, "caption": (caption or "").strip()[:512],
+            "dit_model": BASE_MODEL, "steps": int(steps), "guidance_scale": float(guidance),
+            "start_s": float(start_s), "end_s": float(end_s),
+            "seed": int(seed), "bpm": bpm, "keyscale": keyscale,
+        }, log)
+        wall = time.time() - t0
+
+    prune_work_dir(log=log)
+    info = {"wall_s": round(wall, 1), "peak_vram_mb": res.get("peak_reserved_mb"),
+            "seed": res.get("seed"), "track": track, "kind": kind,
+            "instruction": instruction, "path": res["path"], "preview": res["path"],
+            "vram_after_mb_free": nvidia_vram()[0]}
+    if metrics is not None:
+        metrics.update(info)
+    log(f"Done in {wall:.0f}s. Peak graphics memory {info.get('peak_vram_mb')} MB.")
     return res["path"]
 
 

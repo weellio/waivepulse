@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import threading
 import time
 import urllib.error
@@ -92,6 +93,33 @@ def _resolve_src(name: str) -> Path:
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"{base} is not in your outputs folder.")
     return path
+
+
+def _song_metadata(name: str) -> dict:
+    """The song's own detected BPM and key, by matching the file back to its job record.
+
+    Worth the lookup: a repainted span is spliced back between bars the listener already
+    heard, so the patch has to agree with the song's tempo. ACE-Step takes bpm/keyscale as
+    DiT conditioning, and app.py already measured both when the song was generated — we were
+    simply throwing that away and letting the model choose a tempo for the patch.
+
+    Silent by design: an imported MP3 has no job record and an older song may have no BPM, and
+    neither is a reason to refuse a rewrite.
+    """
+    app = sys.modules.get("app")
+    if app is None or not name:
+        return {}
+    base = Path(str(name).replace("\\", "/")).name
+    for rec in (getattr(app, "jobs", {}) or {}).values():
+        f = rec.get("file")
+        if f and Path(str(f).replace("\\", "/")).name == base:
+            out = {}
+            if rec.get("bpm"):
+                out["bpm"] = rec["bpm"]
+            if rec.get("key"):
+                out["keyscale"] = str(rec["key"])
+            return out
+    return {}
 
 
 # ── Status ────────────────────────────────────────────────────────────────────
@@ -271,6 +299,17 @@ class CoverReq(BaseModel):
     seed: int = -1
 
 
+class TrackReq(BaseModel):
+    """layer / accompany / isolate — the base-checkpoint multi-track jobs."""
+    src: str
+    kind: str                     # "layer" | "accompany" | "isolate"
+    track: str                    # one of engines.acestep.TRACK_NAMES
+    description: str = ""         # how the new part should sound (ignored by isolate)
+    steps: int = 32               # base model: docs say 32-64
+    guidance: float = 7.0         # real here; the turbo model forces this to 1.0
+    seed: int = -1
+
+
 def _start_job(kind: str, src: Path, run) -> str:
     ace_id = str(uuid.uuid4())[:8]
     ace_jobs[ace_id] = {
@@ -317,9 +356,15 @@ def repaint(req: RepaintReq):
     def run(log, job):
         out_dir = OUTPUTS_DIR / "acestep" / f"repaint_{time.strftime('%H%M%S')}"
         metrics: dict = {}
+        meta = _song_metadata(req.src)
+        if meta:
+            log("Holding the rewrite to the song's own "
+                + " and ".join(filter(None, [
+                    f"tempo ({meta['bpm']} BPM)" if meta.get("bpm") else "",
+                    f"key ({meta['keyscale']})" if meta.get("keyscale") else ""])))
         patch = eng.repaint(src, req.start_s, req.end_s, req.description, req.tags,
                            req.lyrics, req.strength, log=log, out_dir=out_dir,
-                           seed=req.seed, steps=req.steps, metrics=metrics)
+                           seed=req.seed, steps=req.steps, metrics=metrics, **meta)
         job["patch"] = patch
         job["preview"] = metrics.get("preview")
         job["metrics"] = metrics
@@ -349,6 +394,62 @@ def cover(req: CoverReq):
         job["message"] = f"Done in {metrics.get('wall_s')}s"
 
     return {"ace_id": _start_job("cover", src, run)}
+
+
+@router.get("/tracks")
+def tracks():
+    """What the multi-track jobs can do, and whether the weights for them are here."""
+    eng = _need_engine()
+    return {
+        "ready": eng.base_weights_present(),
+        "model": eng.BASE_MODEL,
+        "download_gb": 4.5,
+        "tracks": list(eng.TRACK_NAMES),
+        "kinds": [
+            {"id": "layer", "label": "Add a layer",
+             "blurb": "Write a new part that plays along with the song."},
+            {"id": "accompany", "label": "Build a backing track",
+             "blurb": "Put a band behind a bare vocal or a sparse take."},
+            {"id": "isolate", "label": "Isolate a track",
+             "blurb": "Pull one instrument out of the mix. Reaches strings, brass, "
+                      "woodwinds, synth and fx, which Demucs has no stem for — but it "
+                      "rebuilds the part rather than separating it, so use Studio's "
+                      "separation when one of its six stems is what you need."},
+        ],
+    }
+
+
+@router.post("/track")
+def track(req: TrackReq):
+    eng = _need_engine()
+    ok, reason = eng.available(check_vram=False)
+    if not ok:
+        raise HTTPException(status_code=503, detail=reason)
+    if req.kind not in eng.TRACK_TASKS:
+        raise HTTPException(status_code=400,
+                            detail=f"kind must be one of: {', '.join(eng.TRACK_TASKS)}")
+    if req.track not in eng.TRACK_NAMES:
+        raise HTTPException(status_code=400,
+                            detail=f"track must be one of: {', '.join(eng.TRACK_NAMES)}")
+    if not eng.base_weights_present():
+        raise HTTPException(
+            status_code=503,
+            detail="This needs the ACE-Step base model, a separate 4.5 GB download. "
+                   "The installed turbo model has no weights for these three jobs.")
+    src = _resolve_src(req.src)
+
+    def run(log, job):
+        out_dir = OUTPUTS_DIR / "acestep" / f"{req.kind}_{time.strftime('%H%M%S')}"
+        metrics: dict = {}
+        meta = _song_metadata(req.src)          # keep the new part in the song's tempo and key
+        path = eng.track_job(req.kind, src, req.track, req.description, log=log,
+                             out_dir=out_dir, steps=req.steps, guidance=req.guidance,
+                             seed=req.seed, metrics=metrics, **meta)
+        job["preview"] = path
+        job["metrics"] = metrics
+        job["message"] = f"Done in {metrics.get('wall_s')}s"
+
+    return {"ace_id": _start_job(req.kind, src, run)}
 
 
 @router.get("/status/{ace_id}")

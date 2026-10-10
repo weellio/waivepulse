@@ -82,6 +82,7 @@ Click the Studio button on any finished song card. Demucs splits the song into s
 - **Mute automation:** shift-drag any waveform to draw red mute regions, baked into Export Mix
 - **✨ Rewrite Section (ACE-Step):** select a span on the ruler, describe the change in plain words, and a second engine redraws that span, singer, melody and lyrics included. Needs a separate 16 GB install and about 9.5 GB of free VRAM. [Details below](#rewrite-section-ace-step)
 - **🎛 Mashup:** pick a source song per stem, and the builder tempo-matches, key-shifts and downbeat-aligns them onto separate tracks. [Details below](#mashup-builder)
+- **🎸 Add a Part:** write a new instrument part that plays along with the song, build a backing track behind a bare vocal, or pull one instrument out of the mix. Twelve instruments including strings, brass and woodwinds. Needs a second 4.5 GB model. [Details below](#add-a-part-ace-step-base-model)
 - **✂ Sample this:** snap a ruler selection to whole bars and preview it, add it as a track, download a WAV, or send it to the Looper with BPM and scale already set. [Details below](#sample-this)
 - **Track import:** drag any audio file onto the page and it becomes a full mixer track with its own knob set and loop toggle
 - **Export Mix** renders a lossless WAV with every knob, EQ band, mute region, and master-chain stage baked in. What you hear is what you get
@@ -916,6 +917,43 @@ Install and requirements:
 - One-click install from the modal, about 16 GB: 6 GB of libraries plus 9.4 GB of weights, in its own Python 3.11 / torch cu128 environment at `G:\acestep`. Override with `WP_ACESTEP_ROOT`, `WP_ACESTEP_REPO`, `WP_ACESTEP_PYTHON`, `ACESTEP_CHECKPOINTS_DIR` and `WP_ACESTEP_MIN_VRAM_MB`. `HF_HOME` defaults to `G:\cache\huggingface`.
 - About 9.2 to 9.5 GB of free VRAM, more for longer songs. Models Ollama is holding are evicted first; HeartMuLa must not be mid-render.
 - The backend also exposes whole-song restyle and reference-clip generation endpoints. Nothing in the UI calls them yet.
+- A rewrite is now pinned to the song's **own tempo and key**. ACE-Step takes `bpm` / `keyscale` as DiT conditioning (not just as a prompt for the language model, so it still applies on a repaint, where the LM is skipped), and app.py already measured both when the song was generated. We were discarding that and letting the model pick a tempo for the patch, which is one way a rewrite drifts against the bars either side of the seam.
+
+### Add a Part (ACE-Step base model)
+
+![Add a Part](assets/addtrack.png)
+
+**🎸 Add a Part** in Studio. Three jobs that write a new instrument part for a song you already have:
+
+| Mode | What it does | ACE-Step task |
+|---|---|---|
+| **Add a layer** | Writes a new part that plays along with the song | `lego` |
+| **Build a backing track** | Puts a band behind a bare vocal or a sparse take | `complete` |
+| **Isolate a track** | Pulls one instrument out of the mix | `extract` |
+
+Twelve instruments: vocals, backing vocals, drums, bass, guitar, keyboard, percussion, strings, synth, fx, brass, woodwinds.
+
+**The result becomes a new mixer track, not a new song.** These jobs return the new part *on its own*. Measured: a guitar layer generated against a 30 s song correlated −0.001 with that song and sat at a 5564 Hz spectral centroid against the song's 1190 Hz. So it lands on its own fader, with its own EQ and mute, exactly like an imported file, and never replaces what you have.
+
+**Isolate is not a replacement for Studio's separation.** Demucs gives six stems and is an actual separation, sample-accurate against the mix. This *rebuilds* the part generatively, which is worse when one of those six is what you want — and the only option at all for strings, brass, woodwinds, synth, fx and backing vocals, which Demucs has no stem for.
+
+**It needs a second download.** Rewrite Section uses the ACE-Step *turbo* checkpoint. These three are base-checkpoint tasks and turbo has no weights for them, so the panel checks first and tells you rather than failing at generate time:
+
+```
+python scripts/get_acestep_base.py
+```
+
+That is `acestep-v15-base`, the **2B** base — about 4.5 GB, next to the other checkpoints, never your C: drive. Not `acestep-v15-xl-base`, which is the 4B model that wants 24 GB of VRAM.
+
+Measured on a 12 GB RTX 3060, 32 steps at guidance 7.0:
+
+| Job | Time | Peak VRAM |
+|---|---|---|
+| Layer, guitar, on a 30 s song | 79 s | 7.3 GB |
+| Backing track behind a 221 s vocal | 82 s | 9.3 GB |
+| Layer, strings, on a 149 s song | 58 s | 9.2 GB |
+
+Two settings differ from the Rewrite Section path, both deliberately. The base model is not distilled, so guidance is real here (turbo forces it to 1.0) and 8 steps is far too few — the docs say 32–64 steps at guidance 7.0–9.0. And normalisation is **on**: a repaint is spliced into your own mix and must not be re-gained, but these are standalone parts, and the model's raw level wanders enough that a strings pad came back at −39.6 dBFS, quiet enough to look like a failed render. They now arrive at −6 dBFS peak, with headroom left for summing.
 
 ### Mashup builder
 
