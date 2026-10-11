@@ -338,6 +338,13 @@ def task_generate(job):
                 task_type="text2music",
                 duration=secs,
                 reference_audio=job.get("ref_audio") or None,
+                # A from-scratch render is a standalone track, not a patch spliced into the
+                # user's mix, so the "never re-gain it" rule in _common_params does not
+                # apply. Without this the level is whatever the model happened to produce:
+                # the same prompt came back at -17.8 dBFS on one seed and -51 dBFS on
+                # another, and -51 is quiet enough to look like a failed render.
+                enable_normalization=True,
+                normalization_db=-6.0,
             )
             log(f"Generating {secs:.0f}s from scratch"
                 + (" with a reference clip" if job.get("ref_audio") else ""))

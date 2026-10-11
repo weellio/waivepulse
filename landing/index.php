@@ -18,7 +18,7 @@ $features = [
     'kicker'=> 'HeartMuLa 3B',
     'title' => 'Type lyrics. Get a finished song.',
     'body'  => 'Paste your words, pick a few style tags, and a 3-billion-parameter model writes, sings, and produces a complete track as an MP3 — vocals and all. Jobs queue up; BPM and key are detected automatically.',
-    'points'=> ['Full vocal songs from text', 'Seed lock + 1–4 takes per click', 'Song Check: what is wrong with this render, and the control that fixes it', 'Twelve designed cover-art styles, one per song', 'One-click 1080p YouTube video with cover art', 'Neural watermark + provenance baked in'],
+    'points'=> ['Full vocal songs from text', 'Seed lock + 1–4 takes per click', 'Train the model on your own songs, from your own library', 'Song Check: what is wrong with this render, and the control that fixes it', 'Twelve designed cover-art styles, one per song', 'One-click 1080p YouTube video with cover art', 'Neural watermark + provenance baked in'],
   ],
   [
     'tag'   => 'Lyrics',
@@ -88,6 +88,7 @@ $compare = [
   ['Reference-track mastering', true, false, 'plugin'],
   ['Finds the flaws in a render for you', true, false, 'plugin'],
   ['Writes a new instrument into your song', true, false, false],
+  ['Trains on your own songs, locally', true, 'paid', false],
   ['Pronunciation respelling for lyrics', true, false, false],
   ['MIDI keyboard input',    true,  false, true],
   ['Ensemble + expression synth', true, false, 'plugin'],
