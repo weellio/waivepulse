@@ -130,7 +130,7 @@ Open the Looper page at any time — it works independently of the AI generation
 - **MIDI export:** a "MIDI" button next to Export renders the piano roll and drum pattern as a Standard MIDI File (.mid) — SMF Format 1, 480 PPQN, melody track + drum track on channel 9 with GM percussion mapping
 - **Vocal harmonizer:** an AudioWorklet adds pitch-shifted harmony voices to the mic input — two configurable voices (default +4 and +7 semitones, major 3rd and perfect 5th) with per-voice volume and semitone controls, wired after autotune in the mic chain
 - **MIDI input:** plug in any USB/Bluetooth MIDI keyboard or pad controller (Chrome/Edge). Velocity, sustain pedal, hot-plug. Channel 10 or "MIDI → Drums" plays the pads. Recorded like any other input
-- **Air Band (webcam):** play the drums and keys with your hands in the air. The camera view is split into zones (Drum kit, Keys, Band, Chord tones, or your own Custom mix); a downward strike hits a drum, an open hand held in a zone sustains a note. Hand tracking (MediaPipe) runs on your GPU in the browser, nothing is uploaded. Same input path as keys/MIDI, so it is recorded into loops and follows scale lock, ADSR, filter and arp. ⛶ Big view for recording clips. **Setup:** turn on the browser's graphics acceleration first (Chrome: `chrome://settings/system` → "Use graphics acceleration when available" → Relaunch), otherwise tracking crawls at ~5 fps; with it on, expect ~60 fps
+- **Air Band (webcam):** play the drums and keys with your hands in the air, tracked in the browser on your GPU. [Details below](#air-band-webcam)
 - **Swing & Humanize:** one groove for the drum sequencer and piano roll (0% straight → 100% triplet feel), baked into → Loop renders and MIDI export
 - **Probability & ratchets:** per-step 100/75/50/25% chance and 1–4 hit rolls (Prob/Ratchet mode, or Alt/Shift-click), saved with favorites
 - **Euclidean fill:** "E" on any drum row spreads N hits evenly, with rotation
@@ -239,6 +239,8 @@ Open **http://localhost:7861** in any browser. The launcher kills any old server
 ## Reference
 
 What follows documents each page in detail, plus the file structure, API surface, technical implementation, configuration, and troubleshooting. Skip to the section you need.
+
+Changing something? [`docs/DOC_MAP.md`](docs/DOC_MAP.md) lists every feature against the four places it is described — this README, the landing page, the in-app help, and the screenshot script that regenerates its image. `python scripts/doc_audit.py --strict` checks the app against all of them and is part of the test suite, because the docs have fallen behind the app twice.
 
 ---
 
@@ -748,9 +750,11 @@ The gate, crusher, wavefolder, and side-chain ducker are serial inserts (off by 
 
 Clicking either button automatically disables the other.
 
-### Controls
+### Controls, keyboard shortcuts and track selection
 
-A blank Hotkey cell means the control is mouse-only.
+Every keyboard shortcut in Studio is in this table. A blank Hotkey cell means the control is mouse-only.
+
+Most shortcuts act on the **selected** track: click a track strip on the left or its waveform row on the right and it takes a cyan border, then `Tab` and `Shift+Tab` cycle through the tracks and `M` `S` `N` `R` `D` operate on whichever is highlighted.
 
 | Group | Control / action | Hotkey | What it does |
 |---|---|---|---|
@@ -901,6 +905,8 @@ Two buttons for reworking sections of a mix:
 ---
 
 ### Rewrite Section (ACE-Step)
+
+![Rewrite Section](assets/repaint.png)
 
 Section regeneration above keeps HeartMuLa's take and splices a variation in. **✨ Rewrite Section** is different: it hands the span to a second engine, ACE-Step 1.5 (MIT-licensed code and weights), which throws the span away and redraws it. The singer, the melody and the lyrics can all change.
 
@@ -1323,6 +1329,14 @@ Near to far measures as reverb onset moving 4.5 ms to 40 ms, 11 dB of high-frequ
 Everything here is baked into **→ Loop** renders, Export Mix and the Song Builder, so what you
 heard is what lands in the file.
 
+### Air Band (webcam)
+
+Play the drums and keys with your hands in the air. The camera view splits into zones — Drum kit, Keys, Band, Chord tones, or your own Custom mix. A downward strike hits a drum; an open hand held in a zone sustains a note.
+
+Hand tracking is MediaPipe running on your GPU **in the browser**, so nothing is uploaded. It uses the same input path as the keys and MIDI, which means it records into loops and obeys scale lock, ADSR, filter and arp like any other instrument. **⛶ Big view** gives you a clean full-screen frame for recording clips.
+
+**Turn on the browser's graphics acceleration first.** In Chrome: `chrome://settings/system` → "Use graphics acceleration when available" → Relaunch. Without it tracking crawls at about 5 fps, which feels broken; with it, expect around 60.
+
 ### Transport controls
 
 | Control | What it does |
@@ -1374,6 +1388,27 @@ Click **⬇ Export** in the transport bar. The export:
 - Downloads as `looper-mix.wav` with no server round-trip
 
 The exported WAV can be dragged into the Studio page's track import to mix alongside AI-generated stems.
+
+### Song builder
+
+Loops on their own are a groove, not a song. The **🎼 Song** panel arranges them into one: each block says which loops play and for how long, and a **Break** block drops to silence for a few beats before the next block brings them back, still on the grid. **↻ Generate** auto-arranges a build-up where the loops enter one at a time, given a bar count, break length and repeat count — then you edit the blocks by hand.
+
+The master section bakes the finished arrangement down: fade in and out, normalise to a target dBFS, a soft limiter, and optionally the Space reverb and Delay with a tail you set.
+
+| Button | What you get |
+|---|---|
+| **⬇ Render Full Track** | The whole arrangement with per-loop EQ baked in, as WAV (16 or 24-bit) or MP3 320. Optionally gained to −14, −16 or −9 LUFS with true peak ≤ −1 dBTP, and the measured LUFS · dBTP appears next to the length |
+| **⬇ Stems** | Each loop as its own full-length WAV with the arrangement applied, left un-normalised so they sum cleanly in a DAW |
+| **⇪ Song → Studio** | With a Studio window open, sends the full track straight there |
+| **⇪ Stems → Studio** | Same, but every loop arrives as its own Studio track |
+
+### Trim start
+
+Loops are recorded against the metronome, so a late first hit leaves a gap at the top. **✂ Trim start** on a slot sets where the loop actually begins on its waveform, and **↦ Snap to first sound** finds the first transient for you.
+
+### Legato
+
+**⤳ Legato** makes a new note glide to the new pitch when one is still held, rather than retriggering it. The read-out beside it shows how many notes still fit under the 192-oscillator cap at the current ensemble size, which is the thing that actually limits how thick you can play.
 
 ---
 
