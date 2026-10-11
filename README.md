@@ -62,6 +62,7 @@ The main page. Paste lyrics, pick tags from an organised grid (Genre, Timbre, Mo
 - **Ratings:** 1–5 stars per song, a "Top rated" sort, and a minimum-rating filter
 - **🖼 Cover art:** every song gets a designed record sleeve — twelve art directions (Swiss, Brutalist, Risograph, Blue Note, Metal, Neon horizon, Minimal, Pop, Label mono, Letterpress, Bauhaus, Xerox zine) picked from its genre and mood tags, set in vendored open-licence type, with measured 4.5:1 contrast. Pick a style or hit ↻ Regenerate on any card; the MP3's embedded cover updates with it
 - **🎬 Video:** turns any song into a 1080p H.264 MP4 for YouTube, with the song's cover art, title, and a waveform strip. The same cover is embedded in new MP3s
+- **🎓 Train a style on my songs:** trains the model on the music you have already made, so new ACE-Step renders lean towards your sound. Builds the dataset from your library automatically. Does not change the Generate button. [Details below](#train-a-style-on-your-own-songs-lokr)
 - **🩺 Check:** tells you what is wrong with a render and which control fixes it — loudness creeping up, peaks over the ceiling, a hard stop, dead air, tempo drift, and (with stems) the backing dropping out under the vocal. Instant, no GPU. [Details below](#song-check)
 - Drop external MP3s onto the history panel to play them, or to send them into Studio for stem separation
 
@@ -954,6 +955,45 @@ Measured on a 12 GB RTX 3060, 32 steps at guidance 7.0:
 | Layer, strings, on a 149 s song | 58 s | 9.2 GB |
 
 Two settings differ from the Rewrite Section path, both deliberately. The base model is not distilled, so guidance is real here (turbo forces it to 1.0) and 8 steps is far too few — the docs say 32–64 steps at guidance 7.0–9.0. And normalisation is **on**: a repaint is spliced into your own mix and must not be re-gained, but these are standalone parts, and the model's raw level wanders enough that a strings pad came back at −39.6 dBFS, quiet enough to look like a failed render. They now arrive at −6 dBFS peak, with headroom left for summing.
+
+### Train a style on your own songs (LoKr)
+
+**🎓 Train a style on my songs** above the Generate button. It trains a LoKr adapter on the music you have already made, so new ACE-Step renders lean towards your sound.
+
+**Read this first: it does not change the Generate button.** A LoKr trains against ACE-Step. WAIvePulse's main generator is HeartMuLa, which has no way to load one. The trained style applies to Rewrite Section, Add a Part, and the **Try it** button in the panel — and nowhere else. The panel says so before you start, not after.
+
+**The dataset builds itself.** ACE-Step's tutorial spends half its length on data preparation: per song you need the audio, accurate lyrics, a caption, and measured BPM and key — and it tells you to fetch BPM/key from an external website, because asking a language model for them produces hallucinations. WAIvePulse already stores all of it. One button converts the library:
+
+| Field | Where it comes from |
+|---|---|
+| Audio | The song file |
+| Lyrics | The lyrics that generated it, section markers kept |
+| Caption | The tag string that described it. Title and artist are deliberately left out — they are not a description of the sound |
+| BPM, key | The job record, or measured from the audio with the same librosa code the song cards use |
+| Language | `en` only when the lyrics really are ASCII English, otherwise left unset |
+
+Nothing is invented. A song with no tags, or no lyrics and not marked instrumental, is skipped with the reason shown rather than exported with a guessed caption.
+
+**Why LoKr and not LoRA.** The tutorial's hardware table asks for 16 GB minimum to train LoRA, and this card has 12. Its own advice: LoKr is "crucial for training on consumer-grade GPUs" at roughly ten times the speed. Measured here, VRAM was never the problem — a LoKr run peaks at **4.6 to 7.5 GB**. The 16 GB figure is for LoRA on full-length songs.
+
+Measured on a 12 GB RTX 3060, 18 songs:
+
+| Stage | Cost | Peak VRAM |
+|---|---|---|
+| Build the dataset | Seconds, CPU only | — |
+| Encode to tensors | 106 s, once per dataset, 74 MB out | 7.5 GB |
+| Train | 45 s per epoch, 786,432 trainable parameters | 7.5 GB |
+
+A six-epoch proving run took 329 s including model load and drove the loss from 0.0177 to 0.0065. At 45 s an epoch the tutorial's suggested 500 epochs is about six hours. It holds the graphics card throughout, so nothing else can generate while it runs.
+
+**Four things had to be fixed to make this work at all**, and every one of them failed silently — exit code 0, a plausible wall time, `final_loss: 0.0`, and no adapter on disk:
+
+- `lycoris-lora` is not in ACE-Step's dependencies, so LoKr was simply unavailable.
+- `training/path_safety.py` pins a safe root to the working directory at import time and rejects anything outside it, so a dataset on `G:` scanned as zero songs with no error. It exposes `set_safe_root()`; that is now pointed at the training folder and no wider.
+- Worker tasks must `emit("result", …)`; `main()` ignores return values. Preprocessing finished and wrote all 74 MB while reporting failure.
+- `inject_lokr_into_dit()` builds the LyCORIS network and calls `apply_to()`, but neither it nor `LoKRTrainer` moves it to the model's device. With the DiT already on CUDA the adapter's weights stay on the CPU and the first forward dies inside `lycoris/modules/lokr.py`. Fixed by wrapping the injection, because the LoKr module is built inside `train_from_preprocessed()` — there is no moment a caller can reach between "adapter exists" and "adapter is used".
+
+The lesson is in `scripts/` and the tests: the only trustworthy signal that training worked is `steps > 0` and a file on disk.
 
 ### Mashup builder
 

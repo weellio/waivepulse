@@ -69,6 +69,10 @@
         <div class="vibe-tier-seg" id="vibeTierSeg"></div>
         <div class="vibe-tier-help" id="vibeTierHelp"></div>
       </div>
+      <div class="vibe-tier">
+        <button type="button" id="lokr-btn" class="btn-suggest" style="width:100%"
+          title="Train the model on the songs you have already made, so new ACE-Step renders lean towards your sound. Needs ACE-Step installed, holds the graphics card for the whole run, and does not change the Generate button.">🎓 Train a style on my songs</button>
+      </div>
     </div>
     <script type="module" src="/js/index/vibe.js"></script>
 <!-- vibe:end -->
@@ -222,6 +226,20 @@ Every day the fire burns"></textarea>
 <script type="module" src="/js/index/main.js"></script>
 <!-- defines window.runSongCheck for the 🩺 Check button on each finished song card -->
 <script type="module" src="/js/index/songcheck.js"></script>
+
+<!-- lokr:start — train a style on your own songs -->
+<div id="lokr-modal" role="dialog" aria-modal="true" aria-labelledby="lokr-title">
+  <div id="lokr-panel">
+    <div id="lokr-head">
+      <h3 id="lokr-title">Train a style on your own songs</h3>
+      <span class="ace-sub">ACE-Step 1.5 · LoKr</span>
+      <button type="button" id="lokr-close" title="Close">&times;</button>
+    </div>
+    <div id="lokr-body"></div>
+  </div>
+</div>
+<script type="module" src="/js/index/lokr.js"></script>
+<!-- lokr:end -->
 
 <div id="toast"></div>
 

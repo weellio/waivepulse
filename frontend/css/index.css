@@ -669,3 +669,38 @@ input[type=number]:focus { border-color: #2ab8b8; }
 .sc-fix { color: #8fb9b9; line-height: 1.55; margin-top: 4px; }
 .sc-fix b { color: #6a9a9a; font-weight: 600; }
 .sc-where { color: #55556a; }
+
+/* ── Train a style (LoKr) ───────────────────────────────────────────────────── */
+#lokr-modal { position: fixed; inset: 0; background: rgba(0,0,0,.78); z-index: 600;
+  display: none; align-items: center; justify-content: center; padding: 20px; }
+#lokr-panel { background: #111; border: 1px solid #2a2a2a; border-radius: 10px; width: 100%;
+  max-width: 660px; max-height: 88vh; display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+#lokr-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+  border-bottom: 1px solid #222; flex-shrink: 0; }
+#lokr-head h3 { margin: 0; font-size: 14px; color: #c8a8ff; font-weight: 700; }
+#lokr-head .ace-sub { font-size: 11px; color: #777; }
+#lokr-head button { margin-left: auto; background: none; border: 1px solid #333; color: #888;
+  width: 26px; height: 26px; border-radius: 5px; cursor: pointer; font-size: 15px; line-height: 1; }
+#lokr-head button:hover { color: #ddd; border-color: #555; }
+#lokr-body { padding: 14px 16px; overflow-y: auto; }
+.lokr-stat { border-left: 3px solid #3a6a5a; padding: 7px 10px; margin: 10px 0;
+  font-size: 0.76rem; color: #c8c8d4; line-height: 1.6; }
+.lokr-bad { color: #e8a04a; }
+.lokr-skip { color: #7a7a8a; font-size: 0.72rem; line-height: 1.5; }
+.lokr-row { display: flex; gap: 9px; align-items: center; margin-top: 9px; flex-wrap: wrap; }
+.lokr-row label { font-size: 0.72rem; color: #888; min-width: 104px; }
+.lokr-row input { background: #081515; border: 1px solid #2a3a3a; color: #cfe;
+  border-radius: 6px; padding: 6px 9px; font-size: 0.78rem; font-family: inherit; }
+.lokr-row input[type=number] { width: 92px; }
+.lokr-hint { font-size: 0.68rem; color: #6a6a7a; flex: 1; min-width: 180px; }
+#lokr-log { background: #070707; border: 1px solid #1d1d1d; border-radius: 6px; margin-top: 10px;
+  padding: 8px; font-size: 0.66rem; color: #7a7a7a; max-height: 190px; overflow-y: auto;
+  white-space: pre-wrap; }
+#lokr-log:empty { display: none; }
+.lokr-adapters { border-top: 1px solid #222; margin-top: 12px; padding-top: 10px; }
+.lokr-adapters-h { font-size: 0.72rem; color: #888; margin-bottom: 6px; }
+.lokr-adapter { font-size: 0.76rem; color: #c8c8d4; display: flex; gap: 9px;
+  align-items: baseline; padding: 3px 0; }
+.lokr-adapter span { font-size: 0.68rem; color: #6a6a7a; }
+.lokr-adapter .lokr-try { margin-left: auto; font-size: 0.68rem; padding: 3px 9px; }

@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import os
 import shutil
 import subprocess
@@ -860,10 +861,135 @@ def track_job(kind: str, src_wav, track: str, caption: str = "", *,
     return res["path"]
 
 
+# Everything a trained adapter needs lives under the ACE-Step root, on the same drive as the
+# checkpoints, never C:.
+TRAIN_ROOT = ACE_ROOT / "training"
+
+
+def train_paths(name: str) -> dict:
+    """Where one named training run keeps its dataset, tensors and adapter."""
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", str(name or "mystyle")).strip("_.") or "mystyle"
+    base = TRAIN_ROOT / safe
+    return {"name": safe, "base": base, "dataset": base / "dataset",
+            "tensors": base / "tensors", "output": base / "adapter"}
+
+
+def lokr_preprocess(name: str, *, max_duration: float = 120.0,
+                    log: Callable[[str], None] = _noop, metrics: Optional[dict] = None):
+    """Encode the dataset once into tensors that training can read cheaply.
+
+    `max_duration` is the real VRAM dial for the whole pipeline: it caps how much of each
+    song is encoded, and training then works on those tensors. The tutorial's 16 GB minimum
+    assumes full-length songs, so shorter excerpts are how this fits on a 12 GB card.
+    """
+    ok, reason = available(check_vram=False)
+    if not ok:
+        raise AceStepError(reason)
+    p = train_paths(name)
+    if not p["dataset"].is_dir() or not any(p["dataset"].iterdir()):
+        raise AceStepError(f"No dataset at {p['dataset']}. Build one from your songs first.")
+    p["tensors"].mkdir(parents=True, exist_ok=True)
+
+    with _gpu_lock:
+        release_ollama(log)
+        free, _ = nvidia_vram()
+        if free is not None and free < MIN_FREE_VRAM_MB:
+            raise AceStepError(
+                f"Only {free} MB of graphics memory is free and about {MIN_FREE_VRAM_MB} MB "
+                "is needed. Close anything else using the GPU and try again.")
+        t0 = time.time()
+        res = _run_worker({
+            "task": "lokr_preprocess", "safe_root": str(TRAIN_ROOT),
+            "dataset_dir": str(p["dataset"]),
+            "tensor_dir": str(p["tensors"]), "max_duration": float(max_duration),
+        }, log, timeout=6 * 3600)
+        wall = time.time() - t0
+
+    info = {"tensors": res.get("tensors"), "tensor_dir": str(p["tensors"]),
+            "wall_s": round(wall, 1), "peak_vram_mb": res.get("peak_reserved_mb"),
+            "status": res.get("status")}
+    if metrics is not None:
+        metrics.update(info)
+    log(f"Preprocessed {info['tensors']} songs in {wall:.0f}s.")
+    return info
+
+
+def lokr_train(name: str, *, epochs: int = 500, learning_rate: float = 0.03,
+               linear_dim: int = 64, linear_alpha: int = 128, save_every: int = 50,
+               grad_accum: int = 4, gradient_checkpointing: bool = True, seed: int = 42,
+               log: Callable[[str], None] = _noop, metrics: Optional[dict] = None):
+    """Train the LoKr adapter. Long and GPU-bound; the caller should say so."""
+    ok, reason = available(check_vram=False)
+    if not ok:
+        raise AceStepError(reason)
+    p = train_paths(name)
+    if not p["tensors"].is_dir() or not any(p["tensors"].glob("*.pt")):
+        raise AceStepError(f"No tensors at {p['tensors']}. Run preprocessing first.")
+    p["output"].mkdir(parents=True, exist_ok=True)
+
+    with _gpu_lock:
+        release_ollama(log)
+        t0 = time.time()
+        res = _run_worker({
+            "task": "lokr_train", "safe_root": str(TRAIN_ROOT), "no_offload": True,
+            "tensor_dir": str(p["tensors"]),
+            "output_dir": str(p["output"]), "epochs": int(epochs),
+            "learning_rate": float(learning_rate), "linear_dim": int(linear_dim),
+            "linear_alpha": int(linear_alpha), "save_every": int(save_every),
+            "grad_accum": int(grad_accum), "seed": int(seed),
+            "gradient_checkpointing": bool(gradient_checkpointing),
+        }, log, timeout=24 * 3600)
+        wall = time.time() - t0
+
+    info = {"steps": res.get("steps"), "final_loss": res.get("final_loss"),
+            "output_dir": str(p["output"]), "wall_s": round(wall, 1),
+            "peak_vram_mb": res.get("peak_reserved_mb")}
+    if metrics is not None:
+        metrics.update(info)
+    log(f"Trained {info['steps']} steps in {wall / 60:.1f} min.")
+    return info
+
+
+def list_adapters() -> list:
+    """Trained adapters on disk, newest first."""
+    out = []
+    if not TRAIN_ROOT.is_dir():
+        return out
+    for base in sorted(TRAIN_ROOT.iterdir()):
+        adir = base / "adapter"
+        if not adir.is_dir():
+            continue
+        # Only the LoKr weights are loadable as an adapter. Each checkpoint folder also
+        # holds training_state.pt — the optimizer state for resuming — which is written
+        # last and is therefore the newest file. Picking by mtime alone handed back the
+        # resume state and load_lora() would have choked on it.
+        weights = sorted(adir.rglob("lokr_weights.safetensors")) \
+            or sorted(adir.rglob("*.safetensors"))
+        if not weights:
+            continue
+        files = weights
+        newest = max(weights, key=lambda f: f.stat().st_mtime)
+        out.append({
+            "name": base.name,
+            "file": str(newest),
+            "size_mb": round(newest.stat().st_size / 1e6, 1),
+            "modified": int(newest.stat().st_mtime),
+            "checkpoints": len(files),
+            "songs": len(list((base / "dataset").glob("*.json"))) if (base / "dataset").is_dir() else 0,
+        })
+    return sorted(out, key=lambda a: -a["modified"])
+
+
 def generate(tags, lyrics, seconds, ref_audio=None, *, log: Callable[[str], None] = _noop,
-             out_dir=None, seed: int = -1, steps: int = 8, metrics: Optional[dict] = None):
+             out_dir=None, seed: int = -1, steps: int = 8, metrics: Optional[dict] = None,
+             adapter: str = "", adapter_scale: float = 1.0):
     """From-scratch generation, optionally steered by a reference clip — the thing
-    HeartMuLa cannot do at all (its pipeline raises NotImplementedError for ref_audio)."""
+    HeartMuLa cannot do at all (its pipeline raises NotImplementedError for ref_audio).
+
+    `adapter` is a trained LoKr style (see lokr_train). This is the only place a trained
+    style can actually be heard from scratch: the Generate page runs HeartMuLa, which has
+    no way to load one.
+    """
     ok, reason = available(check_vram=False)
     if not ok:
         raise AceStepError(reason)
@@ -874,7 +1000,8 @@ def generate(tags, lyrics, seconds, ref_audio=None, *, log: Callable[[str], None
         release_ollama(log)
         t0 = time.time()
         res = _run_worker({
-            "task": "generate", "out_dir": str(job_dir), "caption": (tags or "")[:512],
+            "task": "generate", "adapter": adapter or "",
+            "adapter_scale": float(adapter_scale), "out_dir": str(job_dir), "caption": (tags or "")[:512],
             "lyrics": lyrics or "", "seconds": float(seconds or 30),
             "ref_audio": str(ref_audio) if ref_audio else None,
             "seed": int(seed), "steps": int(steps),

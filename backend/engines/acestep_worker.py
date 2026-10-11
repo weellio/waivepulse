@@ -37,6 +37,7 @@ so library chatter (loguru, tqdm) is harmless.
 
 import json
 import os
+import re
 import sys
 import time
 import traceback
@@ -146,7 +147,12 @@ def _init_handler(job):
         device="cuda",
         use_flash_attention=False,
         compile_model=False,
-        offload_to_cpu=True,
+        # Generation offloads each component between phases, which is what keeps a 2B DiT
+        # plus VAE plus text encoder inside 12 GB. Training has no such phases: the loop
+        # touches the encoder and the DiT in one graph, so a component parked on the CPU
+        # produces "Expected all tensors to be on the same device, cuda:0 and cpu". Measured
+        # peak for a LoKr run is only 4.6 GB, so training can simply keep everything resident.
+        offload_to_cpu=not bool(job.get("no_offload")),
         offload_dit_to_cpu=False,
         quantization=None,
     )
@@ -231,6 +237,30 @@ def _common_params(job):
     )
 
 
+def _load_adapter(handler, job):
+    """Attach a trained LoKr adapter for this generation, if the caller named one.
+
+    handler.load_lora() takes LyCORIS LoKr safetensors as well as plain LoRA, so the same
+    call covers both. A failure here is reported and then ignored: generating in the base
+    style is a far better outcome than refusing to generate at all, but it must not happen
+    silently or the user will think the training did nothing.
+    """
+    path = (job.get("adapter") or "").strip()
+    if not path:
+        return False
+    try:
+        msg = handler.load_lora(path)
+        log(str(msg)[:200])
+        scale = job.get("adapter_scale")
+        if scale is not None and hasattr(handler, "set_lora_scale"):
+            log(str(handler.set_lora_scale(float(scale)))[:120])
+        return True
+    except Exception as e:                                       # noqa: BLE001
+        log(f"Could not load the style adapter ({type(e).__name__}: {e}). "
+            "Generating in the base style instead.")
+        return False
+
+
 def task_generate(job):
     repo = _setup(job)
     import torch
@@ -242,6 +272,7 @@ def task_generate(job):
         task = job["task"]
         kw = _common_params(job)
         kw.update(_musical_metadata(job))   # pin tempo/key when the caller knows them
+        _load_adapter(handler, job)         # a trained LoKr style, when one was asked for
         strength = float(job.get("strength", 0.6))
         strength = min(1.0, max(0.0, strength))
 
@@ -371,9 +402,217 @@ def task_generate(job):
             pass
 
 
+def _runtime_mgr(handler):
+    """ACE-Step's own component shuffler, or a no-op stand-in.
+
+    Preprocessing and training need different models resident, and the official routes use
+    RuntimeComponentManager to move the rest to CPU. On a 12 GB card that is the difference
+    between fitting and not, so it is used here too rather than reimplemented — but it lives
+    under acestep.api, so a version without it degrades to "leave everything where it is"
+    instead of failing to start.
+    """
+    try:
+        from acestep.api.train_api_runtime import RuntimeComponentManager
+        return RuntimeComponentManager(handler=handler, llm=None, app_state=None)
+    except Exception as e:                                       # noqa: BLE001
+        log(f"RuntimeComponentManager unavailable ({type(e).__name__}); not offloading")
+
+        class _Noop:
+            def __getattr__(self, _n):
+                return lambda *a, **k: None
+        return _Noop()
+
+
+def _peak_vram_mb():
+    """Peak reserved VRAM for this process, or None without CUDA. The number that decides
+    whether any of this fits on a 12 GB card, so it is reported on every job."""
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return round(torch.cuda.max_memory_reserved() / 1048576)
+    except Exception:                                            # noqa: BLE001
+        pass
+    return None
+
+
+def _allow_training_paths(job):
+    """Let ACE-Step's path sanitiser accept our training folder.
+
+    training/path_safety.py pins a _SAFE_ROOT to the current working directory at import
+    time and refuses any path outside it, so a dataset on G: is rejected with
+    "Rejected unsafe directory path" and the scan silently returns zero songs. The module
+    documents set_safe_root() as the supported override; this points it at the one training
+    root everything of ours lives under, and no wider.
+    """
+    root = job.get("safe_root")
+    if not root:
+        return
+    try:
+        from acestep.training.path_safety import set_safe_root
+        set_safe_root(root)
+        log(f"Training paths allowed under {root}")
+    except Exception as e:                                       # noqa: BLE001
+        log(f"could not set the training safe root ({type(e).__name__}): {e}")
+
+
+def task_lokr_preprocess(job):
+    """Turn a prepared dataset folder into the tensor files training reads.
+
+    This is the GPU-heavy half of the setup: every song is run through the VAE and the text
+    encoder once. Doing it up front is what makes training itself cheap enough for a 12 GB
+    card, because training never touches the audio again.
+    """
+    _setup(job)
+    _allow_training_paths(job)
+    handler, _repo = _init_handler(job)
+    from acestep.training.dataset_builder import DatasetBuilder
+
+    mgr = _runtime_mgr(handler)
+    mgr.offload_decoder_to_cpu()
+    mgr.unload_llm()
+
+    builder = DatasetBuilder()
+    samples, status = builder.scan_directory(job["dataset_dir"])
+    log(f"Scanned {len(samples)} songs: {status}")
+    if not samples:
+        raise RuntimeError(f"No usable songs found in {job['dataset_dir']}")
+
+    seen = {"n": 0}
+
+    def progress(msg):
+        m = re.match(r"Preprocessing (\d+)/(\d+)", str(msg) or "")
+        if m:
+            seen["n"] = int(m.group(1))
+            emit("progress", msg=f"Preprocessing {m.group(1)}/{m.group(2)}")
+        else:
+            log(str(msg)[:200])
+
+    paths, status = builder.preprocess_to_tensors(
+        dit_handler=handler,
+        output_dir=job["tensor_dir"],
+        max_duration=float(job.get("max_duration") or 120.0),
+        preprocess_mode="lokr",
+        progress_callback=progress,
+        skip_existing=bool(job.get("skip_existing", True)),
+    )
+    mgr.restore()
+    log(status.splitlines()[0] if status else "Preprocessing finished")
+    emit("result", tensors=len(paths or []), tensor_dir=job["tensor_dir"],
+         status=(status or "")[:400], peak_reserved_mb=_peak_vram_mb())
+
+
+def _patch_lokr_injection_device():
+    """Make every LoKr injection land on the same device as the model it wraps.
+
+    inject_lokr_into_dit() builds the LyCORIS network and calls apply_to(), but never moves
+    it, and neither does LoKRTrainer. When the DiT is already on CUDA at injection time —
+    which it is here, because the handler loads it straight to the card — the adapter's own
+    weights stay on the CPU and the first forward dies inside lycoris/modules/lokr.py with
+    "Expected all tensors to be on the same device, cuda:0 and cpu". Their Gradio flow
+    presumably injects while the model is still on CPU, so it never shows up there.
+
+    Wrapping the injection rather than fixing it up afterwards, because the LoKr module is
+    built inside train_from_preprocessed(), not in the trainer's constructor: there is no
+    moment between "adapter exists" and "adapter is used" that the caller can reach.
+
+    Device only, not dtype: the trainer deliberately keeps trainable parameters in fp32.
+
+    The failure this prevents is a quiet one — the run exits 0 with a plausible wall time
+    and final_loss 0.0, and simply writes no adapter.
+    """
+    import torch
+    from acestep.training import trainer as T
+
+    if getattr(T, "_wv_device_patched", False):
+        return
+    original = T.inject_lokr_into_dit
+
+    def patched(model, lokr_config, *a, **kw):
+        out_model, net, info = original(model, lokr_config, *a, **kw)
+        try:
+            device = next(out_model.parameters()).device
+            moved = sum(1 for p in net.parameters() if p.device != device)
+            net.to(device)
+            log(f"LoKr adapter placed on {device} ({moved} tensors moved), "
+                f"{info.get('trainable_params', 0):,} trainable params")
+        except Exception as e:                                   # noqa: BLE001
+            log(f"could not place the LoKr adapter ({type(e).__name__}: {e})")
+        return out_model, net, info
+
+    T.inject_lokr_into_dit = patched
+    T._wv_device_patched = True
+
+
+def task_lokr_train(job):
+    """Train the LoKr adapter from the preprocessed tensors.
+
+    LoKr rather than LoRA on purpose: ACE-Step's tutorial asks for 16 GB minimum for LoRA
+    and this card has 12, and its own advice is that LoKr is "crucial for training on
+    consumer-grade GPUs" at roughly ten times the speed.
+    """
+    _setup(job)
+    _allow_training_paths(job)
+    handler, _repo = _init_handler(job)
+    from acestep.training.configs import LoKRConfig, TrainingConfig
+    from acestep.training.trainer import LoKRTrainer
+    from acestep.api.train_api_runtime import unwrap_module
+
+    try:
+        handler.model.decoder = unwrap_module(handler.model.decoder)
+    except Exception:                                            # noqa: BLE001
+        pass
+    mgr = _runtime_mgr(handler)
+    mgr.move_decoder_to(str(getattr(handler, "device", "cuda")))
+    mgr.unload_llm()
+    if not job.get("no_offload"):
+        # Only when something else needs the room. Training reads precomputed tensors, so
+        # the VAE and text encoder are not in the graph at all, but pushing them to CPU is
+        # what produced the cuda/cpu device mismatch, and at a 4.6 GB peak there is no
+        # reason to reach for it.
+        mgr.offload_vae_to_cpu()
+        mgr.offload_text_encoder_to_cpu()
+        mgr.offload_model_encoder_to_cpu()
+
+    lokr = LoKRConfig(
+        linear_dim=int(job.get("linear_dim") or 64),
+        linear_alpha=int(job.get("linear_alpha") or 128),
+        factor=int(job.get("factor") or -1),
+    )
+    cfg = TrainingConfig(
+        learning_rate=float(job.get("learning_rate") or 0.03),   # LoKr default, not LoRA's 1e-4
+        batch_size=1,
+        gradient_accumulation_steps=int(job.get("grad_accum") or 4),
+        max_epochs=int(job.get("epochs") or 500),
+        save_every_n_epochs=int(job.get("save_every") or 50),
+        seed=int(job.get("seed") or 42),
+        output_dir=job["output_dir"],
+        # ON by default here. The docs call it "enable this if you are running out of VRAM",
+        # and on a 12 GB card against a 16 GB minimum we are running out of VRAM by default.
+        gradient_checkpointing=bool(job.get("gradient_checkpointing", True)),
+    )
+    log(f"LoKr dim {lokr.linear_dim} alpha {lokr.linear_alpha}, {cfg.max_epochs} epochs, "
+        f"lr {cfg.learning_rate}, gradient checkpointing {cfg.gradient_checkpointing}")
+
+    _patch_lokr_injection_device()     # must be in place BEFORE the module is built
+    trainer = LoKRTrainer(dit_handler=handler, lokr_config=lokr, training_config=cfg)
+    state = {"should_stop": False}
+    last = {"step": 0, "loss": None}
+    t0 = time.time()
+    for step, loss, status in trainer.train_from_preprocessed(job["tensor_dir"], state):
+        last["step"], last["loss"] = step, loss
+        if step % 10 == 0 or step < 5:
+            emit("progress", msg=f"step {step} loss {loss:.4f} — {str(status)[:80]}")
+    mgr.restore()
+    emit("result", steps=last["step"], final_loss=last["loss"],
+         output_dir=job["output_dir"], wall_s=round(time.time() - t0, 1),
+         peak_reserved_mb=_peak_vram_mb())
+
+
 TASKS = {
     "probe": task_probe,
     "download": task_download,
+    "lokr_preprocess": task_lokr_preprocess,
+    "lokr_train": task_lokr_train,
     "repaint": task_generate,
     "cover": task_generate,
     "generate": task_generate,
