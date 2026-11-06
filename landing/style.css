@@ -289,16 +289,25 @@ footer{display:flex;justify-content:space-between;align-items:center;flex-wrap:w
   .foot-meta{text-align:left}
   footer{flex-direction:column;align-items:flex-start}
 }
-@media (prefers-reduced-motion:reduce){
-  .reveal{opacity:1;transform:none;transition:none}
-  .grad{animation:none}
-  #bg{display:none}
-  /* motion.js never runs here, so nothing ever writes --c. Pin it on, or every accent
-     glow and every heading rule would sit at its "far away" value forever. */
-  .gcard,.shot-frame,.feature{--c:1}
-  .shot-frame img{transform:none}
-  .sweep{display:none}
-}
+/* ---- Motion off ----
+   This is the old @media (prefers-reduced-motion: reduce) block, moved onto an attribute
+   the inline head script sets. It still defaults to the OS preference; the difference is
+   that the Motion button in the nav can now override it either way. It also covers
+   JavaScript being off entirely, since then the attribute is never set — which matters,
+   because .reveal starts at opacity 0 and only a script ever clears it. */
+html:not([data-motion="on"]) .reveal{opacity:1;transform:none;transition:none}
+html:not([data-motion="on"]) .grad{animation:none}
+html:not([data-motion="on"]) #bg{display:none}
+/* Nothing writes --c when the loop is not running. Pin it on, or every accent glow and
+   every heading rule would sit at its "far away" value forever. */
+html:not([data-motion="on"]) :is(.gcard,.shot-frame,.feature){--c:1}
+html:not([data-motion="on"]) .shot-frame img{transform:none}
+html:not([data-motion="on"]) .sweep{display:none}
+
+.motion-btn{cursor:pointer;font-family:inherit}
+.motion-btn:hover{border-color:var(--green);color:var(--green)}
+.motion-btn.off{color:var(--txt3)}
+.motion-btn.off svg{opacity:.5}
 
 
 /* Business use */

@@ -127,6 +127,19 @@ function cell($v) {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<script>
+/* Decide about motion before the first paint, so nothing flashes.
+   The OS preference is the default, and a visitor can override it with the Motion button
+   in the nav — someone who turned Windows animations off to make their machine feel quick
+   should still be able to see what this page does. No attribute at all (JavaScript off)
+   means the static styling, which is also the safe fallback. */
+(function () {
+  var saved = null;
+  try { saved = localStorage.getItem('wp-motion'); } catch (e) {}
+  var on = saved ? saved === 'on' : !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.documentElement.dataset.motion = on ? 'on' : 'off';
+})();
+</script>
 </head>
 <body>
 
@@ -150,6 +163,13 @@ function cell($v) {
     <a href="#looper">Looper</a>
     <a href="#karaoke">Karaoke</a>
   </nav>
+  <button id="motion-toggle" class="gh-btn motion-btn" type="button" aria-pressed="true"
+          title="Turn the page's animation on or off">
+    <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+      <path d="M1 8h2.2l1.6-4.4 2.4 9 2.2-6.2 1.3 3.1h4"/>
+    </svg>
+    <span class="motion-lbl">Motion</span>
+  </button>
   <a class="gh-btn" href="<?= $GH ?>" target="_blank" rel="noopener">
     <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
     GitHub

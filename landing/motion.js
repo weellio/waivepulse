@@ -29,7 +29,32 @@
 (() => {
   'use strict';
 
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  /* ---------- the Motion switch ----------
+     Wired up before anything else, because it has to work in the very case where the rest
+     of this file does not run. The inline script in <head> has already resolved the
+     preference; this only reflects it and flips it. Flipping reloads, which is cruder than
+     tearing the loop down and rebuilding it, and is also the only version that cannot
+     leave the page in a half-animated state. */
+  const root = document.documentElement;
+  const btn = document.getElementById('motion-toggle');
+  const motionOn = () => root.dataset.motion === 'on';
+  if (btn) {
+    const lbl = btn.querySelector('.motion-lbl');
+    const paint = () => {
+      btn.classList.toggle('off', !motionOn());
+      btn.setAttribute('aria-pressed', String(motionOn()));
+      if (lbl) lbl.textContent = motionOn() ? 'Motion' : 'Motion off';
+      btn.title = motionOn() ? 'Turn the page’s animation off'
+                             : 'Turn the page’s animation on';
+    };
+    paint();
+    btn.addEventListener('click', () => {
+      try { localStorage.setItem('wp-motion', motionOn() ? 'off' : 'on'); } catch (e) {}
+      location.reload();
+    });
+  }
+
+  if (!motionOn()) return;
 
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
   const lerp = (a, b, t) => a + (b - a) * t;

@@ -283,7 +283,9 @@
   addEventListener('scroll', readScroll, { passive: true });
   readScroll();
   scrollP = scrollTarget;
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  // The same switch motion.js reads: the OS preference unless the visitor overrode it
+  // with the Motion button. Set before first paint by the inline script in <head>.
+  const reduced = { matches: document.documentElement.dataset.motion !== 'on' };
   if (reduced.matches) {
     // One still frame: the picture, none of the motion.
     buildStars();
