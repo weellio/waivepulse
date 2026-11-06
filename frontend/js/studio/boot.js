@@ -14,7 +14,16 @@ import { restoreMarkersLocal, getMarkers } from './markers.js';
 // ── Boot ────────────────────────────────────────────────────────────────────
 export async function boot() {
   S._jobId = getParam('job'); S._sepId = getParam('sep');
-  if (!S._jobId && !S._sepId) { showError('No job ID provided. Open this page from a completed song card.'); return; }
+  // A third way in: a folder of tracks transferred off a multitrack tape. No generated song,
+  // and no separation to run — the tracks were already separate on the reel.
+  const tapeFolder = getParam('tape');
+  if (tapeFolder) {
+    initKaraokeButtons();
+    const { bootTape } = await import('./tape.js');
+    await bootTape(tapeFolder);
+    return;
+  }
+  if (!S._jobId && !S._sepId) { showError('No job ID provided. Open this page from a completed song card, or from a tape session.'); return; }
   initKaraokeButtons();
   if (S._jobId && S._jobId.startsWith('local_')) {
     showError('This Studio link points to an in-browser file reference that\'s no longer available.\n\nImported songs DO work in Studio — go back to the main page, drag your MP3 in (or use ▶ Load MP3), then click 🎛 Studio on the card. The file will upload automatically and Demucs will run on it just like a generated song.');

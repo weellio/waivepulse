@@ -8,6 +8,8 @@ Write a song. Generate it. Mix it. Perform it. On your own GPU.
 
 WAIvePulse is a local AI music studio that runs five connected tools in one browser. You write lyrics (or have Llama write them for you), describe the style you want with tags, and the **HeartMuLa 3B** model generates a complete song with vocals as an MP3. You then open that song in a browser DAW that separates it into six stems, gives you a per-track mixer with mastering chain and Visual EQ, and a karaoke performance mode synced to your original lyrics. A built-in loop station lets you build original ideas layer by layer — drums, keyboard, guitar, microphone — entirely in the browser with no plugins. Mix presets and genre templates save and recall full mixer snapshots, chord detection overlays harmonic analysis on the timeline, a stem library lets you swap stems between songs, side-chain ducking and server-side time-stretch give you production-grade dynamics and tempo matching, MIDI export turns piano-roll patterns into Standard MIDI Files, a vocal harmonizer adds pitch-shifted harmony voices to the mic chain, and the Karaoke page can now record lyric videos directly as WebM — no external screen recorder needed.
 
+There is also a **multitrack tape session**: point it at a folder of tracks transferred off a tape machine and it checks the transfer, repairs what can honestly be repaired, and writes a preservation manifest.
+
 No cloud. No subscription. No API keys. No usage caps.
 
 ![WAIvePulse](assets/wavepulse.jpg)
@@ -1019,6 +1021,105 @@ The beat tracker is Beat This! (MIT), on CPU by default or on GPU with `WAIVEPUL
 **✂ Sample this…** uses the same ruler selection as Cut, Splice and Rewrite Section and widens it to whole bars. The panel shows what you dragged, where it snapped and how many milliseconds each edge moved. Length can stay as selected or be forced to 1, 2, 4 or 8 bars, never past the end of the song. Isolate the full mix or any one stem; the bar grid always comes from the full mix.
 
 Outputs: **▶ Preview**, **＋ Add as track** at the bar it came from, **⬇ WAV** (16-bit, 3 ms fade on each edge), and **🎹 Send to Looper**, which opens the Looper with the BPM (folded into 40 to 240) and scale lock set and the clip loaded as the sampler. Click once in the Looper window to start audio.
+
+## Multitrack tape (in depth)
+
+**📼 Multitrack tape session** above the Generate button. Point it at the folder a multitrack transfer landed in and it reads every track, tells you what is wrong with the transfer, repairs what can honestly be repaired, and writes a preservation manifest you can check again in ten years.
+
+![Multitrack tape check](assets/tape.png)
+
+**It does not capture audio.** Getting sound off the machine needs your interface and its driver, and whatever you already record with does it better. This takes over the moment the files exist.
+
+**It is a folder, not an upload.** Eight tracks of a five-minute song at 24-bit/96k is about 700 MB. The server runs on the same machine as the browser, so it reads the files where they already are. Only folders you have opened in the session can be read, and anything resolving outside one is refused.
+
+**It never writes to a transfer.** A flat transfer is the preservation master and may be the only surviving copy of the performance — the tape itself may not survive another pass. Every repair writes a new `<name>.wp-clean.wav` beside the original plus a small JSON note saying what was done and to what, and the scanner skips its own output so a cleaned track is never offered for cleaning twice.
+
+### What Tape Check looks for
+
+Per track:
+
+| Fault | How it is measured | What you are told to do |
+|---|---|---|
+| Mains hum | A narrow peak at 50 or 60 Hz and its harmonics, measured in the quietest second so the music cannot drown it | Notch it — or better, find the earth loop and transfer again |
+| Tape hiss | The noise floor across that same quietest second, DC removed first | Learn a noise print from that window and subtract it |
+| Dropouts | Holes of 10–150 ms punched into sustained sound, with the track loud on both sides | Clean the heads and transfer again. A dropout is missing signal and no plugin puts it back |
+| Clicks | Isolated sample-scale breaks in the waveform | Repair them — the audio either side is intact, so the gap can be modelled and filled |
+| Clipping | Samples pinned at full scale, or over it | Transfer again a few dB lower; rebuild the peaks only if the tape is gone |
+| DC offset | The mean of the waveform | Remove it: it costs headroom and makes every edit click |
+| Dull track | Its 6–14 kHz against 300 Hz–3 kHz, compared with the median across the reel | Azimuth is mechanical. Nudge the head and transfer again; EQ buys back level, not detail |
+
+Across the session: whether the tracks line up. Tracks captured in one pass share the tape's timing exactly, so an offset of tens of milliseconds means they were captured separately — worth knowing before you spend an evening wondering why the drums feel wrong. Mixed sample rates and wildly different lengths in one folder are flagged for the same reason.
+
+Two rules keep the panel worth reading. A fault is occasional: more than one "dropout" every two seconds is the rhythm of the performance, and more than two "clicks" a second is the recording's own texture, so both are suppressed with the reason shown. And where re-transferring is the honest answer, it says so rather than offering a plugin that cannot really fix it.
+
+### Repairs
+
+**Hum removal aims at the measured frequencies, not the textbook ones.** The harmonics of tape hum do not sit on 50/100/150: the machine playing the tape back is not running at exactly the speed that recorded it, so the whole stack slides a few Hz and a notch at the arithmetic series cuts music while leaving the hum alone. Each line is found first, then notched with `filtfilt` so the phase twist cancels — which matters when the track has to sit coherently against the others from the same reel.
+
+**Hiss subtraction is deliberately gentle.** Spectral subtraction against a noise print from the track's own quietest moment, keeping 10% of the original magnitude rather than subtracting to zero. Push it and cymbals turn to chirping artefacts, and on a 40-year-old demo that is worse than hiss, which at least sounds like tape.
+
+**Clicks and clipped peaks go through ffmpeg's `adeclick` and `adeclip`**, which fit an autoregressive model either side of the damage and interpolate across it. Two settings differ from the examples you will find online, both because measurement said so:
+
+- **Overlap-save, not overlap-add.** With overlap-add the filter alters *every* sample slightly whether it found damage there or not — measured here it moved an undamaged file by a flat −44 dBFS regardless of threshold, because the alteration had nothing to do with click detection. Overlap-save leaves uninterpolated samples exactly as they were: the same measurement came out at −95 dBFS.
+- **Threshold 10, not ffmpeg's default of 2.** At 2 an undamaged dense mix moved by −49 dBFS; at 10 it moved by −95 dBFS and repaired a damaged track slightly better as well. The panel offers gentle (25), normal (10) and strong (3).
+
+Rebuilt peaks land *above* full scale, so the render goes to float and the level comes down afterwards by exactly the overshoot — writing straight to 24-bit integer would clip the rebuilt peaks off again and the repair would silently do nothing.
+
+### Speed, wow and flutter, from the hum
+
+Mains hum is a physical constant: it left the wall at exactly 50 or 60 Hz. So wherever the recovered hum is *not* 50 or 60, the tape was running at the wrong speed — and tracking that frequency second by second measures the wobble too, which is the part usually written off as uncorrectable. It only works on a transfer that picked up some hum, which is why Tape Check reports the hum level even on tracks nobody wants to clean.
+
+**Measure, change nothing** prints the speed error in per cent and semitones, the flutter, the worst swing and the number of windows it measured over. **Correct** rebuilds the track along an explicit time map: integrate the local speed error over input time, invert it, and read the source at the resulting position for each uniform output sample.
+
+Measured on a synthetic reel warped by a known amount:
+
+| | Injected | Before | After |
+|---|---|---|---|
+| Speed error | +1.80% | +1.800% | +0.000% |
+| Flutter | ±0.4% at 0.7 Hz | 0.270% | 0.058% |
+
+Three attempts failed before that, and the last one is the interesting one: each analysis window was stamped with its **start** time, but the frequency it measures is the average across the whole window. That shifted the entire speed curve by half a window — 63° of phase error against a 0.7 Hz wow. Amplitude right, frequency right, correction did nothing. It was found by correcting with the *known true* rate, which took flutter to 0.000% and proved the warp code was sound and the curve was the problem. The idea itself comes from [pyaudiorestoration](https://github.com/HENDRIX-ZT2/pyaudiorestoration); it is GPL, so this is an independent implementation.
+
+### The preservation manifest
+
+A transfer is only a preservation master if you can prove, years from now, that it is still what came off the tape. **Preserve** writes three files into the session folder:
+
+| File | For |
+|---|---|
+| `WAIvePulse-MANIFEST.json` | The app, and whatever comes after it |
+| `WAIvePulse-MANIFEST.txt` | A human, with no software at all |
+| `WAIvePulse-bwfmetaedit.csv` | [BWF MetaEdit](https://mediaarea.net/BWFMetaEdit)'s `--in-core=` import, so the coding history can be embedded with the archival standard tool rather than with us |
+
+**The checksum covers the audio samples only, not the file.** This is the trick worth copying from archival practice: metadata gets added for the rest of a file's life — titles, dates, a coding history, whatever the next system wants — and every one of those edits changes a whole-file hash while changing no audio at all. An MD5 over the WAV `data` chunk alone (the AIFF `SSND` chunk, or FLAC's own STREAMINFO digest) survives all of it, so a mismatch means something real. **Verify against it** re-reads every track and says which still match.
+
+The tape details you fill in become a BWF Coding History block in the EBU R98 layout:
+
+```
+A=ANALOGUE,M=mono,T=Tascam 38; 1/2 inch; 15 ips; dbx Type I
+A=PCM,F=96000,W=24,M=mono,T=RME Fireface 800; WAIvePulse tape session
+```
+
+### Opening a tape in the Studio
+
+**🎛 Open in Studio** loads every track of the reel as a Studio track — no separation to run, because the tracks were already separate when they were recorded. The Studio plays 320 kbps previews, since eight full-resolution tracks decoded into browser memory is most of a gigabyte; every measurement, repair and export still runs on the originals.
+
+### Tape endpoints
+
+Worth knowing if you have forty reels rather than one. None of these touch the GPU, so a tape job runs happily while a song is generating; they are serialised against each other only.
+
+| Endpoint | Does |
+|---|---|
+| `POST /tape/open` `{folder}` | Lists the tracks and opens the session. A folder must be opened before any of its files can be read |
+| `POST /tape/check` `{folder}` | Analyses every track. Returns `{job_id}`; poll `GET /tape/job/{id}` or stream `GET /tape/progress/{id}` |
+| `POST /tape/clean` `{path, hum, dc, hiss, hiss_strength, noise_start, noise_end}` | Writes a repaired copy |
+| `POST /tape/declick` `{path, clicks, clips, strength}` | Click repair and clipped-peak rebuilding |
+| `POST /tape/speed` `{path, mains, flutter, absolute}` | Speed and flutter correction |
+| `GET /tape/curve?path=` | Measures speed and flutter and changes nothing |
+| `POST /tape/manifest` `{folder, title, operator, machine, width, speed, …}` | Writes the three manifest files |
+| `GET /tape/verify?folder=` | Re-hashes every track against the manifest |
+| `GET /tape/preview?path=` · `GET /tape/download?path=` | A playable mp3 · the original file |
+| `GET /tape/tracks?folder=` | What the Studio asks for: a preview URL per track |
+
 
 ## Karaoke (in depth)
 

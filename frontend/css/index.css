@@ -704,3 +704,104 @@ input[type=number]:focus { border-color: #2ab8b8; }
   align-items: baseline; padding: 3px 0; }
 .lokr-adapter span { font-size: 0.68rem; color: #6a6a7a; }
 .lokr-adapter .lokr-try { margin-left: auto; font-size: 0.68rem; padding: 3px 9px; }
+
+/* ── Multitrack tape session ────────────────────────────────────────────────── */
+#tape-modal { position: fixed; inset: 0; background: rgba(0,0,0,.78); z-index: 600;
+  display: none; align-items: center; justify-content: center; padding: 20px; }
+#tape-panel { background: #111; border: 1px solid #2a2a2a; border-radius: 10px; width: 100%;
+  max-width: 760px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+#tape-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+  border-bottom: 1px solid #222; flex-shrink: 0; }
+#tape-head h3 { margin: 0; font-size: 14px; color: #d8b08a; font-weight: 700; }
+#tape-head .ace-sub { font-size: 11px; color: #777; }
+#tape-head button { margin-left: auto; background: none; border: 1px solid #333; color: #888;
+  width: 26px; height: 26px; border-radius: 5px; cursor: pointer; font-size: 15px; line-height: 1; }
+#tape-head button:hover { color: #ddd; border-color: #555; }
+#tape-body { padding: 14px 16px; overflow-y: auto; }
+
+.tape-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.tape-folder { font-size: 0.72rem; color: #9a9aa6; flex: 1; min-width: 180px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tape-small { font-size: 0.68rem; padding: 4px 9px; }
+
+.tape-tabs { display: flex; gap: 4px; border-bottom: 1px solid #222; margin: 10px 0 12px; }
+.tape-tab { background: none; border: none; border-bottom: 2px solid transparent;
+  color: #7a7a86; font-size: 0.74rem; padding: 6px 10px; cursor: pointer; font-family: inherit; }
+.tape-tab:hover { color: #c8c8d4; }
+.tape-tab.on { color: #d8b08a; border-bottom-color: #d8b08a; }
+
+.tape-table { width: 100%; border-collapse: collapse; font-size: 0.76rem; color: #c8c8d4; }
+.tape-table th { text-align: left; font-size: 0.66rem; color: #6a6a7a; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .04em; padding: 4px 6px; border-bottom: 1px solid #222; }
+.tape-table td { padding: 5px 6px; border-bottom: 1px solid #1a1a1a; }
+.tape-name { color: #e0e0e8; }
+.tape-dim { color: #6a6a7a; font-size: 0.7rem; }
+.tape-play { background: #10201f; border: 1px solid #2a3a3a; color: #8ac8b8; border-radius: 5px;
+  width: 24px; height: 24px; cursor: pointer; font-size: 11px; line-height: 1; }
+.tape-play:hover { border-color: #4a6a6a; color: #cfe; }
+.tape-dl { text-decoration: none; font-size: 13px; opacity: .7; }
+.tape-dl:hover { opacity: 1; }
+.tape-repairs { border-top: 1px solid #222; margin-top: 12px; padding-top: 10px; }
+
+.tape-find { border-left: 3px solid #333; padding: 7px 10px; margin: 9px 0;
+  background: #0d0d0f; border-radius: 0 5px 5px 0; }
+.tape-find.tape-high { border-left-color: #c85a4a; }
+.tape-find.tape-medium { border-left-color: #c8a04a; }
+.tape-find.tape-note { border-left-color: #4a6a8a; }
+.tape-find-h { font-size: 0.78rem; color: #e0e0e8; font-weight: 600; }
+.tape-find-d { font-size: 0.72rem; color: #9a9aa6; line-height: 1.55; margin-top: 3px; }
+.tape-find-f { font-size: 0.72rem; color: #b8c8b8; line-height: 1.55; margin-top: 4px; }
+.tape-find-f b { color: #6a9a7a; }
+
+.tape-group { border: 1px solid #1f1f22; border-radius: 7px; padding: 10px 12px; margin: 12px 0; }
+.tape-group-h { font-size: 0.72rem; color: #d8b08a; font-weight: 700; margin-bottom: 7px; }
+.tape-check { display: flex; align-items: baseline; gap: 7px; font-size: 0.76rem;
+  color: #c8c8d4; padding: 4px 0; cursor: pointer; }
+.tape-check input { accent-color: #8ac8b8; }
+.tape-sub { padding-left: 18px; }
+.tape-select { background: #081515; border: 1px solid #2a3a3a; color: #cfe; border-radius: 6px;
+  padding: 5px 8px; font-size: 0.76rem; font-family: inherit; }
+.tape-whats { background: #0c1418; border-left: 2px solid #3a5a4a; border-radius: 0 5px 5px 0;
+  padding: 8px 10px; margin: 9px 0; font-size: 0.73rem; color: #a8b8b8; line-height: 1.6; }
+.tape-whats code { font-size: 0.68rem; color: #8ac8b8; }
+.tape-recent { margin-top: 10px; font-size: 0.7rem; color: #6a6a7a; display: flex;
+  gap: 6px; flex-wrap: wrap; align-items: center; }
+.tape-chip { background: #0d1a1a; border: 1px solid #243434; color: #8aa8a8; border-radius: 12px;
+  padding: 3px 10px; font-size: 0.68rem; cursor: pointer; font-family: inherit; }
+.tape-chip:hover { border-color: #4a6a6a; color: #cfe; }
+.tape-foot { margin-top: 10px; }
+#tape-log { background: #070707; border: 1px solid #1d1d1d; border-radius: 6px; margin-top: 10px;
+  padding: 8px; font-size: 0.66rem; color: #7a7a7a; max-height: 170px; overflow-y: auto;
+  white-space: pre-wrap; }
+#tape-log:empty { display: none; }
+#tape-panel .help-section-title { font-size: 0.8rem; color: #d8b08a; font-weight: 700;
+  margin: 4px 0 8px; }
+
+/* ── ace-* panel furniture ──────────────────────────────────────────────────
+   These classes started in the Studio and came here with the panels that reuse them
+   (Train a style, Multitrack tape). Without them the buttons rendered as the browser's
+   default grey boxes and the notes as unstyled paragraphs, which is why the panels looked
+   half-finished on this page but right in the Studio. Same values as studio.css. */
+#lokr-panel .ace-note, #tape-panel .ace-note { font-size: 11px; line-height: 1.55;
+  color: #8a8a8a; background: #0c1418; border-left: 2px solid #2a4a52;
+  border-radius: 0 5px 5px 0; padding: 8px 10px; margin: 8px 0; }
+#lokr-panel .ace-note b, #tape-panel .ace-note b { color: #b8c8c8; }
+#lokr-panel .ace-warn, #tape-panel .ace-warn { border-left-color: #6b5200;
+  background: #1a1408; color: #c8b070; }
+#lokr-panel .ace-warn b, #tape-panel .ace-warn b { color: #e8cc4a; }
+#lokr-panel .ace-btn, #tape-panel .ace-btn { background: #0a1e1e; border: 1px solid #0d6b6b;
+  color: #8cffff; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 12px;
+  font-weight: 600; white-space: nowrap; font-family: inherit; }
+#lokr-panel .ace-btn:hover:not(:disabled), #tape-panel .ace-btn:hover:not(:disabled) { background: #062828; }
+#lokr-panel .ace-btn:disabled, #tape-panel .ace-btn:disabled { opacity: .4; cursor: not-allowed; }
+#lokr-panel .ace-btn.ace-go, #tape-panel .ace-btn.ace-go { background: #1a0c20;
+  border-color: #5a2a6b; color: #d98cff; }
+#lokr-panel .ace-btn.ace-go:hover:not(:disabled), #tape-panel .ace-btn.ace-go:hover:not(:disabled) { background: #240f2c; }
+#lokr-panel .ace-status, #tape-panel .ace-status { font-size: 11px; color: #8a8a96; }
+
+/* Panel labels are sentences, not form captions: the page's global uppercase styling made
+   "remove mains hum — none found" read as shouting. */
+#tape-panel .tape-check, #tape-panel .tape-check span { text-transform: none;
+  letter-spacing: 0; font-weight: 400; }
+#tape-panel .lokr-row label { text-transform: none; letter-spacing: 0; }

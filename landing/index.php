@@ -74,6 +74,8 @@ $gallery = [
    'blurb' => 'Select a span of a finished song, say what you want there instead, and a second AI engine redraws just that part. It shows you the description it will actually send, and you can edit it before anything runs.'],
   ['img' => 'img/feat-addtrack.png', 'accent' => 'green',  'title' => 'Add a part it never had',
    'blurb' => 'Write a new instrument into a finished song, put a band behind a bare vocal, or pull one instrument back out. Twelve instruments, including strings, brass and woodwinds.'],
+  ['img' => 'img/feat-tape.png', 'accent' => 'amber',  'title' => 'Multitrack tape, checked and preserved',
+   'blurb' => 'Point it at a folder of tracks transferred off a tape machine. It finds the mains hum, the hiss, the dropouts, the clicks, the track that does not line up and the one the head azimuth ruined — repairs what can honestly be repaired, corrects tape speed and flutter using the hum as a reference, and writes a preservation manifest whose checksums survive later tagging. Your transfers are never written to.'],
   ['img' => 'img/feat-pronounce.png', 'accent' => 'cyan',   'title' => 'Make it sing the right word',
    'blurb' => 'Finds the words a singer gets wrong — read, bass, 1999, names it has never seen — and writes the respelling. Click one to swap it into your lyrics.'],
 ];
@@ -92,6 +94,7 @@ $compare = [
   ['Writes a new instrument into your song', true, false, false],
   ['Trains on your own songs, locally', true, 'paid', false],
   ['Rewrite one section of a finished song', true, 'paid', false],
+  ['Restores and preserves multitrack tape transfers', true, false, 'plugin'],
   ['Webcam instrument', true, false, false],
   ['Pronunciation respelling for lyrics', true, false, false],
   ['MIDI keyboard input',    true,  false, true],

@@ -73,6 +73,10 @@
         <button type="button" id="lokr-btn" class="btn-suggest" style="width:100%"
           title="Train the model on the songs you have already made, so new ACE-Step renders lean towards your sound. Needs ACE-Step installed, holds the graphics card for the whole run, and does not change the Generate button.">🎓 Train a style on my songs</button>
       </div>
+      <div class="vibe-tier">
+        <button type="button" id="tape-btn" class="btn-suggest" style="width:100%"
+          title="Open a folder of tracks transferred off a multitrack tape: check the transfer for hum, hiss, dropouts, clicks and tracks that do not line up, repair what can honestly be repaired, and write a preservation manifest. Never writes to your transfers.">📼 Multitrack tape session</button>
+      </div>
     </div>
     <script type="module" src="/js/index/vibe.js"></script>
 <!-- vibe:end -->
@@ -240,6 +244,20 @@ Every day the fire burns"></textarea>
 </div>
 <script type="module" src="/js/index/lokr.js"></script>
 <!-- lokr:end -->
+
+<!-- tape:start — a folder of tracks transferred off a multitrack tape -->
+<div id="tape-modal" role="dialog" aria-modal="true" aria-labelledby="tape-title">
+  <div id="tape-panel">
+    <div id="tape-head">
+      <h3 id="tape-title">Multitrack tape session</h3>
+      <span class="ace-sub">check · repair · preserve</span>
+      <button type="button" id="tape-close" title="Close">&times;</button>
+    </div>
+    <div id="tape-body"></div>
+  </div>
+</div>
+<script type="module" src="/js/index/tape.js"></script>
+<!-- tape:end -->
 
 <div id="toast"></div>
 

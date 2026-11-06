@@ -1,4 +1,9 @@
-docs/
+# Working notes stay local, but the doc map does not: the README links to it and
+# tests/test_doc_map.py checks it, so a clone without it has a broken link and a
+# failing test. Excluding the CONTENTS rather than the directory is what makes the
+# negation below possible at all - git will not look inside an excluded directory.
+docs/*
+!docs/DOC_MAP.md
 outputs/
 /lyrics/
 history.json*
