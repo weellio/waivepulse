@@ -1027,6 +1027,8 @@ Outputs: **▶ Preview**, **＋ Add as track** at the bar it came from, **⬇ WA
 
 **📼 Multitrack tape session** above the Generate button. Point it at the folder a multitrack transfer landed in and it reads every track, tells you what is wrong with the transfer, repairs what can honestly be repaired, and writes a preservation manifest you can check again in ten years.
 
+![One reel, four tracks, and what the tape did to them](assets/tape-poster.png)
+
 ![Multitrack tape check](assets/tape.png)
 
 **It does not capture audio.** Getting sound off the machine needs your interface and its driver, and whatever you already record with does it better. This takes over the moment the files exist.

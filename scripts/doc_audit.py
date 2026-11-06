@@ -141,8 +141,11 @@ def check_map(readme_raw: str, landing_raw: str) -> list[str]:
             problems.append(f"{feature}: README anchor {readme_a} does not exist")
         if landing_s != "—" and norm(landing_s) not in norm(landing_raw):
             problems.append(f"{feature}: landing page never says {landing_s!r}")
-        if shot != "—" and not (ROOT / "scripts" / shot).exists():
-            problems.append(f"{feature}: scripts/{shot} is missing")
+        # A feature can have more than one image — a UI screenshot and a drawn poster, say —
+        # so the cell may list several scripts separated by "+".
+        for s in (x.strip() for x in shot.split("+")):
+            if s and s != "—" and not (ROOT / "scripts" / s).exists():
+                problems.append(f"{feature}: scripts/{s} is missing")
     if not rows:
         problems.append("docs/DOC_MAP.md lists no features")
     return problems

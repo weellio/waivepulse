@@ -81,8 +81,11 @@ def test_shot_scripts_in_the_map_are_runnable_files(audit):
         # skip the header and the |---|---| separator, same rule check_map uses
         if len(cells) != 5 or cells[0] in ("Feature", "") or set(cells[0]) <= {"-"}:
             continue
-        if cells[4] != "—":
-            shots.add(cells[4])
+        # A feature may list several scripts, separated by "+" — a UI screenshot and a
+        # drawn poster, for instance.
+        for s in (x.strip() for x in cells[4].split("+")):
+            if s and s != "—":
+                shots.add(s)
     assert shots, "no shot scripts mapped at all — did the table change shape?"
     for s in sorted(shots):
         p = ROOT / "scripts" / s

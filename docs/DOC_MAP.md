@@ -47,7 +47,7 @@ page. `Help` is where the in-app copy lives. `Shot` is the script that regenerat
 | Song builder (Looper) | #song-builder | Looper | looper.html help | — |
 | Air Band | #air-band-webcam | Air Band | looper.html help | — |
 | Karaoke | #karaoke-in-depth | Karaoke | karaoke.html | — |
-| Multitrack tape | #multitrack-tape-in-depth | Multitrack tape | panel: tape.js | tape_shot.py |
+| Multitrack tape | #multitrack-tape-in-depth | Multitrack tape | panel: tape.js | tape_shot.py + tape_poster.py |
 <!-- doc-map:end -->
 
 ## Adding a feature

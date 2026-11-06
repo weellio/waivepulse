@@ -137,30 +137,58 @@ h1{font-size:clamp(2.8rem,8vw,6rem);line-height:.98;font-weight:700;letter-spaci
 .f-text li::before{content:"";position:absolute;left:0;top:8px;width:11px;height:11px;border-radius:3px;
   background:var(--accent);box-shadow:0 0 12px rgba(var(--argb),.6)}
 
+/* --c is written by motion.js: 0 while the frame is at the edge of the viewport, 1 when it
+   is centred. Colour follows the movement, so the accent arrives with the picture.
+   No transition on transform here — motion.js eases it per frame, and a CSS transition on
+   top of that just adds lag. */
 .shot-frame{position:relative;border-radius:16px;overflow:hidden;border:1px solid var(--line);
   background:#0c0c12;box-shadow:0 30px 80px rgba(0,0,0,.55);
-  transition:transform .5s cubic-bezier(.2,.8,.2,1)}
+  will-change:transform;transition:box-shadow .35s, border-color .35s}
 .shot-frame::before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
-  border-radius:16px;box-shadow:inset 0 0 0 1px rgba(var(--argb),.18)}
+  border-radius:16px;box-shadow:inset 0 0 0 1px rgba(var(--argb),calc(.12 + var(--c,0) * .55))}
 .shot-frame::after{content:"";position:absolute;inset:-2px;z-index:-1;border-radius:18px;
-  background:linear-gradient(130deg,rgba(var(--argb),.5),transparent 60%);filter:blur(22px);opacity:.7}
-.f-shot:hover .shot-frame{transform:perspective(1000px) rotateY(-4deg) rotateX(2deg) translateY(-4px)}
-.shot-frame img{width:100%;display:block}
+  background:linear-gradient(130deg,rgba(var(--argb),.6),transparent 62%);filter:blur(22px);
+  opacity:calc(.25 + var(--c,0) * .75)}
+.f-shot:hover .shot-frame,.gcard:hover .shot-frame{
+  border-color:rgba(var(--argb),.5);box-shadow:0 30px 90px rgba(0,0,0,.6),0 0 60px rgba(var(--argb),.22)}
+.shot-frame img{width:100%;display:block;transform:scale(var(--imgsc,1));transform-origin:50% 50%}
 
-/* ---- Feature gallery ---- */
+/* ---- Feature gallery ----
+   Six columns, and the cards take different spans on purpose: a row of two large, a row of
+   three small, then a wide-and-narrow pair. Equal cards in a grid read as a spec sheet; this
+   reads as a page, and the big ones land on the features worth stopping at. */
 .gallery{max-width:1180px;margin:0 auto;padding:60px 40px 30px;text-align:center}
-.gallery-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:34px;margin-top:24px;text-align:left}
-.gcard{--accent:var(--cyan);--argb:140,255,255;margin:0}
+.gallery-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:40px 30px;margin-top:24px;
+  text-align:left;counter-reset:gal}
+/* Cards keep their own height. Stretching every frame to the tallest in its row lined the
+   captions up neatly and left the small screenshots floating in a big empty box, which is a
+   worse trade than a staggered caption. */
+.gcard{--accent:var(--cyan);--argb:140,255,255;--shot-h:210px;margin:0;counter-increment:gal;
+  grid-column:span 3;align-self:start}
+.gcard:nth-child(3),.gcard:nth-child(4),.gcard:nth-child(5){grid-column:span 2;--shot-h:170px}
+.gcard:nth-child(6){grid-column:span 4;--shot-h:290px}
+.gcard:nth-child(7){grid-column:span 2;--shot-h:170px}
+.gcard:nth-child(8){grid-column:span 4;--shot-h:290px}
+.gcard:nth-child(9){grid-column:span 2;--shot-h:170px}
 .gcard[data-accent="cyan"]   {--accent:var(--cyan);   --argb:140,255,255}
 .gcard[data-accent="green"]  {--accent:var(--green);  --argb:74,222,128}
 .gcard[data-accent="purple"] {--accent:var(--purple); --argb:167,139,250}
 .gcard[data-accent="magenta"]{--accent:var(--magenta);--argb:244,114,182}
-.gcard .shot-frame{transition:transform .25s ease;display:flex;align-items:center;
-  justify-content:center;background:#0c0c11;min-height:150px}
-.gcard .shot-frame img{width:auto;max-width:100%;max-height:210px;display:block}
-.gcard:hover .shot-frame{transform:translateY(-5px)}
+.gcard[data-accent="amber"]  {--accent:var(--amber);  --argb:251,191,36}
+.gcard .shot-frame{display:flex;align-items:center;justify-content:center;
+  background:#0c0c11;min-height:150px}
+.gcard .shot-frame img{width:auto;max-width:100%;max-height:var(--shot-h);display:block}
+/* The tape card is a drawn poster rather than a screenshot, so it fills its frame. */
+.gcard.poster .shot-frame img{width:100%;max-height:none}
 .gcard figcaption{padding:18px 6px 0}
-.gcard h3{font-size:1.15rem;letter-spacing:-.01em;margin-bottom:6px;color:var(--accent)}
+.gcard h3{position:relative;font-size:1.15rem;letter-spacing:-.01em;margin-bottom:14px;
+  padding-bottom:11px;color:var(--accent)}
+.gcard h3::before{content:counter(gal,decimal-leading-zero);margin-right:11px;opacity:.45;
+  font-variant-numeric:tabular-nums;font-size:.8em}
+/* The rule under each heading draws itself as the card reaches the middle of the screen. */
+.gcard h3::after{content:"";position:absolute;left:0;bottom:0;height:2px;border-radius:2px;
+  width:calc(var(--c,0) * 84px);background:var(--accent);
+  box-shadow:0 0 14px rgba(var(--argb),.75)}
 .gcard figcaption p{color:var(--txt2);font-size:.97rem;line-height:1.55}
 
 /* ---- Why / comparison ---- */
@@ -221,6 +249,7 @@ footer{display:flex;justify-content:space-between;align-items:center;flex-wrap:w
   .f-text p{max-width:none}
   .gallery{padding:40px 24px 20px}
   .gallery-grid{grid-template-columns:1fr;gap:26px}
+  .gcard,.gcard:nth-child(n){grid-column:auto;--shot-h:200px}
   .foot-meta{text-align:left}
   footer{flex-direction:column;align-items:flex-start}
 }
@@ -228,6 +257,10 @@ footer{display:flex;justify-content:space-between;align-items:center;flex-wrap:w
   .reveal{opacity:1;transform:none;transition:none}
   .grad{animation:none}
   #bg{display:none}
+  /* motion.js never runs here, so nothing ever writes --c. Pin it on, or every accent
+     glow and every heading rule would sit at its "far away" value forever. */
+  .gcard,.shot-frame,.feature{--c:1}
+  .shot-frame img{transform:none}
 }
 
 
