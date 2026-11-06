@@ -66,6 +66,7 @@ The main page. Paste lyrics, pick tags from an organised grid (Genre, Timbre, Mo
 - **🎬 Video:** turns any song into a 1080p H.264 MP4 for YouTube, with the song's cover art, title, and a waveform strip. The same cover is embedded in new MP3s
 - **🎓 Train a style on my songs:** trains the model on the music you have already made, so new ACE-Step renders lean towards your sound. Builds the dataset from your library automatically. Does not change the Generate button. [Details below](#train-a-style-on-your-own-songs-lokr)
 - **🩺 Check:** tells you what is wrong with a render and which control fixes it — loudness creeping up, peaks over the ceiling, a hard stop, dead air, tempo drift, and (with stems) the backing dropping out under the vocal. Instant, no GPU. [Details below](#song-check)
+- **📼 Multitrack tape session:** point it at the folder a reel-to-reel transfer landed in and it checks every track (hum, hiss, dropouts, clicks, clipping, azimuth, alignment), repairs what can honestly be repaired, corrects tape speed and flutter using the hum as a reference, and writes a preservation manifest. Your transfers are never written to. No GPU, so it runs while a song generates. [Details below](#multitrack-tape-in-depth)
 - Drop external MP3s onto the history panel to play them, or to send them into Studio for stem separation
 
 [Detail section below](#generate-page-in-depth)
