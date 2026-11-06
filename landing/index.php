@@ -81,6 +81,9 @@ $gallery = [
    'blurb' => 'Finds the words a singer gets wrong — read, bass, 1999, names it has never seen — and writes the respelling. Click one to swap it into your lyrics.'],
 ];
 
+/* Column headings on a phone, where 'Cloud generators' alone is wider than the column. */
+$short = ['WAIvePulse' => 'WAIvePulse', 'Cloud generators' => 'Cloud', 'Pro DAWs' => 'DAWs'];
+
 $compare = [
   ['', 'WAIvePulse', 'Cloud generators', 'Pro DAWs'],
   ['Runs offline',            true,  false, true],
@@ -137,7 +140,12 @@ function cell($v) {
   var saved = null;
   try { saved = localStorage.getItem('wp-motion'); } catch (e) {}
   var on = saved ? saved === 'on' : !matchMedia('(prefers-reduced-motion: reduce)').matches;
-  document.documentElement.dataset.motion = on ? 'on' : 'off';
+  var el = document.documentElement;
+  el.dataset.motion = on ? 'on' : 'off';
+  /* Off because the operating system asked, from someone who has never said otherwise,
+     is the one case worth a word about. Anyone who chose it, and anyone who waved the
+     offer away, is left alone. */
+  if (!on && !saved) el.dataset.motionAsk = '1';
 })();
 </script>
 </head>
@@ -168,7 +176,7 @@ function cell($v) {
     <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
       <path d="M1 8h2.2l1.6-4.4 2.4 9 2.2-6.2 1.3 3.1h4"/>
     </svg>
-    <span class="motion-lbl">Motion</span>
+    <span class="motion-lbl">Motion on</span>
   </button>
   <a class="gh-btn" href="<?= $GH ?>" target="_blank" rel="noopener">
     <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
@@ -264,7 +272,7 @@ function cell($v) {
         <tr class="<?= $r === 0 ? 'head' : '' ?>">
           <?php foreach ($row as $c => $val): ?>
             <?php if ($r === 0): ?>
-              <th class="<?= $c === 1 ? 'us' : '' ?>"><?= htmlspecialchars($val) ?></th>
+              <th class="<?= $c === 1 ? 'us' : '' ?>"><?php if ($val === ''): ?><?php else: ?><span class="h-long"><?= htmlspecialchars($val) ?></span><span class="h-short"><?= htmlspecialchars($short[$val] ?? $val) ?></span><?php endif; ?></th>
             <?php elseif ($c === 0): ?>
               <td class="rowlbl"><?= htmlspecialchars($val) ?></td>
             <?php else: ?>
@@ -340,6 +348,17 @@ function cell($v) {
 </footer>
 
 <script src="app.js"></script>
+
+<!-- Shown only to a visitor whose OS asks for reduced motion and who has not chosen yet -->
+<div id="motion-ask" role="region" aria-label="Page animation">
+  <svg class="ask-ico" viewBox="0 0 16 16" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M1 8h2.2l1.6-4.4 2.4 9 2.2-6.2 1.3 3.1h4"/>
+  </svg>
+  <p class="ask-txt"><b>This page moves.</b><span>Your system asks for reduced motion, so it is switched off.</span></p>
+  <button id="motion-ask-on" class="ask-yes" type="button">Turn it on</button>
+  <button id="motion-ask-no" class="ask-no" type="button">Keep it off</button>
+</div>
+
 <script src="motion.js"></script>
 </body>
 </html>

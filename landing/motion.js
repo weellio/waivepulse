@@ -38,19 +38,39 @@
   const root = document.documentElement;
   const btn = document.getElementById('motion-toggle');
   const motionOn = () => root.dataset.motion === 'on';
+
+  const choose = on => {
+    try { localStorage.setItem('wp-motion', on ? 'on' : 'off'); } catch (e) {}
+    location.reload();
+  };
+
   if (btn) {
     const lbl = btn.querySelector('.motion-lbl');
     const paint = () => {
       btn.classList.toggle('off', !motionOn());
       btn.setAttribute('aria-pressed', String(motionOn()));
-      if (lbl) lbl.textContent = motionOn() ? 'Motion' : 'Motion off';
+      /* Switched off, the label is an instruction, not a status. "Motion off" reads as a
+         caption and gets scrolled past; "Turn on motion" reads as a button. */
+      if (lbl) lbl.textContent = motionOn() ? 'Motion on' : 'Turn on motion';
       btn.title = motionOn() ? 'Turn the page’s animation off'
                              : 'Turn the page’s animation on';
+      btn.setAttribute('aria-label', btn.title);
     };
     paint();
-    btn.addEventListener('click', () => {
-      try { localStorage.setItem('wp-motion', motionOn() ? 'off' : 'on'); } catch (e) {}
-      location.reload();
+    btn.addEventListener('click', () => choose(!motionOn()));
+  }
+
+  /* The bar at the bottom. Either button records a decision, which is also what stops
+     the bar coming back: the head script only asks a visitor who has never answered. */
+  const ask = document.getElementById('motion-ask');
+  if (ask) {
+    const yes = document.getElementById('motion-ask-on');
+    const no = document.getElementById('motion-ask-no');
+    if (yes) yes.addEventListener('click', () => choose(true));
+    if (no) no.addEventListener('click', () => {
+      try { localStorage.setItem('wp-motion', 'off'); } catch (e) {}
+      root.removeAttribute('data-motion-ask');
+      ask.classList.add('gone');
     });
   }
 

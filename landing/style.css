@@ -228,10 +228,13 @@ h1{font-size:clamp(2.8rem,8vw,6rem);line-height:.98;font-weight:700;letter-spaci
 .why{max-width:920px;margin:40px auto;padding:80px 40px;text-align:center}
 .section-title{font-size:clamp(2rem,5vw,3rem);letter-spacing:-.02em;margin-bottom:12px}
 .section-sub{color:var(--txt2);margin-bottom:42px}
-.table-wrap{border:1px solid var(--line);border-radius:16px;overflow:hidden;
-  background:rgba(12,12,18,.92)}
+/* overflow-x:auto, not hidden: a column that does not fit should be reachable rather
+   than silently cut off at the edge of the card. */
+.table-wrap{border:1px solid var(--line);border-radius:16px;overflow:hidden;overflow-x:auto;
+  background:rgba(12,12,18,.92);-webkit-overflow-scrolling:touch}
 table{width:100%;border-collapse:collapse;font-size:14.5px}
 th,td{padding:15px 16px;text-align:center;border-bottom:1px solid var(--line)}
+.h-short{display:none}
 tr:last-child td{border-bottom:none}
 .head th{font-family:'Space Grotesk';font-weight:600;color:var(--txt2);font-size:13px}
 th.us,td.us{background:rgba(140,255,255,.06);color:var(--txt)}
@@ -241,6 +244,34 @@ th.us,td.us{background:rgba(140,255,255,.06);color:var(--txt)}
 .no{color:var(--txt3)}
 .meh{color:var(--amber);font-size:12px}
 .txt{color:var(--txt2)}
+
+/* ---- the table on a phone ----
+   Four columns in 390px only works if everything shrinks together: short headings,
+   tight padding, smaller type, and a first column narrow enough to leave the three
+   answer columns room to be read. */
+@media (max-width:620px){
+  .table-wrap{border-radius:12px}
+  /* Fixed layout, so the declared widths win and long labels wrap instead of forcing
+     the table wider than the screen. */
+  table{font-size:11.5px;table-layout:fixed}
+  th,td{padding:9px 3px;overflow-wrap:break-word}
+  .rowlbl{padding-left:11px;padding-right:8px;font-size:11.5px;line-height:1.32}
+  /* table-layout:fixed takes its widths from the first row, which is the header. */
+  .head th:first-child{width:55%}
+  .head th:not(:first-child){width:15%}
+  /* On their side, so a heading costs its line height rather than its length. The
+     rotate is what makes it read bottom-to-top rather than upside down. */
+  .head th:not(:first-child){
+    writing-mode:vertical-rl;transform:rotate(180deg);
+    white-space:nowrap;padding:12px 2px;vertical-align:bottom}
+  .head th{font-size:10.5px;line-height:1.2;letter-spacing:.2px}
+  .h-long{display:none}
+  .h-short{display:inline}
+  .yes{font-size:13.5px}
+  .meh{font-size:9.5px;line-height:1.15;display:inline-block}
+  /* Small enough that 'Monthly' fits a 46px column instead of breaking after the l. */
+  .txt{font-size:9.5px;line-height:1.2;overflow-wrap:normal}
+}
 
 /* ---- Specs ---- */
 .specs{display:flex;justify-content:center;gap:clamp(28px,6vw,90px);flex-wrap:wrap;
@@ -304,10 +335,47 @@ html:not([data-motion="on"]) :is(.gcard,.shot-frame,.feature){--c:1}
 html:not([data-motion="on"]) .shot-frame img{transform:none}
 html:not([data-motion="on"]) .sweep{display:none}
 
-.motion-btn{cursor:pointer;font-family:inherit}
+.motion-btn{cursor:pointer;font-family:inherit;white-space:nowrap}
 .motion-btn:hover{border-color:var(--green);color:var(--green)}
-.motion-btn.off{color:var(--txt3)}
-.motion-btn.off svg{opacity:.5}
+/* Switched off, this is the one control on the page worth pressing, so it stops looking
+   like a label and starts looking like a button. */
+.motion-btn.off{color:var(--green);border-color:rgba(110,231,183,.45);
+  background:rgba(110,231,183,.08);box-shadow:0 0 18px rgba(110,231,183,.14)}
+.motion-btn.off:hover{background:rgba(110,231,183,.16)}
+
+/* ---- the bar that offers it, for someone whose OS switched the page off ----
+   Hidden unless the head script decided this visitor should be asked. Display is set
+   from an attribute on <html>, so it is resolved before the first paint and never
+   appears late. */
+#motion-ask{display:none}
+html[data-motion-ask="1"] #motion-ask{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  position:fixed;left:50%;transform:translateX(-50%);bottom:20px;z-index:80;
+  max-width:min(680px,calc(100vw - 32px));
+  padding:13px 16px;border-radius:14px;
+  border:1px solid rgba(140,255,255,.22);
+  background:rgba(10,14,18,.94);
+  box-shadow:0 18px 50px rgba(0,0,0,.6);
+  backdrop-filter:blur(10px)
+}
+#motion-ask.gone{display:none !important}
+.ask-ico{color:var(--cyan);flex:none}
+.ask-txt{margin:0;font-size:13.5px;line-height:1.45;flex:1 1 230px;color:var(--txt2)}
+.ask-txt b{display:block;color:var(--txt);font-size:14.5px;font-weight:600}
+#motion-ask button{cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;
+  padding:9px 15px;border-radius:9px;border:1px solid transparent;white-space:nowrap}
+.ask-yes{background:var(--cyan);color:#06181c}
+.ask-yes:hover{filter:brightness(1.12)}
+.ask-no{background:transparent;color:var(--txt3);border-color:rgba(255,255,255,.14)}
+.ask-no:hover{color:var(--txt2);border-color:rgba(255,255,255,.3)}
+@media (max-width:560px){
+  html[data-motion-ask="1"] #motion-ask{left:12px;right:12px;bottom:12px;transform:none;max-width:none}
+  #motion-ask button{flex:1 1 auto}
+}
+@media (max-width:620px){
+  .motion-btn .motion-lbl{display:none}
+  .motion-btn{padding-left:10px;padding-right:10px}
+}
 
 
 /* Business use */
