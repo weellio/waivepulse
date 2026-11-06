@@ -1,21 +1,30 @@
 /* ============================================================
-   WAIvePulse landing — scroll-driven motion for the page's visuals
+   WAIvePulse landing — scroll-driven motion
 
-   The background canvas (app.js) already reacts to scroll. This does the same for the
-   things you actually read: every screenshot drifts sideways, zooms and settles as it
-   crosses the viewport, and its accent colour comes up with it.
+   Three separate things happen to every picture on this page:
 
-   Three rules kept it from feeling like a demo reel:
+   1. ENTRANCE. The first time it comes into view it flies in from off the side of the
+      screen, fading up as it lands. Cards in the same row are staggered, so a row deals
+      itself in rather than appearing all at once.
+   2. TRAVEL. After it has landed it keeps drifting, zooming and tilting as you scroll,
+      so the page is never static while the wheel is moving.
+   3. ACTION. A playhead sweeps across each frame on a loop — a scan line, a soft light
+      behind it, and a progress bar along the bottom edge in the card's own accent. That
+      is the part that makes a still screenshot look like a tool doing something. It
+      pauses whenever the card is off screen.
 
-   * One rAF loop, and only for elements currently near the viewport. An IntersectionObserver
-     decides who is live; everything else costs nothing. The loop stops itself when the list
-     empties, so a parked page is not burning a frame budget.
-   * Every value is eased in JS (lerp toward a target) rather than with a CSS transition.
-     A transition on transform fights a per-frame write and shows up as lag on a trackpad.
-   * Nothing here moves text. Body copy stays exactly where it was painted — the owner reads
-     with dyslexia and sliding paragraphs are genuinely hard to follow.
+   Why it is written this way:
 
-   prefers-reduced-motion: this file does nothing at all.
+   * One rAF loop for 1 and 2, and only for elements an IntersectionObserver says are
+     near the viewport. The loop stops itself when they all settle.
+   * Everything is eased in JS rather than with a CSS transition. A transition on
+     transform fights a per-frame write and shows up as lag on a trackpad.
+   * Part 3 is pure CSS animation, so it costs nothing per frame and keeps running
+     smoothly even while the main thread is busy.
+   * No body text moves. Headings and pictures do; paragraphs stay where they were
+     painted, because sliding text is genuinely hard to read.
+
+   prefers-reduced-motion: none of this runs.
    ============================================================ */
 (() => {
   'use strict';
@@ -24,66 +33,92 @@
 
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
   const lerp = (a, b, t) => a + (b - a) * t;
-  // Ease the centred signal so the settle is soft at both ends.
   const smooth = t => t * t * (3 - 2 * t);
+  // Overshoot slightly at the end of the entrance, so it lands with some weight.
+  const outBack = t => { const c = 1.22, c3 = c + 1; const u = t - 1; return 1 + c3 * u * u * u + c * u * u; };
+  const outCubic = t => 1 - Math.pow(1 - t, 3);
 
-  /* ---------- the set of things that move ---------- */
-  // dx:  how far it slides in sideways, px, signed
-  // dy:  parallax travel over the whole crossing, px
-  // zoom: how much it grows from its smallest to centred
-  // rot: tilt at the edges, degrees, signed
-  // img: how much the picture inside the frame zooms (Ken Burns)
-  // vars: also write --c (0 at the edges, 1 centred) onto this element
+  const INTRO_MS = 1000;
+
+  /* ---------- the set of things that move ----------
+     dx     : how far it drifts sideways while scrolling, px, signed
+     dy     : parallax travel over the whole crossing, px
+     zoom   : how much smaller it is at the edges of the screen than in the middle
+     rot    : tilt at the edges, degrees, signed
+     img    : how much the picture inside the frame zooms on top of that
+     intro  : how far off the side it starts, px, signed. 0 = fade up in place
+     delay  : stagger, ms
+     sweep  : give it the action overlay
+  */
   const items = [];
   function track(el, cfg) {
-    if (!el) return;
-    items.push({
-      el,
-      cfg,
+    if (!el) return null;
+    const it = {
+      el, cfg,
       varEl: cfg.varEl || el,
       cur: { tx: 0, ty: 0, sc: 1, rot: 0, img: 1, c: 0 },
-      live: false,
-      fresh: true,
-      hover: 0,
-    });
+      live: false, fresh: true, hover: 0,
+      introAt: 0, introDone: !cfg.intro,
+    };
+    items.push(it);
+    return it;
   }
 
-  // Feature screenshots: the big ones. They come in from the side the text is not on,
-  // which is what gives the page its left-right rock as you scroll.
-  document.querySelectorAll('.feature').forEach((f, i) => {
-    const flip = f.classList.contains('flip');
-    const dir = flip ? -1 : 1;
+  // Feature screenshots: the big ones, and the most room to play with. They come in from
+  // the side the text is not on, which is what gives the page its left-right rock.
+  document.querySelectorAll('.feature').forEach(f => {
+    const dir = f.classList.contains('flip') ? -1 : 1;
     track(f.querySelector('.shot-frame'), {
-      dx: 74 * dir, dy: -46, zoom: 0.085, rot: 1.5 * dir, img: 0.13,
+      dx: 120 * dir, dy: -70, zoom: 0.11, rot: 2.6 * dir, img: 0.16,
+      intro: dir, offscreen: true, cap: 820, sweep: true,
     });
-    track(f.querySelector('.f-tag'), { dx: 26 * -dir, dy: 0, zoom: 0, rot: 0, img: 0 });
+    track(f.querySelector('.f-tag'), { dx: 44 * -dir, intro: 120 * -dir });
+    track(f.querySelector('h2'), { dx: 26 * -dir, intro: 90 * -dir });
   });
 
-  // Gallery cards: smaller moves, alternating side, so a grid of them ripples rather
-  // than marching. The card itself carries --c so its accent colour can come up too.
-  document.querySelectorAll('.gcard').forEach((g, i) => {
+  // Gallery cards. Alternating sides and a per-row stagger, so a row deals itself in.
+  const cards = [...document.querySelectorAll('.gcard')];
+  cards.forEach((g, i) => {
     const dir = i % 2 ? -1 : 1;
     track(g.querySelector('.shot-frame'), {
-      dx: 46 * dir, dy: -30, zoom: 0.07, rot: 1.1 * dir, img: 0.10, varEl: g,
+      dx: 78 * dir, dy: -44, zoom: 0.10, rot: 2.0 * dir, img: 0.13,
+      intro: dir, offscreen: true, cap: 620, delay: (i % 3) * 110, varEl: g, sweep: true,
     });
   });
 
-  // Section headings slide a little against the scroll. Short, large, and not body copy.
+  // Short, large, not body copy: headings may move.
   document.querySelectorAll('.section-title, .final-card h2').forEach((h, i) => {
-    track(h, { dx: 54 * (i % 2 ? -1 : 1), dy: 0, zoom: 0.03, rot: 0, img: 0 });
+    track(h, { dx: 70 * (i % 2 ? -1 : 1), zoom: 0.05, intro: 180 * (i % 2 ? -1 : 1) });
   });
 
   // The flow strip reads left to right, so its labels fan out from the middle.
   const steps = [...document.querySelectorAll('.flow-step .lbl')];
   steps.forEach((s, i) => {
     const mid = (steps.length - 1) / 2;
-    track(s, { dx: (i - mid) * 22, dy: 0, zoom: 0.05, rot: 0, img: 0 });
+    track(s, { dx: (i - mid) * 30, zoom: 0.08, intro: (i - mid) * 90, delay: i * 70 });
   });
 
-  // The hero recedes as you leave it, so the canvas tunnel takes over cleanly.
+  // Specs count in from alternating sides.
+  document.querySelectorAll('.spec').forEach((s, i) => {
+    track(s, { dx: 0, dy: -24, zoom: 0.14, intro: 150 * (i % 2 ? 1 : -1), delay: i * 90 });
+  });
+
   const heroInner = document.querySelector('.hero-inner');
 
-  /* ---------- hover adds to the same transform, instead of replacing it ---------- */
+  /* ---------- the action overlay ---------- */
+  for (const it of items) {
+    if (!it.cfg.sweep) continue;
+    const s = document.createElement('span');
+    s.className = 'sweep';
+    s.setAttribute('aria-hidden', 'true');
+    s.innerHTML = '<i class="sweep-beam"></i><i class="sweep-bar"></i>';
+    // Stagger the loops so nine cards are not all scanning in lockstep.
+    s.style.setProperty('--sweep-delay', `${(items.indexOf(it) % 5) * 0.9}s`);
+    it.el.appendChild(s);
+    it.sweep = s;
+  }
+
+  /* ---------- hover adds to the same transform instead of replacing it ---------- */
   document.querySelectorAll('.f-shot, .gcard').forEach(card => {
     const frame = card.querySelector('.shot-frame');
     const it = items.find(x => x.el === frame);
@@ -94,50 +129,83 @@
 
   /* ---------- who is close enough to bother with ---------- */
   let liveCount = 0;
-  const io = new IntersectionObserver(entries => {
+  const near = new IntersectionObserver(entries => {
     for (const en of entries) {
       const it = items.find(x => x.el === en.target);
       if (!it || it.live === en.isIntersecting) continue;
       it.live = en.isIntersecting;
-      // Jump straight to where it should be the first time it wakes up. Easing in from
-      // the identity transform made an arriving card slide out to its offset and then
-      // come back, which is the opposite of what it should look like.
+      // Snap to the right place the first time it wakes, rather than easing in from the
+      // identity transform — which made an arriving card slide out and then come back.
       if (en.isIntersecting) it.fresh = true;
       liveCount += en.isIntersecting ? 1 : -1;
     }
     if (liveCount > 0 && !running) start();
-  }, { rootMargin: '25% 0px 25% 0px' });
-  items.forEach(it => io.observe(it.el));
+  }, { rootMargin: '30% 0px 30% 0px' });
+
+  function armIntro(it) {
+    if (it.introAt || it.introDone) return;
+    const k = it.cfg;
+    if (k.offscreen) {
+      // Measure the actual gap to the edge of the window, so the picture really does come
+      // from outside the page rather than from a guessed number of pixels.
+      const r = it.el.getBoundingClientRect();
+      const d = k.intro > 0 ? innerWidth - r.left + 40 : -(r.right + 40);
+      const cap = k.cap || 680;
+      it.introDx = clamp(d, -cap, cap);
+    } else {
+      it.introDx = k.intro || 0;
+    }
+    it.introAt = performance.now() + (k.delay || 0);
+    if (!running) start();
+  }
+
+  // A second, tighter observer starts the entrance only once the thing is really on screen,
+  // and runs the action overlay only while it is.
+  const shown = new IntersectionObserver(entries => {
+    for (const en of entries) {
+      const it = items.find(x => x.el === en.target);
+      if (!it) continue;
+      if (it.sweep) it.sweep.classList.toggle('on', en.isIntersecting);
+      if (en.isIntersecting) armIntro(it);
+    }
+  }, { threshold: 0.12 });
+
+  items.forEach(it => { near.observe(it.el); shown.observe(it.el); });
 
   /* ---------- the loop ---------- */
   let running = false, settleFrames = 0;
 
-  // Sideways drift is a luxury of a wide screen. At phone width the same 74px would push a
-  // card past the edge of a single-column layout, so it is mostly dialled out.
+  // Sideways travel is a luxury of a wide screen: at phone width the same numbers would
+  // shove a card past the edge of a single-column layout.
   let driftScale = 1;
-  const measure = () => { driftScale = innerWidth < 900 ? 0.3 : innerWidth < 1200 ? 0.7 : 1; };
+  const measure = () => { driftScale = innerWidth < 760 ? 0.22 : innerWidth < 1100 ? 0.6 : 1; };
   measure();
   addEventListener('resize', measure);
 
-  function frame() {
+  function frame(now) {
     const vh = innerHeight;
     let moving = false;
 
     for (const it of items) {
-      if (!it.live) continue;
+      // An entrance still in flight keeps its element awake even if `near` has not fired.
+      const introLive = it.introAt && !it.introDone;
+      if (!it.live && !introLive) continue;
+
       const r = it.el.getBoundingClientRect();
-      // 0 as it appears at the bottom, 1 as it leaves the top.
+      // Belt and braces: anything hidden for an entrance that is plainly on screen gets
+      // started here, whether or not the observer told us. Nothing may stay invisible.
+      if (it.cfg.intro && !it.introDone && r.top < vh * 0.92 && r.bottom > vh * 0.06) armIntro(it);
       const p = clamp((vh - r.top) / (vh + r.height), 0, 1);
       const c = smooth(1 - Math.abs(p * 2 - 1));
       const away = 1 - c;
       const k = it.cfg;
 
       const tgt = {
-        tx: k.dx * away * driftScale,
-        ty: k.dy * (p - 0.5) * 2,
-        sc: 1 - k.zoom * away + it.hover * 0.02,
-        rot: k.rot * away,
-        img: 1 + k.img * away,
+        tx: (k.dx || 0) * away * driftScale,
+        ty: (k.dy || 0) * (p - 0.5) * 2,
+        sc: 1 - (k.zoom || 0) * away + it.hover * 0.025,
+        rot: (k.rot || 0) * away,
+        img: 1 + (k.img || 0) * away,
         c,
       };
 
@@ -147,22 +215,40 @@
       }
       it.fresh = false;
 
+      // The entrance rides on top of the travel transform, so the two never fight.
+      let ix = 0, iy = 0, is = 1, io = 1;
+      if (introLive) {
+        const t = clamp((now - it.introAt) / INTRO_MS, 0, 1);
+        const from = (it.introDx || 0) * driftScale;
+        if (t <= 0) { ix = from; iy = 26; is = 0.9; io = 0; }
+        else {
+          ix = from * (1 - outBack(t));
+          iy = 26 * (1 - outCubic(t));
+          is = 0.9 + 0.1 * outCubic(t);
+          io = Math.min(1, t * 2.1);
+        }
+        if (t >= 1) { it.introDone = true; it.el.style.opacity = ''; }
+        moving = true;
+      }
+
       const q = it.cur;
       it.el.style.transform =
-        `translate3d(${q.tx.toFixed(2)}px,${q.ty.toFixed(2)}px,0) ` +
-        `scale(${q.sc.toFixed(4)}) rotate(${q.rot.toFixed(3)}deg)`;
+        `translate3d(${(q.tx + ix).toFixed(2)}px,${(q.ty + iy).toFixed(2)}px,0) ` +
+        `scale(${(q.sc * is).toFixed(4)}) rotate(${q.rot.toFixed(3)}deg)`;
+      if (introLive) it.el.style.opacity = io.toFixed(3);
       if (k.img) it.el.style.setProperty('--imgsc', q.img.toFixed(4));
       it.varEl.style.setProperty('--c', q.c.toFixed(3));
     }
 
     if (heroInner) {
       const p = clamp(scrollY / innerHeight, 0, 1);
-      heroInner.style.transform = `translate3d(0,${(p * -60).toFixed(1)}px,0) scale(${(1 - p * 0.07).toFixed(4)})`;
-      heroInner.style.opacity = (1 - p * 0.85).toFixed(3);
+      heroInner.style.transform =
+        `translate3d(0,${(p * -90).toFixed(1)}px,0) scale(${(1 - p * 0.1).toFixed(4)})`;
+      heroInner.style.opacity = (1 - p * 0.9).toFixed(3);
     }
 
-    // Keep running for a moment after everything has settled, so the next scroll tick
-    // is never waiting on a cold loop.
+    // Keep spinning for a moment after everything settles, so the next scroll tick is
+    // never waiting on a cold loop.
     settleFrames = moving ? 0 : settleFrames + 1;
     if (liveCount > 0 && settleFrames < 90 && !document.hidden) requestAnimationFrame(frame);
     else running = false;
@@ -170,7 +256,11 @@
 
   function start() { running = true; settleFrames = 0; requestAnimationFrame(frame); }
 
-  const wake = () => { settleFrames = 0; if (!running && liveCount > 0) start(); };
+  // Everything that has an entrance starts hidden, so it cannot be seen sitting in place
+  // before it flies in.
+  for (const it of items) if (it.cfg.intro) it.el.style.opacity = '0';
+
+  const wake = () => { settleFrames = 0; if (!running) start(); };
   addEventListener('scroll', wake, { passive: true });
   addEventListener('resize', wake);
   addEventListener('visibilitychange', wake);
