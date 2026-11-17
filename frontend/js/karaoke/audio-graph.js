@@ -4,12 +4,8 @@
 // shared reverb + delay sends.
 import { S, setStatus, currentPos } from './state.js';
 import { createEq7 } from '../shared/eq7.js';
+import { makeSatCurve, EXCITER_HP_HZ, EXCITER_DRIVE } from '../shared/exciter.js';
 
-function _makeSatCurve(k){
-  const n=256,c=new Float32Array(n);
-  for(let i=0;i<n;i++){const x=(i*2/n)-1;c[i]=((Math.PI+k)*x)/(Math.PI+k*Math.abs(x));}
-  return c;
-}
 function _makeIR(ctx,dur=2.5,decay=2.0){
   const len=Math.floor(ctx.sampleRate*dur);
   const buf=ctx.createBuffer(2,len,ctx.sampleRate);
@@ -46,9 +42,11 @@ export async function loadStems(stemUrls){
     chainTail=airEQ;
 
     if(m.master.exciter){
-      const hp=x.createBiquadFilter();hp.type='highpass';hp.frequency.value=3000;
-      const sat=x.createWaveShaper();sat.curve=_makeSatCurve(200);sat.oversample='4x';
-      const wet=x.createGain();wet.gain.value=0.18;
+      const hp=x.createBiquadFilter();hp.type='highpass';hp.frequency.value=EXCITER_HP_HZ;
+      const sat=x.createWaveShaper();sat.curve=makeSatCurve(EXCITER_DRIVE);sat.oversample='4x';
+      // Use the amount the Studio actually set. This used to be hardcoded at 0.18, so
+      // the MASTER preset's 0.10 arrived here as nearly double the exciter you chose.
+      const wet=x.createGain();wet.gain.value=m.master.exciterWet??0.18;
       airEQ.connect(hp);hp.connect(sat);sat.connect(wet);wet.connect(S._analyser);
     }
     if(m.master.comp){

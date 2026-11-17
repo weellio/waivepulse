@@ -7,9 +7,9 @@ import {
   togglePlay, seekTo, seekClick, setVolume, toggleVocals,
 } from './audio-graph.js';
 import { padLyrics, updateLyrics } from './lyric-sync.js';
-import { nextPreset, renderFrame } from './visualizers.js';
+import { nextPreset, setPreset, initStylePicker, renderFrame } from './visualizers.js';
 import { _updateResyncBtn, retranscribe, waitForTranscription } from './transcription.js';
-import { startRecording, stopRecording, isRecording } from './recorder.js';
+import { startRecording, stopRecording, isRecording, recordFormat } from './recorder.js';
 import { initCaptionButtons, updateCaptionButtons } from './caption-export.js';
 
 window.addEventListener('karaoke-words', () => updateCaptionButtons());
@@ -44,6 +44,7 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape')goBack();
   if(e.key==='v'||e.key==='V')toggleVocals();
   if(e.key==='n'||e.key==='N')nextPreset();
+  if(e.key==='a'||e.key==='A')recordAll();
   if(e.key==='r'||e.key==='R')toggleRecord();
   if(e.key==='ArrowLeft')seekTo(Math.max(0,currentPos()-5));
   if(e.key==='ArrowRight')seekTo(Math.min(S._dur,currentPos()+5));
@@ -57,6 +58,18 @@ function goBack(){
 function toggleRecord(){
   if(isRecording())stopRecording();
   else startRecording();
+}
+
+// Record the whole song without rewinding and arming it by hand. The stop end of this
+// already existed: rafLoop calls stopRecording() when playback reaches S._dur.
+function recordAll(){
+  if(isRecording()){stopRecording();return;}
+  if(!S._actx||!S._dur)return;
+  if(S._playing)pausePlayback();
+  seekTo(0);
+  startRecording();
+  // After the recorder, so the first frames of the file are the first frames of the song.
+  startPlayback();
 }
 
 // ── Main init ────────────────────────────────────────────────────────────────
@@ -106,6 +119,13 @@ async function init(){
     }
 
     hideStatus();
+    initStylePicker();
+    // Say what the browser will actually give you, rather than promising a format.
+    const fmt=recordFormat();
+    for(const id of ['rec-btn','recall-btn']){
+      const b=document.getElementById(id);
+      if(b)b.title+=' \u2014 saves as '+fmt;
+    }
     document.getElementById('controls').classList.remove('hidden');
     _updateResyncBtn();
     initCaptionButtons();
@@ -119,7 +139,8 @@ async function init(){
 
 // ── Expose inline-handler functions on window ────────────────────────────────
 Object.assign(window,{
-  togglePlay, seekClick, setVolume, retranscribe, toggleVocals, nextPreset, goBack, toggleRecord,
+  togglePlay, seekClick, setVolume, retranscribe, toggleVocals, nextPreset, setPreset,
+  goBack, toggleRecord, recordAll,
 });
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────

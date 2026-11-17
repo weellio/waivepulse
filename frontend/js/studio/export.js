@@ -7,7 +7,8 @@
 // "what you hear is what you get".
 import { S } from './state.js';
 import { applyEqOffline, snapshotEq, eqIsFlat } from '../shared/eq7.js';
-import { makeSatCurve, makeClipperCurve, makeFolderCurve, makeIR } from './audio-graph.js';
+import { makeSatCurve, makeClipperCurve, makeFolderCurve, makeIR,
+         EXCITER_HP_HZ, EXCITER_DRIVE } from './audio-graph.js';
 import { soloCount } from './waveform.js';
 import { measureLoudness, normalizeToTarget } from '../shared/loudness.js';
 import { audioBufferToMp3 } from '../shared/mp3enc.js';
@@ -109,8 +110,8 @@ export async function renderMix() {
     }
     offMasterOut.connect(offFade);
     if (S._exciterEnabled) {
-      const offExcHP = off.createBiquadFilter(); offExcHP.type = 'highpass'; offExcHP.frequency.value = 3000;
-      const offExcSat = off.createWaveShaper(); offExcSat.curve = makeSatCurve(200); offExcSat.oversample = '4x';
+      const offExcHP = off.createBiquadFilter(); offExcHP.type = 'highpass'; offExcHP.frequency.value = EXCITER_HP_HZ;
+      const offExcSat = off.createWaveShaper(); offExcSat.curve = makeSatCurve(EXCITER_DRIVE); offExcSat.oversample = '4x';
       const offExcWet = off.createGain(); offExcWet.gain.value = S._exciterWet.gain.value;
       offFxOut.connect(offExcHP); offExcHP.connect(offExcSat); offExcSat.connect(offExcWet); offExcWet.connect(offFade);
     }

@@ -6,7 +6,7 @@
 
 Write a song. Generate it. Mix it. Perform it. On your own GPU.
 
-WAIvePulse is a local AI music studio that runs five connected tools in one browser. You write lyrics (or have Llama write them for you), describe the style you want with tags, and the **HeartMuLa 3B** model generates a complete song with vocals as an MP3. You then open that song in a browser DAW that separates it into six stems, gives you a per-track mixer with mastering chain and Visual EQ, and a karaoke performance mode synced to your original lyrics. A built-in loop station lets you build original ideas layer by layer — drums, keyboard, guitar, microphone — entirely in the browser with no plugins. Mix presets and genre templates save and recall full mixer snapshots, chord detection overlays harmonic analysis on the timeline, a stem library lets you swap stems between songs, side-chain ducking and server-side time-stretch give you production-grade dynamics and tempo matching, MIDI export turns piano-roll patterns into Standard MIDI Files, a vocal harmonizer adds pitch-shifted harmony voices to the mic chain, and the Karaoke page can now record lyric videos directly as WebM — no external screen recorder needed.
+WAIvePulse is a local AI music studio that runs five connected tools in one browser. You write lyrics (or have Llama write them for you), describe the style you want with tags, and the **HeartMuLa 3B** model generates a complete song with vocals as an MP3. You then open that song in a browser DAW that separates it into six stems, gives you a per-track mixer with mastering chain and Visual EQ, and a karaoke performance mode synced to your original lyrics. A built-in loop station lets you build original ideas layer by layer — drums, keyboard, guitar, microphone — entirely in the browser with no plugins. Mix presets and genre templates save and recall full mixer snapshots, chord detection overlays harmonic analysis on the timeline, a stem library lets you swap stems between songs, side-chain ducking and server-side time-stretch give you production-grade dynamics and tempo matching, MIDI export turns piano-roll patterns into Standard MIDI Files, a vocal harmonizer adds pitch-shifted harmony voices to the mic chain, and the Karaoke page records lyric videos straight to MP4 — pick a visual style, press Record all, and it rewinds, plays and saves the finished video by itself.
 
 There is also a **multitrack tape session**: point it at a folder of tracks transferred off a tape machine and it checks the transfer, repairs what can honestly be repaired, and writes a preservation manifest.
 
@@ -79,7 +79,7 @@ Click the Studio button on any finished song card. Demucs splits the song into s
 
 - **7-band parametric EQ on every track:** click the EQ button to open a modal with a live spectrum analyzer and a draggable curve — high-pass, low shelf, three bells, high shelf, and low-pass, each with freq/gain/Q, all backed by the actual biquad responses — it's the single per-track EQ (the old quick SUB/BASS/MID/TREB knobs were retired in favour of it)
 - **Master soft clipper (CLP) or limiter (LMT)**, mutually exclusive. The clipper preserves transient punch on AI music that otherwise sounds limp; the limiter glues for a louder, ballad-friendly sound
-- **Harmonic exciter (EXC):** parallel 3 kHz high-pass into a soft saturator at 18% wet, for air and shimmer AI vocals lack
+- **Harmonic exciter (EXC):** parallel 3 kHz high-pass into a soft saturator at 18% wet, for air and shimmer AI vocals lack. The saturator is deliberately gently driven — its curve gives the quietest signal about 2.9× gain, where it once gave 64×. A separated vocal's quietest high frequencies are breath and separation artifacts, and a curve that lifts those by 36 dB is heard as static rather than air
 - **Master FX rack:** a noise gate (with duck mode), a bitcrusher + sample-rate reducer, a 4×-oversampled wavefolder, and a Dattorro plate reverb — each bypassable and baked into Export Mix
 - **Master fade in/out:** smoothly ramps the whole mix up at the start and down at the end (0–15 s each) — cleans up the hard stops AI music often has. The fade-out is measured back from the current song end, so it follows a Cut, and it catches the reverb/exciter/plate tails
 - **MASTER preset:** one click applies a starter mastering chain (drum ADT thickening, per-stem EQ, exciter, clipper, master sub and air EQ boost)
@@ -154,7 +154,7 @@ Open the Looper page at any time — it works independently of the AI generation
 
 After separation, click the Karaoke button. faster-whisper transcribes the vocals stem on demand, an LCS algorithm aligns the transcript to your original lyrics (correcting misheard words), and a fullscreen performance page opens with a five-word sliding lyric window, 20+ visualizer styles, and your Studio mix carried over intact.
 
-You can also record lyric videos directly from the browser — no external screen recorder needed. A built-in recorder captures the canvas visuals and the full audio mix as a WebM file (VP9 + Opus). Press the record button (or `R`), playback starts from the beginning, lyrics render onto the video frame via a five-word sliding window, and when the song ends the recording auto-stops and downloads. For manual capture, OBS, Windows Game Bar, NVIDIA ShadowPlay, and QuickTime still work as before.
+You can also record lyric videos directly from the browser — no external screen recorder needed. Choose a visual style from the list, press **Record all** (or `A`), and the page rewinds to the start, plays the song and records it: the canvas visuals plus the full audio mix, saved as **MP4** (H.264 + AAC) on Chrome, Edge and Safari, falling back to WebM where the browser cannot. Lyrics render onto the video frame via a five-word sliding window, and when the song ends the recording auto-stops and downloads. For manual capture, OBS, Windows Game Bar, NVIDIA ShadowPlay, and QuickTime still work as before.
 
 [Detail section below](#karaoke-in-depth)
 
@@ -168,7 +168,7 @@ You can also record lyric videos directly from the browser — no external scree
 | Open source | Yes | No | No |
 | Generates songs from lyrics | Yes | Yes | No |
 | Browser-based stem mixer | Yes | No (or extra fee) | N/A (native) |
-| Karaoke or lyric video output | Yes (built-in WebM recorder) | No | No (manual) |
+| Karaoke or lyric video output | Yes (built-in MP4 recorder) | No | No (manual) |
 | Chord detection overlay | Yes (librosa chroma analysis) | No | Plugin or manual |
 | MIDI export from sequencer | Yes (SMF Format 1) | No | Native |
 | Side-chain ducking | Yes (AudioWorklet) | No | Native or plugin |
@@ -1147,10 +1147,13 @@ After lyric sync, **⬇ LRC** (line and word timing), **⬇ SRT** and **⬇ VTT*
 
 ### Lyric video export (built-in recorder)
 
-Record the Karaoke playback as a WebM video file directly from the browser — no external screen recorder required.
+Record the Karaoke playback as a video file directly from the browser — no external screen recorder required.
 
-- **How it works:** `canvas.captureStream(30)` captures the visualizer canvas at 30 fps; `AudioContext.createMediaStreamDestination()` captures the full audio mix (all stems through the master chain). A `MediaRecorder` (VP9 video + Opus audio, WebM container) combines them.
-- **Recording flow:** press the record button (●) or the `R` key. Playback seeks to the start and begins automatically. The REC indicator pulses in the transport bar. Lyrics are rendered onto the canvas via `ctx.fillText()` during recording using the same five-word sliding window as live playback. When the song ends, recording auto-stops, the Blob is assembled, and the browser triggers a `.webm` download.
+- **How it works:** `canvas.captureStream(30)` captures the visualizer canvas at 30 fps; `AudioContext.createMediaStreamDestination()` captures the full audio mix (all stems through the master chain). A `MediaRecorder` combines them.
+- **Container:** MP4 (H.264 + AAC) wherever the browser can record it — Chrome 126+, Edge and Safari all can — and WebM (VP9 + Opus) where it cannot. The format is negotiated at load time with `MediaRecorder.isTypeSupported()`, the file extension is read back off the recorder's actual `mimeType` rather than assumed, and both record buttons say in their tooltip which one you will get.
+- **Pick a style:** the 24 visual styles are a dropdown in the transport bar. `N` still steps through them, and the dropdown follows along.
+- **Record all (● Record all, or `A`):** rewinds to the start, begins playback and starts recording in one press. The REC indicator pulses in the transport bar. Lyrics are rendered onto the canvas via `ctx.fillText()` during recording using the same five-word sliding window as live playback. When the song ends, recording auto-stops, the Blob is assembled, and the browser downloads the file.
+- **Record (● Record, or `R`):** starts recording from wherever playback currently is, for capturing one section rather than the whole song.
 - **Manual stop:** press ● or `R` again to stop recording early. The partial video still downloads.
 - **What's captured:** the full visualizer animation, the synced lyric overlay, and the complete Studio mix (per-track volume/pan/EQ/reverb/delay/offset, mute regions, master bus chain, fade in/out). What you hear and see in Karaoke is what ends up in the file.
 
@@ -1543,7 +1546,7 @@ waivepulse/
 │   │   ├── studio/stem-library.js   Stem swap modal (browse & import stems from other songs)
 │   │   ├── looper/midi-export.js    MIDI export (piano roll + drum pattern → .mid)
 │   │   ├── looper/airband.js        Air Band: webcam hand tracking → drum / note zones (airband-logic.js = pure logic)
-│   │   └── karaoke/recorder.js      Built-in lyric video recorder (WebM export)
+│   │   └── karaoke/recorder.js      Built-in lyric video recorder (MP4, WebM fallback)
 │   └── worklets/               AudioWorkletProcessor files (looper-capture, looper-autotune,
 │                               studio-dattorro, studio-bitcrusher, studio-gate,
 │                               studio-sidechain, looper-harmonizer)

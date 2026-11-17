@@ -54,7 +54,7 @@ $features = [
     'kicker'=> 'Performance mode',
     'title' => 'Lyric videos, ready to record.',
     'body'  => 'Whisper transcribes your vocals and aligns them to your original words. A fullscreen visualizer rolls the lyrics over your tuned mix — record it straight to video, and export YouTube-ready captions to go with it.',
-    'points'=> ['Five-word sliding lyric window', '20+ reactive visual styles', 'Built-in lyric-video recorder', 'SRT · VTT · LRC caption export'],
+    'points'=> ['Five-word sliding lyric window', '24 reactive visual styles, picked from a list', 'Record all: one press rewinds, plays and saves an MP4', 'SRT · VTT · LRC caption export'],
   ],
 ];
 

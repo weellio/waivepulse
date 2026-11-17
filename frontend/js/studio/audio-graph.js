@@ -39,11 +39,8 @@ export async function loadWorklets(ctx) {
   }
 }
 
-export function makeSatCurve(k) {
-  const n = 256, c = new Float32Array(n);
-  for (let i = 0; i < n; i++) { const x = (i * 2 / n) - 1; c[i] = ((Math.PI + k) * x) / (Math.PI + k * Math.abs(x)); }
-  return c;
-}
+import { makeSatCurve, EXCITER_HP_HZ, EXCITER_DRIVE } from '../shared/exciter.js';
+export { makeSatCurve, EXCITER_HP_HZ, EXCITER_DRIVE } from '../shared/exciter.js';
 
 export function makeClipperCurve(threshold = 0.6, ceiling = 0.94) {
   const n = 4096, c = new Float32Array(n), range = ceiling - threshold;
@@ -98,8 +95,8 @@ export function setupGlobalFX() {
   // Master chain: sub EQ → air EQ → [new serial FX] → fxOut → comp + exciter
   S._masterSubEQ = x.createBiquadFilter(); S._masterSubEQ.type = 'lowshelf'; S._masterSubEQ.frequency.value = 60; S._masterSubEQ.gain.value = 0;
   S._masterAirEQ = x.createBiquadFilter(); S._masterAirEQ.type = 'highshelf'; S._masterAirEQ.frequency.value = 10000; S._masterAirEQ.gain.value = 0;
-  S._exciterHP = x.createBiquadFilter(); S._exciterHP.type = 'highpass'; S._exciterHP.frequency.value = 3000;
-  S._exciterSat = x.createWaveShaper(); S._exciterSat.curve = makeSatCurve(200); S._exciterSat.oversample = '4x';
+  S._exciterHP = x.createBiquadFilter(); S._exciterHP.type = 'highpass'; S._exciterHP.frequency.value = EXCITER_HP_HZ;
+  S._exciterSat = x.createWaveShaper(); S._exciterSat.curve = makeSatCurve(EXCITER_DRIVE); S._exciterSat.oversample = '4x';
   S._exciterWet = x.createGain(); S._exciterWet.gain.value = 0;
   S._masterClip = x.createWaveShaper(); S._masterClip.curve = makeClipperCurve(); S._masterClip.oversample = '4x';
   S._clipWetGain = x.createGain(); S._clipWetGain.gain.value = 0;

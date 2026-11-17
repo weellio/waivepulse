@@ -31,6 +31,12 @@ body.show-cursor{cursor:default}
 #controls.hidden{opacity:0;pointer-events:none}
 .c-btn{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);color:#ccc;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:background .15s,border-color .15s;white-space:nowrap;flex-shrink:0;letter-spacing:.3px}
 .c-btn:hover{background:rgba(255,255,255,0.18);color:#fff}
+/* The style picker is a <select> so it can list all of them, but it sits in a row of
+   buttons and has to read as one. */
+select.c-btn{appearance:none;-webkit-appearance:none;padding-right:26px;
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath fill='%23ccc' d='M0 0h10L5 6z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 9px center;background-size:9px 5px}
+select.c-btn option{background:#15151c;color:#ddd}
 .c-btn.active{background:rgba(140,255,255,0.15);border-color:rgba(140,255,255,0.4);color:#8cffff}
 #progress-wrap{flex:1;padding:8px 0;cursor:pointer}
 #progress-bar{height:3px;background:rgba(255,255,255,0.12);border-radius:2px;position:relative}

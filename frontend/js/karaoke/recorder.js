@@ -6,7 +6,12 @@ import { S } from './state.js';
 
 // ── Codec negotiation ────────────────────────────────────────────────────────
 function _pickMime(){
+  // MP4 first: Chrome and Edge record H.264/AAC now, and Safari has for longer. WebM is
+  // the fallback for browsers that still cannot, rather than the only option.
   const candidates=[
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4;codecs=avc1,mp4a',
+    'video/mp4',
     'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8,opus',
     'video/webm',
@@ -15,15 +20,22 @@ function _pickMime(){
   return '';
 }
 
+// Name the file after what the recorder actually produced, never after what we asked
+// for: MediaRecorder is allowed to fall back to another container.
+function _extFor(mime){
+  return /mp4/i.test(mime||'')?'mp4':'webm';
+}
+
 // ── Internal: assemble blob + trigger download ───────────────────────────────
 function _finishRecording(){
-  const blob=new Blob(S._recChunks,{type:S._recorder?.mimeType||'video/webm'});
+  const mime=S._recorder?.mimeType||'video/webm';
+  const blob=new Blob(S._recChunks,{type:mime});
   S._recChunks=[];
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
   const title=(document.getElementById('title-bar')?.textContent||'karaoke').replace(/[^a-zA-Z0-9_\- ]/g,'').trim()||'karaoke';
-  a.download=title+'_video.webm';
+  a.download=title+'_video.'+_extFor(mime);
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -34,6 +46,11 @@ function _finishRecording(){
 
 export function isRecording(){
   return S._recording;
+}
+
+// What the finished file will be, for the UI to say so before you press anything.
+export function recordFormat(){
+  return _extFor(_pickMime()).toUpperCase();
 }
 
 export function startRecording(){

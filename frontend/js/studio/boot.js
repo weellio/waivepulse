@@ -261,6 +261,9 @@ export function openKaraoke() {
       subEQ: S._masterSubEQ ? S._masterSubEQ.gain.value : 0,
       airEQ: S._masterAirEQ ? S._masterAirEQ.gain.value : 0,
       exciter: S._exciterEnabled,
+      // Karaoke rebuilds the exciter from this. Without the amount it used its own
+      // hardcoded 0.18 and you heard a different master than the one you set.
+      exciterWet: S._exciterWet ? S._exciterWet.gain.value : 0,
       comp: S._compEnabled,
       clip: S._clipEnabled,
     },

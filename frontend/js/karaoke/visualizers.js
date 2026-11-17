@@ -13,13 +13,34 @@ export function resizeCanvas(){canvas.width=window.innerWidth;canvas.height=wind
 window.addEventListener('resize',()=>{resizeCanvas();S._stars=null;S._lasers=null;});
 resizeCanvas();
 
-export function nextPreset(){
-  S._presetIdx=(S._presetIdx+1)%S.PRESETS.length;
+export function setPreset(i){
+  const n=S.PRESETS.length;
+  S._presetIdx=((i%n)+n)%n;
+  // Every engine keeps its own cached geometry; swapping style has to drop all of it or
+  // the new one draws with the old one's stars and bubbles.
   S._patCache={};S._stars=null;S._bubbles=null;S._lasers=null;
+  const sel=document.getElementById('style-sel');
+  if(sel&&sel.selectedIndex!==S._presetIdx)sel.selectedIndex=S._presetIdx;
   const el=document.getElementById('preset-name');
-  el.textContent=S.PRESETS[S._presetIdx].name;
-  el.style.opacity='1';
-  setTimeout(()=>el.style.opacity='0',1800);
+  if(el){
+    el.textContent=S.PRESETS[S._presetIdx].name;
+    el.style.opacity='1';
+    clearTimeout(S._presetNameTimer);
+    S._presetNameTimer=setTimeout(()=>el.style.opacity='0',1800);
+  }
+}
+
+export function nextPreset(){
+  setPreset(S._presetIdx+1);
+}
+
+// Fill the style picker from the preset list, so the two can never drift apart.
+export function initStylePicker(){
+  const sel=document.getElementById('style-sel');
+  if(!sel)return;
+  sel.innerHTML=S.PRESETS.map((p,i)=>`<option value="${i}">${p.name}</option>`).join('');
+  sel.selectedIndex=S._presetIdx;
+  sel.addEventListener('change',()=>setPreset(sel.selectedIndex));
 }
 
 // ── Audio helpers ─────────────────────────────────────────────────────────────

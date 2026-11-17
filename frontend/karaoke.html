@@ -40,14 +40,15 @@
   </div>
   <button class="c-btn" id="resync-btn" style="display:none" onclick="retranscribe()" title="Re-run transcription with a better model">🔄 Re-sync</button>
   <button class="c-btn" id="vocals-btn" onclick="toggleVocals()">🎤 Vocals ON</button>
-  <button class="c-btn" onclick="nextPreset()" title="Cycle visual style (N)">🎨 Style</button>
+  <select class="c-btn" id="style-sel" title="Visual style (N steps through them)" aria-label="Visual style"></select>
   <div id="cap-group" role="group" aria-label="Caption export">
     <button class="c-btn cap-btn" id="cap-lrc">⬇ LRC</button>
     <button class="c-btn cap-btn" id="cap-srt">⬇ SRT</button>
     <button class="c-btn cap-btn" id="cap-vtt">⬇ VTT</button>
     <button class="c-btn cap-btn" id="cap-copy">📋 Copy timed lyrics</button>
   </div>
-  <button class="c-btn" id="rec-btn" onclick="toggleRecord()" title="Record lyric video (R)">&#x23FA; Record</button>
+  <button class="c-btn" id="recall-btn" onclick="recordAll()" title="Rewind to the start and record the whole song (A)">&#x23FA; Record all</button>
+  <button class="c-btn" id="rec-btn" onclick="toggleRecord()" title="Record from where you are (R)">&#x23FA; Record</button>
 </div>
 
 <div id="rec-indicator" style="display:none">
@@ -55,7 +56,7 @@
 </div>
 
 <div id="preset-name"></div>
-<div id="hint">Space play/pause &nbsp;·&nbsp; V vocals &nbsp;·&nbsp; N style &nbsp;·&nbsp; R record &nbsp;·&nbsp; Esc back</div>
+<div id="hint">Space play/pause &nbsp;·&nbsp; V vocals &nbsp;·&nbsp; N style &nbsp;·&nbsp; A record all &nbsp;·&nbsp; R record &nbsp;·&nbsp; Esc back</div>
 
 <script type="module" src="/js/karaoke/main.js"></script>
 </body>
