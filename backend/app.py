@@ -433,13 +433,25 @@ def _run_transcription(sep_id: str, model_name: str = 'base'):
         _real_stdout.write(f'[waivepulse] Loading {label} model…\n')
         model = WhisperModel(model_name, device='cpu', compute_type='int8')
         _real_stdout.write(f'[waivepulse] Transcribing vocals for sep {sep_id}…\n')
+        # No VAD. We are transcribing a Demucs vocals stem, which is already
+        # vocals-only, so a voice-activity filter has nothing to exclude and can only
+        # lose material -- and it does: Silero VAD is trained on speech, and sustained
+        # sung notes, melisma, reverb tails and separation artifacts do not read as
+        # speech to it. Measured on one 5-minute song it cut nine holes in the
+        # transcript, the largest 29.7 s of clearly audible singing at -22 dB.
+        #
+        # temperature stays on faster-whisper's default fallback ladder. Pinning a
+        # single temperature disables the fallback, and with it the compression-ratio
+        # and log-probability guards that reject a hallucinated window -- those only
+        # fire when there is another temperature left to try. With VAD no longer
+        # gating the input, those guards are what keeps Whisper honest over quiet
+        # passages, so the two settings belong together.
         segments, info = model.transcribe(
             str(vocals_path),
             word_timestamps=True,
-            vad_filter=True,
-            vad_parameters={"min_silence_duration_ms": 400},
+            vad_filter=False,
             beam_size=5,
-            temperature=0.0,
+            temperature=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
         )
         _real_stdout.write(
             f'[waivepulse] Whisper info: language={getattr(info, "language", "?")} '
