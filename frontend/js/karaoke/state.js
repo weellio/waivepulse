@@ -56,7 +56,8 @@ export const S = {
   _lyrics: '', _title: '', _artist: '',
 
   // visualizer
-  _presetIdx: 0, _vizPhase: 0, _hideTimer: null,
+  _presetIdx: 0, _vizPhase: 0, _hideTimer: null, _presetNameTimer: null,
+  _txModel: null,   // which Whisper size produced S._words, for Re-sync to climb past
   _maskRot: 0, _patRot: 0, _bassSmooth: 0, _midsSmooth: 0, _hiSmooth: 0,
   _beatFlash: 0, _beatAvg: 0, _patCache: {},
   _stars: null, _bubbles: null, _lasers: null,

@@ -103,6 +103,7 @@ async function init(){
     const txd=await(await fetch('/transcribe/status/'+S._sepId)).json();
     if(txd.status==='done'){
       S._matchPct=txd.match_pct??null;
+      S._txModel=txd.tx_model??null;
       S._words=padLyrics(txd.words||[]);
     }else if(txd.status==='transcribing'){
       setStatus('Transcribing lyrics…','This takes 30–60 seconds');
