@@ -2840,6 +2840,94 @@ def start_transcription(
     return {"status": "transcribing"}
 
 
+class LyricsIn(BaseModel):
+    lyrics: str = ""
+
+
+class WordEdit(BaseModel):
+    index: int
+    word: str
+
+
+@app.post("/words/{sep_id}/edit")
+def edit_word(sep_id: str, body: WordEdit):
+    """Correct a single mis-heard word, keeping the timing Whisper got right.
+
+    Index is into the stored (unpadded) word list, which is what the page holds minus
+    the three blank entries padLyrics puts at the head.
+    """
+    if sep_id not in sep_jobs and not _recover_sep(sep_id):
+        raise HTTPException(status_code=404, detail="Separation not found")
+    words = sep_jobs[sep_id].get("words")
+    if not words:
+        raise HTTPException(status_code=400, detail="This song has no timed words yet")
+    if not 0 <= body.index < len(words):
+        raise HTTPException(status_code=400,
+                            detail=f"index {body.index} out of range (0-{len(words) - 1})")
+
+    new = (body.word or "").strip()
+    if len(new) > 80:
+        raise HTTPException(status_code=400, detail="That is too long for one word")
+
+    was = words[body.index].get("word", "")
+    if not new:
+        # An empty edit deletes. A mishearing is rarely one-for-one -- one sung word can
+        # come back as three -- so removing a word is part of correcting the line, not a
+        # separate destructive act.
+        words.pop(body.index)
+        sep_jobs[sep_id]["words"] = words
+        sep_jobs[sep_id]["hand_edits"] = sep_jobs[sep_id].get("hand_edits", 0) + 1
+        transcribe_jobs.pop(sep_id, None)
+        _save_history()
+        return {"index": body.index, "was": was, "now": None, "deleted": True,
+                "remaining": len(words),
+                "hand_edits": sep_jobs[sep_id]["hand_edits"]}
+    words[body.index]["word"] = new
+    # The match percentage described the automatic alignment; a hand edit invalidates it.
+    sep_jobs[sep_id]["words"] = words
+    sep_jobs[sep_id]["hand_edits"] = sep_jobs[sep_id].get("hand_edits", 0) + 1
+    transcribe_jobs.pop(sep_id, None)
+    _save_history()
+    return {"index": body.index, "was": was, "now": new,
+            "hand_edits": sep_jobs[sep_id]["hand_edits"]}
+
+
+@app.get("/lyrics/{sep_id}")
+def get_sep_lyrics(sep_id: str):
+    """The lyrics attached to the song behind this separation, if any."""
+    if sep_id not in sep_jobs and not _recover_sep(sep_id):
+        raise HTTPException(status_code=404, detail="Separation not found")
+    job_id = sep_jobs[sep_id].get("job_id")
+    text = (jobs.get(job_id, {}) or {}).get("lyrics", "") if job_id else ""
+    return {"job_id": job_id, "lyrics": text, "words": len(_extract_lyric_words(text))}
+
+
+@app.post("/lyrics/{sep_id}")
+def set_sep_lyrics(sep_id: str, body: LyricsIn):
+    """Attach the real lyrics to this song.
+
+    Transcription uses them instead of Whisper's words: _run_transcription LCS-aligns
+    Whisper against the lyrics and emits the LYRIC words carrying Whisper's timings. That
+    is what stops a mishearing reaching the screen -- the misheard word is never one of
+    the options. Cached words are dropped so the next transcribe actually re-runs.
+    """
+    if sep_id not in sep_jobs and not _recover_sep(sep_id):
+        raise HTTPException(status_code=404, detail="Separation not found")
+    job_id = sep_jobs[sep_id].get("job_id")
+    if not job_id or job_id not in jobs:
+        raise HTTPException(status_code=404, detail="This separation has no song record to attach lyrics to")
+
+    text = (body.lyrics or "").strip()
+    jobs[job_id]["lyrics"] = text
+    # Force the next transcription to re-run rather than serve the unaligned words.
+    sep_jobs[sep_id].pop("words", None)
+    sep_jobs[sep_id].pop("match_pct", None)
+    sep_jobs[sep_id].pop("tx_model", None)
+    transcribe_jobs.pop(sep_id, None)
+    _save_history()
+    return {"job_id": job_id, "lyrics": text, "words": len(_extract_lyric_words(text))}
+
+
 @app.get("/transcribe/status/{sep_id}")
 def transcription_status(sep_id: str):
     # Persisted words survive server restarts

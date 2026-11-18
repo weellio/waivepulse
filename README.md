@@ -1145,6 +1145,31 @@ Click the Karaoke button in the Studio transport bar (enabled once separation is
 
 After lyric sync, **⬇ LRC** (line and word timing), **⬇ SRT** and **⬇ VTT** (YouTube-ready captions, no overlaps, 42-character lines) and **📋 Copy timed lyrics** export the aligned lyrics. Section markers are left out. If a song has no timings yet, the button runs Whisper first.
 
+### Fixing what the words say
+
+Whisper is a speech model reading a sung, separated vocal, so it mishears — "sanctuary"
+comes back as "a stage to worry". Re-sync does not fix that: it re-runs the model, which
+mishears differently rather than less. Two things do.
+
+- **One wrong word — click it.** Pause, click the word on screen, type the right one,
+  press Enter. The timing is kept, because that is the part Whisper got right and the
+  part that is laborious to recreate; only the text changes. Clear the box and press
+  Enter to delete a word instead — a mishearing is rarely one-for-one, and one sung word
+  coming back as three leaves extras behind. Esc cancels. Edits save against the
+  separation, so they survive a reload and flow into the SRT, LRC, VTT and any video
+  recorded afterwards.
+- **All of them — paste the lyrics (📝 Lyrics).** With lyrics attached, transcription
+  stops using Whisper's words: it LCS-aligns them against the lyrics and emits the *lyric*
+  words carrying Whisper's timings, and reports what percentage matched. A mishearing
+  cannot reach the screen, because the misheard word was never a candidate. Songs
+  generated here already carry their lyrics; songs **uploaded** to Studio do not, which is
+  why an imported track shows Whisper's guesses until you paste them in.
+
+Re-sync remains the right tool for its own problem: a stretch of song with no words at
+all. Each press moves one model up — tiny, base, small, medium — and the button says
+which size ran and which is next. Bigger is not reliably better: on one song `base`
+produced 487 words against `small`'s 427.
+
 ### Lyric video export (built-in recorder)
 
 Record the Karaoke playback as a video file directly from the browser — no external screen recorder required.

@@ -11,6 +11,10 @@ import { nextPreset, setPreset, initStylePicker, renderFrame } from './visualize
 import { _updateResyncBtn, retranscribe, waitForTranscription } from './transcription.js';
 import { startRecording, stopRecording, isRecording, recordFormat } from './recorder.js';
 import { initCaptionButtons, updateCaptionButtons } from './caption-export.js';
+import {
+  initWordEdit, reflectPausedState, closeWordEdit,
+  openLyrics, closeLyrics, saveLyrics,
+} from './word-edit.js';
 
 window.addEventListener('karaoke-words', () => updateCaptionButtons());
 
@@ -30,6 +34,7 @@ document.addEventListener('mousemove',()=>{
 // ── RAF loop ─────────────────────────────────────────────────────────────────
 function rafLoop(){
   requestAnimationFrame(rafLoop);
+  reflectPausedState();   // before the early return: it matters most while paused
   if(!S._actx||!S._playing)return;
   const pos=currentPos();
   if(pos>=S._dur){if(isRecording())stopRecording();pausePlayback();return;}
@@ -40,8 +45,18 @@ function rafLoop(){
 
 // ── Keyboard ─────────────────────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{
+  const t=e.target;
+  const typing=t&&(t.tagName==='TEXTAREA'||t.tagName==='INPUT'||t.isContentEditable);
+  if(typing&&e.key!=='Escape')return;
   if(e.key===' '){e.preventDefault();togglePlay();}
-  if(e.key==='Escape')goBack();
+  if(e.key==='Escape'){
+    const sheet=document.getElementById('lyrics-sheet');
+    if(sheet&&!sheet.hidden){closeLyrics();return;}
+    const wi=document.getElementById('word-edit');
+    if(wi&&!wi.hidden){closeWordEdit();return;}
+    goBack();
+    return;
+  }
   if(e.key==='v'||e.key==='V')toggleVocals();
   if(e.key==='n'||e.key==='N')nextPreset();
   if(e.key==='a'||e.key==='A')recordAll();
@@ -121,6 +136,7 @@ async function init(){
 
     hideStatus();
     initStylePicker();
+    initWordEdit();
     // Say what the browser will actually give you, rather than promising a format.
     const fmt=recordFormat();
     for(const id of ['rec-btn','recall-btn']){
@@ -141,7 +157,7 @@ async function init(){
 // ── Expose inline-handler functions on window ────────────────────────────────
 Object.assign(window,{
   togglePlay, seekClick, setVolume, retranscribe, toggleVocals, nextPreset, setPreset,
-  goBack, toggleRecord, recordAll,
+  goBack, toggleRecord, recordAll, openLyrics, closeLyrics, saveLyrics,
 });
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────

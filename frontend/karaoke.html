@@ -38,6 +38,7 @@
     <label for="vol-slider">🔊</label>
     <input id="vol-slider" type="range" min="0" max="1" step="0.02" value="1" oninput="setVolume(this.value)">
   </div>
+  <button class="c-btn" id="lyrics-btn" onclick="openLyrics()" title="Paste the real lyrics so the screen shows your words, not what Whisper heard">📝 Lyrics</button>
   <button class="c-btn" id="resync-btn" style="display:none" onclick="retranscribe()" title="Re-run transcription with a better model">🔄 Re-sync</button>
   <button class="c-btn" id="vocals-btn" onclick="toggleVocals()">🎤 Vocals ON</button>
   <select class="c-btn" id="style-sel" title="Visual style (N steps through them)" aria-label="Visual style"></select>
@@ -51,12 +52,28 @@
   <button class="c-btn" id="rec-btn" onclick="toggleRecord()" title="Record from where you are (R)">&#x23FA; Record</button>
 </div>
 
+<input id="word-edit" hidden spellcheck="false" aria-label="Correct this word">
+
+<div id="lyrics-sheet" hidden>
+  <div class="ly-box" role="dialog" aria-modal="true" aria-labelledby="ly-title">
+    <h2 id="ly-title">The song's words</h2>
+    <p class="ly-sub">Paste the lyrics and the screen shows these words instead of what Whisper heard. Timings still come from the vocals. Section markers like [Chorus] are ignored.</p>
+    <textarea id="ly-text" spellcheck="false" placeholder="Paste the lyrics here, one line per line."></textarea>
+    <div class="ly-row">
+      <span id="ly-note"></span>
+      <span class="ly-spacer"></span>
+      <button class="c-btn" onclick="closeLyrics()">Cancel</button>
+      <button class="c-btn ly-save" id="ly-save" onclick="saveLyrics()">Save and re-sync</button>
+    </div>
+  </div>
+</div>
+
 <div id="rec-indicator" style="display:none">
   <span class="rec-dot"></span> REC
 </div>
 
 <div id="preset-name"></div>
-<div id="hint">Space play/pause &nbsp;·&nbsp; V vocals &nbsp;·&nbsp; N style &nbsp;·&nbsp; A record all &nbsp;·&nbsp; R record &nbsp;·&nbsp; Esc back</div>
+<div id="hint">Space play/pause &nbsp;·&nbsp; V vocals &nbsp;·&nbsp; N style &nbsp;·&nbsp; A record all &nbsp;·&nbsp; R record &nbsp;·&nbsp; Esc back<br>Paused: click a word to correct it</div>
 
 <script type="module" src="/js/karaoke/main.js"></script>
 </body>

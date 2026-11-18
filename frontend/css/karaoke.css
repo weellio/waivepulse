@@ -31,6 +31,41 @@ body.show-cursor{cursor:default}
 #controls.hidden{opacity:0;pointer-events:none}
 .c-btn{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);color:#ccc;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:background .15s,border-color .15s;white-space:nowrap;flex-shrink:0;letter-spacing:.3px}
 .c-btn:hover{background:rgba(255,255,255,0.18);color:#fff}
+
+/* ---- correcting one word in place ---- */
+/* The words are only clickable when the song is paused: chasing a moving target is
+   not an edit, it is a game. */
+/* The overlay is click-through while the song plays, so it never blocks the canvas.
+   Paused, the words become targets so one can be clicked and corrected. */
+body.paused #lyrics{pointer-events:auto}
+body.paused .kw{pointer-events:auto;cursor:text}
+body.paused .kw:hover{text-decoration:underline;text-decoration-color:rgba(140,255,255,.7);
+  text-underline-offset:6px}
+#word-edit{position:fixed;z-index:130;padding:4px 10px;border-radius:7px;
+  background:#0b0c11;color:#ffd84a;border:1px solid rgba(140,255,255,.55);
+  font:900 44px/1.1 'Segoe UI',system-ui,sans-serif;text-align:center;min-width:140px}
+#word-edit[hidden]{display:none}
+#word-edit:focus{outline:none;box-shadow:0 0 0 3px rgba(140,255,255,.2)}
+
+/* ---- the lyrics sheet ---- */
+#lyrics-sheet{position:fixed;inset:0;z-index:120;display:flex;align-items:center;
+  justify-content:center;background:rgba(0,0,0,.72);backdrop-filter:blur(4px)}
+#lyrics-sheet[hidden]{display:none}
+.ly-box{width:min(760px,calc(100vw - 32px));max-height:min(80vh,760px);display:flex;
+  flex-direction:column;gap:12px;padding:20px 22px;border-radius:14px;
+  background:#12131a;border:1px solid rgba(255,255,255,.14);
+  box-shadow:0 24px 70px rgba(0,0,0,.7)}
+.ly-box h2{margin:0;font-size:18px;font-weight:700;color:#eee;letter-spacing:.2px}
+.ly-sub{margin:0;font-size:13px;line-height:1.5;color:#9aa0ab}
+#ly-text{flex:1;min-height:260px;resize:vertical;padding:12px 14px;border-radius:9px;
+  background:#0b0c11;color:#ddd;border:1px solid rgba(255,255,255,.14);
+  font:14px/1.55 ui-monospace,Consolas,monospace}
+#ly-text:focus{outline:none;border-color:rgba(140,255,255,.5)}
+.ly-row{display:flex;align-items:center;gap:9px}
+.ly-spacer{flex:1}
+#ly-note{font-size:12.5px;color:#9aa0ab}
+.ly-save{background:rgba(140,255,255,.16);border-color:rgba(140,255,255,.42);color:#8cffff}
+.ly-save:hover{background:rgba(140,255,255,.26);color:#bfffff}
 /* The style picker is a <select> so it can list all of them, but it sits in a row of
    buttons and has to read as one. */
 select.c-btn{appearance:none;-webkit-appearance:none;padding-right:26px;
